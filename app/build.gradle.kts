@@ -8,7 +8,7 @@ plugins {
 fun prop(name: String, default: String) = providers.gradleProperty(name).orElse(default).get()
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-// The same public OAuth client and callback as the iOS app (registered on dev and stage).
+// The same public OAuth client and callback as the iOS app (registered on dev, stage and prod).
 val oauthClientId = prop("maprouletteOAuthClientId", "maproulette-ios-choice")
 val callbackScheme = prop("maprouletteOAuthCallbackScheme", "lol.osm.maproulette.choice")
 // true lets stage and prod (which edit the real OpenStreetMap) receive answers. Off by default.
@@ -77,8 +77,7 @@ android {
             versionNameSuffix = "-stage"
             buildConfigField("String", "MAPROULETTE_BASE_URL", quoted(prop("maprouletteStageBaseUrl", "https://mr-stage.osm.lol")))
         }
-        // The pilot backend (openstreetmap.org). Answers only with -PmaprouletteAllowLiveWrites=true,
-        // and sign-in needs prod's own OAuth client (-PmaprouletteOAuthClientId).
+        // The pilot backend (openstreetmap.org). Answers only with -PmaprouletteAllowLiveWrites=true.
         create("prod") {
             dimension = "backend"
             buildConfigField("String", "MAPROULETTE_BASE_URL", quoted(prop("maprouletteProdBaseUrl", "https://mr-prod.osm.lol")))

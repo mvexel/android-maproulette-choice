@@ -2,9 +2,10 @@ name: Release
 
 # A signed release APK on a GitHub Release, for the pilot's install page
 # (release/woodbine-release-checklist.md A2). Runs when Martijn pushes a version tag (v0.2.0).
-# Dormant until the release key and the prod OAuth client are set up:
-#   secrets STREET_TALLY_KEYSTORE_BASE64, STREET_TALLY_KEYSTORE_PASSWORD, STREET_TALLY_KEY_ALIAS,
-#   STREET_TALLY_KEY_PASSWORD; variable MAPROULETTE_PROD_OAUTH_CLIENT_ID.
+# Dormant until the release key is set up: secrets STREET_TALLY_KEYSTORE_BASE64,
+#   STREET_TALLY_KEYSTORE_PASSWORD, STREET_TALLY_KEY_ALIAS, STREET_TALLY_KEY_PASSWORD.
+# The prod OAuth client is maproulette-ios-choice (app/build.gradle.kts); the optional
+# variable MAPROULETTE_PROD_OAUTH_CLIENT_ID overrides it.
 # The release is created as a draft: publishing it makes
 # https://github.com/mvexel/android-maproulette-choice/releases/latest/download/street-tally.apk
 # serve this APK.
@@ -31,14 +32,12 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
-      - name: Check the tag, key and OAuth client
+      - name: Check the tag and key
         env:
           KEYSTORE_BASE64: ${{ secrets.STREET_TALLY_KEYSTORE_BASE64 }}
-          CLIENT_ID: ${{ vars.MAPROULETTE_PROD_OAUTH_CLIENT_ID }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag $TAG is not vMAJOR.MINOR.PATCH"; exit 1; }
           [ -n "$KEYSTORE_BASE64" ] || { echo "::error::Secret STREET_TALLY_KEYSTORE_BASE64 is not set"; exit 1; }
-          [ -n "$CLIENT_ID" ] || { echo "::error::Variable MAPROULETTE_PROD_OAUTH_CLIENT_ID is not set"; exit 1; }
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
@@ -55,10 +54,12 @@ jobs:
         run: |
           export STREET_TALLY_KEYSTORE="$RUNNER_TEMP/release.jks"
           echo "$KEYSTORE_BASE64" | base64 -d > "$STREET_TALLY_KEYSTORE"
+          client=()
+          [ -z "$CLIENT_ID" ] || client=(-PmaprouletteOAuthClientId="$CLIENT_ID")
           ./gradlew assembleProdRelease --console=plain \
             -PversionName="$VERSION" -PversionCode=${{ github.run_number }} \
             -PmaprouletteAllowLiveWrites=true -PmaprouletteGuests=true \
-            -PmaprouletteOAuthClientId="$CLIENT_ID"
+            "${client[@]}"
           rm -f "$STREET_TALLY_KEYSTORE"
       - name: Verify the signature
         run: |
