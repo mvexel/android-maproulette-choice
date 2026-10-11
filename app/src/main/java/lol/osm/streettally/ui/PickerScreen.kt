@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -80,61 +82,68 @@ fun PickerScreen(
 
     val shown = list?.campaigns.orEmpty().filter { search.isBlank() || it.name.contains(search.trim(), ignoreCase = true) }
     Scaffold(topBar = { TopAppBar(title = { Text("Street Tally") }) }) { padding ->
-        LazyColumn(
+        // Pull down to reload, e.g. after a campaign was published. The first load shows its own spinner.
+        PullToRefreshBox(
+            isRefreshing = loading && list != null,
+            onRefresh = { reload++ },
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
-            item {
-                Text(
-                    "Mapping campaigns",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                )
-            }
-            if ((list?.campaigns?.size ?: 0) > 5) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag(CAMPAIGN_LIST_TAG),
+            ) {
                 item {
-                    OutlinedTextField(
-                        value = search, onValueChange = { search = it },
-                        label = { Text("Find a campaign") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-            }
-            if (shown.isEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        if (loading) CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                        Text(status.ifEmpty { "No campaign matches." }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (failed) TextButton(onClick = { reload++ }, modifier = Modifier.padding(start = 8.dp)) { Text("Retry") }
-                }
-            }
-            items(shown, key = { it.id.value }) { challenge ->
-                CampaignRow(challenge) { onCampaign(challenge.id.value) }
-                HorizontalDivider()
-            }
-            item {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    AccountSection(
-                        state = state,
-                        needsReconsent = AppSession.needsReconsent(session.config.writesAllowed, state.account),
-                        privateSignIn = privateSignIn,
-                        guestsAvailable = session.canAnswerAsGuest,
-                        onSignIn = { appScope.launch { session.signIn(authenticate) } },
-                        onSignOut = { appScope.launch { session.signOut() } },
-                    )
-                    DeleteMyData(session)
                     Text(
-                        session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        "Mapping campaigns",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                     )
+                }
+                if ((list?.campaigns?.size ?: 0) > 5) {
+                    item {
+                        OutlinedTextField(
+                            value = search, onValueChange = { search = it },
+                            label = { Text("Find a campaign") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                if (shown.isEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (loading) CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                            Text(status.ifEmpty { "No campaign matches." }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (failed) TextButton(onClick = { reload++ }, modifier = Modifier.padding(start = 8.dp)) { Text("Retry") }
+                    }
+                }
+                items(shown, key = { it.id.value }) { challenge ->
+                    CampaignRow(challenge) { onCampaign(challenge.id.value) }
+                    HorizontalDivider()
+                }
+                item {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AccountSection(
+                            state = state,
+                            needsReconsent = AppSession.needsReconsent(session.config.writesAllowed, state.account),
+                            privateSignIn = privateSignIn,
+                            guestsAvailable = session.canAnswerAsGuest,
+                            onSignIn = { appScope.launch { session.signIn(authenticate) } },
+                            onSignOut = { appScope.launch { session.signOut() } },
+                        )
+                        DeleteMyData(session)
+                        Text(
+                            session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -156,3 +165,6 @@ private fun CampaignRow(challenge: Challenge, onClick: () -> Unit) {
         }
     }
 }
+
+/** The campaign list, for tests. */
+internal const val CAMPAIGN_LIST_TAG = "campaign-list"
