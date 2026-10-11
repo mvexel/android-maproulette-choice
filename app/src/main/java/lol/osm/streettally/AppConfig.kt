@@ -5,9 +5,9 @@ import org.maproulette.sdk.MapRouletteEnvironment
 
 /** The backend this build talks to and whether it may send answers there.
  *
- * Mirrors the iOS app's write rule: the dev backends always take writes; stage and prod edit the
- * real OpenStreetMap and take writes only in builds made with `maprouletteAllowLiveWrites=true`.
- * Anything else, including maproulette.org, is read-only. */
+ * Authenticated task/OSM writes go to dev by default; stage and prod need
+ * `maprouletteAllowLiveWrites=true`. Guest pending answers have a separate default-off opt-in
+ * for known dev origins and exactly stage. Anything else, including maproulette.org, is read-only. */
 data class AppConfig(
     val baseUrl: String,
     val oauthClientId: String,
@@ -21,17 +21,23 @@ data class AppConfig(
         require(origin(baseUrl) == baseUrl) { "baseUrl must be an https origin without a path: $baseUrl" }
     }
 
-    /** Whether this build sends answers to [baseUrl]. */
+    /** Whether this build permits authenticated task/OSM writes to [baseUrl]. */
     val writesAllowed: Boolean
         get() = baseUrl in WRITE_ORIGINS || (allowLiveWrites && baseUrl in LIVE_WRITE_ORIGINS)
 
-    val guestWritesAllowed: Boolean get() = guestEnabled && writesAllowed
+    /** Pending guest answers are independent of the authenticated/OSM write opt-in. */
+    val guestWritesAllowed: Boolean
+        get() = guestEnabled && (baseUrl in WRITE_ORIGINS || baseUrl == "https://mr-stage.osm.lol")
 
     /** The OAuth callback registered with the backend (`<scheme>:/oauth2redirect`). */
     val redirectUri: String get() = "$callbackScheme:/oauth2redirect"
 
     /** The SDK environment; writes are opted in only when [writesAllowed]. */
     fun environment(): MapRouletteEnvironment = MapRouletteEnvironment("$baseUrl/api/v2/", writesAllowed)
+
+    /** Used only for a durable guest identity with an operation-restricted transport. */
+    internal fun guestEnvironment(): MapRouletteEnvironment =
+        MapRouletteEnvironment("$baseUrl/api/v2/", guestWritesAllowed)
 
     companion object {
         val WRITE_ORIGINS = setOf("https://mr-api.osm.lol", "https://mr-dev.osm.lol")

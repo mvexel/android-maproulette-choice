@@ -1,5 +1,9 @@
 package lol.osm.streettally.auth
 
+import java.net.URI
+import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.MapRouletteException
+import org.maproulette.sdk.HttpMethod
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -217,7 +221,37 @@ class AppSession(
             // During registration/marker persistence, even campaign reads must not use the
             // SDK's in-memory guest credential before durable evidence exists.
             MapRouletteClient(config.environment(), transport)
-        } else signIn.client()
+        } else if (signIn.account == null && signIn.guest != null) {
+            if (config.guestWritesAllowed) {
+                signIn.client(environment = config.guestEnvironment(), transport = guestTransport)
+            } else {
+                // Do not even exchange the saved guest secret when this build has guests off.
+                MapRouletteClient(config.guestEnvironment(), guestTransport)
+            }
+        } else signIn.client(environment = config.environment())
+
+    // SDK 0.x has one mutation gate for both identities. A guest-enabled environment must
+    // never allow this client to call authenticated task lifecycle or OSM mutation routes.
+    private val guestTransport = Transport { request ->
+        val path = URI(request.url).path
+        val pendingRoute = path.matches(Regex("/api/v2/task/[0-9]+/choice/pending"))
+        val guestRoute = pendingRoute || path in setOf("/api/v2/mobile-guest", "/api/v2/mobile-guest/me",
+            "/api/v2/mobile-guest/pending", "/api/v2/mobile-guest/email")
+        if (guestRoute && !config.guestWritesAllowed) throw MapRouletteException(ErrorKind.AUTHENTICATION)
+        val guestMutation = (pendingRoute && request.method in setOf(HttpMethod.POST, HttpMethod.DELETE)) ||
+            (path == "/api/v2/mobile-guest/email" && request.method == HttpMethod.PUT) ||
+            (path == "/api/v2/mobile-guest" && request.method == HttpMethod.DELETE)
+        // Legacy task start/refresh/release mutate via GET, while marker reads use PUT.
+        val readRoute = request.method == HttpMethod.GET && (
+            path == "/api/v2/challenges/extendedFind" ||
+            path.matches(Regex("/api/v2/challenge/[0-9]+(/tags|/tasks)?")) ||
+            path.matches(Regex("/api/v2/task/[0-9]+(/choice/check)?")) ||
+            path.startsWith("/api/v2/tasks/box/") ||
+            path in setOf("/api/v2/mobile-guest/me", "/api/v2/mobile-guest/pending"))
+        val markerRead = request.method == HttpMethod.PUT && path.startsWith("/api/v2/markers/box/")
+        if (!readRoute && !markerRead && !guestMutation) throw MapRouletteException(ErrorKind.AUTHENTICATION)
+        transport.execute(request)
+    }
 
     private fun publish(message: String?, restored: Boolean = state.value.restored) {
         val account = signIn.account

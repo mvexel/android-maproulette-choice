@@ -36,7 +36,7 @@ opens the page, not the app, until App Links are set up (an `assetlinks.json` on
 | Flavor | API | OpenStreetMap | Answers sent |
 | --- | --- | --- | --- |
 | `dev` | `https://mr-api.osm.lol` | development OSM | yes |
-| `stage` | `https://mr-stage.osm.lol` | openstreetmap.org | only with `-PmaprouletteAllowLiveWrites=true` |
+| `stage` | `https://mr-stage.osm.lol` | openstreetmap.org | guest pending saves with `-PmaprouletteGuestEnabled=true`; authenticated/OSM writes only with `-PmaprouletteAllowLiveWrites=true` |
 
 Both flavors share the application id `lol.osm.maproulette.choice` and the OAuth callback
 `lol.osm.maproulette.choice:/oauth2redirect` of the iOS app's public client
@@ -45,7 +45,22 @@ Both flavors share the application id `lol.osm.maproulette.choice` and the OAuth
 `-PmapStyleUrl` and `-PcampaignLinkHost`. These are public identifiers and URLs, not credentials.
 
 The write rule matches the iOS app (`AppConfig.writesAllowed`): dev always, stage and prod only in
-a live-writes build, anything else read-only. The SDK enforces it too.
+a live-writes build, anything else read-only. Guest pending saves use a separate opt-in:
+`-PmaprouletteGuestEnabled=true` permits them on the two known dev origins and exactly
+`https://mr-stage.osm.lol`, regardless of the live-writes flag. Guest opt-in remains off by default
+and cannot enable guest operations on prod or unknown hosts. Signed-in clients/scopes still use
+`writesAllowed`; guest clients restrict mutations to guest routes, preventing task lifecycle or
+OSM edits even though the pinned SDK shares one mutation gate.
+
+For a pending-only stage build and local checks:
+
+```sh
+./gradlew testStageDebugUnitTest assembleStageDebug lintStageDebug \
+  -PmaprouletteGuestEnabled=true -PmaprouletteAllowLiveWrites=false
+```
+
+This local configuration needs separately verified stage guest capability, device checks and
+distribution before participant use.
 
 ## SDK
 

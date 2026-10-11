@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.delay
 import org.maproulette.sdk.CredentialStore
 import lol.osm.streettally.AppConfig
+import org.junit.Assert.fail
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -201,8 +202,8 @@ class AppSessionTest {
         assertTrue(session.state.value.message != null)
     }
 
-    @Test fun disabledGuestAndReadOnlyPreviewNeverRegister() = runTest {
-        for (cfg in listOf(config(), config("https://mr-stage.osm.lol", guest = true))) {
+    @Test fun disabledGuestAndUnsupportedOriginsNeverRegister() = runTest {
+        for (cfg in listOf(config(), config("https://mr-stage.osm.lol"), config("https://mr-prod.osm.lol", live = true, guest = true), config("https://example.com", live = true, guest = true))) {
             val session = AppSession(cfg, InMemoryCredentialStore(), Transport { error("must not register") })
             session.restore()
             session.ensureGuest()
@@ -264,6 +265,25 @@ class AppSessionTest {
         again.ensureGuest()
         assertEquals("guest-1", again.state.value.guest?.guestId)
         assertEquals(1, registrations)
+    }
+
+    @Test fun stageGuestOptInDoesNotUnlockSignedInWriterScopesOrClientMutations() = runTest {
+        val backend = Backend(writeScopes)
+        val store = InMemoryCredentialStore()
+        val previous = AppSession(config("https://mr-stage.osm.lol", live = true), store, backend)
+        previous.restore(); previous.signIn(::approve)
+        assertNotNull(previous.writer())
+        val session = AppSession(config("https://mr-stage.osm.lol", guest = true), store, backend)
+        session.restore() // Even a previously broad grant cannot bypass this build's gate.
+        assertEquals(setOf("tasks:read"), session.requestedScopes)
+        session.ensureGuest()
+        assertNotNull(session.state.value.account)
+        assertNull(session.state.value.guest)
+        assertNull(session.writer())
+        val before = backend.paths.size
+        try { session.client().skipTask(org.maproulette.sdk.TaskId(42)); fail("must reject") }
+        catch (_: IllegalStateException) {}
+        assertEquals(before, backend.paths.size)
     }
 
 }

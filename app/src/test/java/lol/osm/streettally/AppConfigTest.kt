@@ -51,10 +51,21 @@ class AppConfigTest {
         assertNull(AppConfig.origin("https://user@mr-api.osm.lol"))
         assertThrows(IllegalArgumentException::class.java) { config("https://mr-api.osm.lol/") }
     }
-    @Test fun guestOptInKeepsLiveWriteGate() {
+    @Test fun guestOptInUsesExactStageWithoutUnlockingAuthenticatedWrites() {
         assertFalse(config("https://mr-api.osm.lol").guestWritesAllowed)
         assertTrue(config("https://mr-api.osm.lol").copy(guestEnabled = true).guestWritesAllowed)
-        assertFalse(config("https://mr-stage.osm.lol").copy(guestEnabled = true).guestWritesAllowed)
+        val stage = config("https://mr-stage.osm.lol").copy(guestEnabled = true)
+        assertTrue(stage.guestWritesAllowed)
+        assertTrue(stage.guestEnvironment().allowsWrites)
+        assertFalse(stage.writesAllowed)
+        assertFalse(stage.environment().allowsWrites)
+        for (origin in listOf("https://mr-prod.osm.lol", "https://mr-stage.osm.lol:443", "https://mr-stage.osm.lol.evil.example", "https://maproulette.org")) {
+            for (live in listOf(false, true)) {
+                val rejected = config(origin, live).copy(guestEnabled = true)
+                assertFalse(rejected.guestWritesAllowed)
+                assertFalse(rejected.guestEnvironment().allowsWrites)
+            }
+        }
         assertFalse(config("https://example.com", live = true).copy(guestEnabled = true).guestWritesAllowed)
     }
 

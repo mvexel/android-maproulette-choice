@@ -303,4 +303,89 @@ class GuestFollowUpTest {
         assertEquals("Choose a place", Wording.nearest(Noun.PLACE, null, false))
         assertEquals("Choose another place", Wording.next(Noun.PLACE, null, false))
     }
+    @OptIn(LowLevelTaskLifecycle::class)
+    @Test fun stageGuestSaveLostResponseRecoveryAndStatusNeverCallAuthenticatedMutations() = runTest {
+        val backend = Backend()
+        val disk = InMemoryCredentialStore()
+        val cfg = config().copy(baseUrl = "https://mr-stage.osm.lol", allowLiveWrites = false)
+        val app = AppSession(cfg, disk, backend)
+        app.restore(); app.ensureGuest()
+        assertTrue(app.writer()!!.isGuest)
+        assertFalse(app.writer()!!.canEditOsm)
+        assertEquals(setOf("tasks:read"), app.requestedScopes)
+        var posts = 0
+        backend.answer = {
+            val request = backend.requests.last()
+            when (URI(request.url).path) {
+                "/api/v2/task/42/choice/pending" -> {
+                    assertEquals(HttpMethod.POST, request.method)
+                    posts++
+                    if (posts == 1) throw MapRouletteException(ErrorKind.NETWORK)
+                    HttpResponse(200, body = """{"taskId":42,"state":"pending","answeredAt":"2026-10-11T12:00:00Z"}""")
+                }
+                "/api/v2/mobile-guest/pending" -> HttpResponse(200, body = """{"items":[]}""")
+                "/api/v2/mobile-guest/me" -> status(1)
+                else -> error("Unexpected guest route")
+            }
+        }
+        val client = app.client()
+        val bridge = ClientTaskOps(client)
+        val pending = PendingSaveStore(InMemoryCredentialStore())
+        val ops = object : TaskOps by bridge {
+            override suspend fun getTask(id: TaskId) = task()
+            override suspend fun getChallenge(task: Task) = CHALLENGE
+            override suspend fun checkChoice(id: TaskId) = ChoiceEligibility(true, true, null)
+        }
+        val first = TaskWorkController(ops, app.writer(), this, StandardTestDispatcher(testScheduler), pendingSaves = pending, campaignId = 1)
+        first.load(TaskId(42)); advanceUntilIdle()
+        first.perform(ChoiceAction.Answers(mapOf("backrest" to "yes"))); advanceUntilIdle()
+        assertTrue(first.state.value is TaskScreen.CheckAgain)
+        assertNotNull(pending.read())
+        // The same durable guest is restored and the pending intent is checked before resending.
+        val reopened = AppSession(cfg, disk, backend)
+        reopened.restore(); reopened.ensureGuest()
+        assertEquals(app.writer(), reopened.writer())
+        val recoveredBridge = ClientTaskOps(reopened.client())
+        val recoveredOps = object : TaskOps by recoveredBridge {
+            override suspend fun getTask(id: TaskId) = task()
+            override suspend fun getChallenge(task: Task) = CHALLENGE
+            override suspend fun checkChoice(id: TaskId) = ChoiceEligibility(true, true, null)
+        }
+        val again = TaskWorkController(recoveredOps, reopened.writer(), this, StandardTestDispatcher(testScheduler), pendingSaves = pending, campaignId = 1)
+        again.load(TaskId(42)); advanceUntilIdle()
+        again.recheck(); advanceUntilIdle()
+        assertEquals(1, posts)
+        again.resendSame(); advanceUntilIdle()
+        assertTrue((again.state.value as TaskScreen.Done).savedForLater)
+        assertNull(pending.read())
+        reopened.refreshGuestStatus()
+        assertEquals(1, reopened.followUp.value.status?.pendingCount)
+        val before = backend.requests.size
+        try { reopened.client().skipTask(TaskId(42)); fail("Guest lifecycle must be denied") }
+        catch (e: MapRouletteException) { assertEquals(ErrorKind.AUTHENTICATION, e.kind) }
+        try { reopened.client().submitChoice(task(), ChoiceSubmission.Answers(mapOf("backrest" to "yes"))); fail("Guest OSM writes must be denied") }
+        catch (e: MapRouletteException) { assertEquals(ErrorKind.AUTHENTICATION, e.kind) }
+        for (call in listOf<suspend () -> Unit>(
+            { reopened.client().startTask(TaskId(42)); Unit },
+            { reopened.client().refreshTaskLock(TaskId(42)); Unit },
+            { reopened.client().releaseTask(TaskId(42)) },
+        )) {
+            try { call(); fail("GET lifecycle mutations must be denied") }
+            catch (e: MapRouletteException) { assertEquals(ErrorKind.AUTHENTICATION, e.kind) }
+        }
+        assertEquals(before, backend.requests.size)
+        val disabled = AppSession(cfg.copy(guestEnabled = false), disk, backend)
+        disabled.restore(); disabled.ensureGuest()
+        assertNull(disabled.writer())
+        try { disabled.client().submitPendingChoice(task(), ChoiceSubmission.Answers(mapOf("backrest" to "yes"))); fail("Disabled pending save") }
+        catch (_: IllegalStateException) {}
+        try { disabled.client().getGuestStatus(); fail("Disabled guest status") }
+        catch (e: MapRouletteException) { assertEquals(ErrorKind.AUTHENTICATION, e.kind) }
+        assertEquals(before, backend.requests.size)
+        val paths = backend.requests.map { URI(it.url).path }
+        assertEquals(1, paths.count { it == "/oauth/mobile/guest" })
+        assertEquals(2, paths.count { it == "/api/v2/task/42/choice/pending" })
+        assertTrue(paths.all { it in setOf("/oauth/mobile/guest", "/oauth/mobile/token", "/api/v2/task/42/choice/pending", "/api/v2/mobile-guest/pending", "/api/v2/mobile-guest/me") })
+    }
+
 }

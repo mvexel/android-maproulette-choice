@@ -11,8 +11,9 @@ fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\
 // The same public OAuth client and callback as the iOS app (registered on dev and stage).
 val oauthClientId = prop("maprouletteOAuthClientId", "maproulette-ios-choice")
 val callbackScheme = prop("maprouletteOAuthCallbackScheme", "lol.osm.maproulette.choice")
-// true lets stage and prod (which edit the real OpenStreetMap) receive answers. Off by default.
+// Guest pending saves on known dev origins and exact stage only. Off by default.
 val guestEnabled = prop("maprouletteGuestEnabled", "false").toBoolean()
+// Authenticated task/OSM writes on stage and prod require this separate opt-in.
 val allowLiveWrites = prop("maprouletteAllowLiveWrites", "false").toBoolean()
 
 android {
