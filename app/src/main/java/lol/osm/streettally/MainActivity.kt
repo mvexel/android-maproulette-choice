@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                         CampaignScreen(
                             session = app.session,
                             prefs = app.prefs,
-                            checked = app.checked,
+                            checkedLog = app.checked,
                             campaignId = id,
                             onBack = { campaignId = null },
                             onPlace = { task, places, origin -> place = OpenPlace(task.id, places.tasks, places.noun, origin) },

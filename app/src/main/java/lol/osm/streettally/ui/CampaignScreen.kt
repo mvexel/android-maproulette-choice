@@ -73,7 +73,7 @@ import org.maproulette.sdk.ChallengeId
 fun CampaignScreen(
     session: AppSession,
     prefs: CampaignPrefs,
-    checked: CheckedLog,
+    checkedLog: CheckedLog,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -180,7 +180,7 @@ fun CampaignScreen(
                         progress = { done.size.toFloat() / shown.size },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    val today = checked.today(campaignId)
+                    val today = checkedLog.today(campaignId)
                     if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
