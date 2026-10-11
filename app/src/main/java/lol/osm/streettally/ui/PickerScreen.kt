@@ -36,7 +36,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import lol.osm.streettally.AppConfig
+import lol.osm.streettally.BuildConfig
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.auth.guestDiagnostic
 import lol.osm.streettally.campaign.CampaignList
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Wording
@@ -140,6 +142,12 @@ fun PickerScreen(
                         // Test builds name their backend; participants on prod don't need to see it.
                         if (session.config.baseUrl != AppConfig.PROD_ORIGIN) Text(
                             session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        // Debug builds only: why this phone can or can't answer as a guest.
+                        if (BuildConfig.DEBUG) Text(
+                            guestDiagnostic(session.config.guests, session.config.writesAllowed, state.guestRefusal),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

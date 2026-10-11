@@ -35,7 +35,7 @@ jobs:
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
       # assembleProdRelease (unsigned here) checks the release build the release workflow signs.
       - name: Assemble (dev and stage debug, prod release), unit tests, lint
-        run: ./gradlew assembleDevDebug assembleStageDebug assembleProdRelease testDevDebugUnitTest lintDevDebug -PversionCode=${{ github.run_number }} --console=plain
+        run: ./gradlew assembleDevDebug assembleStageDebug assembleProdRelease testDevDebugUnitTest lintDevDebug -PmaprouletteGuests=true -PversionCode=${{ github.run_number }} --console=plain
       # PNGs of the report screens from the snapshot tests (ReportSnapshotTest), for design review.
       - name: Upload report screen snapshots
         if: ${{ !cancelled() }}
@@ -57,7 +57,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_writes }}
         run: |
           rm -rf app/build/outputs/apk
-          ./gradlew assembleStageDebug -PmaprouletteAllowLiveWrites=true -PversionCode=${{ github.run_number }} --console=plain
+          ./gradlew assembleStageDebug -PmaprouletteAllowLiveWrites=true -PmaprouletteGuests=true -PversionCode=${{ github.run_number }} --console=plain
       - name: Upload stage live-writes APK
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_writes }}
         uses: actions/upload-artifact@v4

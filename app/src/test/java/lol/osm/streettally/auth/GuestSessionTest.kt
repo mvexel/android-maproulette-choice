@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.HttpRequest
 import org.maproulette.sdk.HttpResponse
 import org.maproulette.sdk.InMemoryCredentialStore
@@ -87,7 +88,28 @@ class GuestSessionTest {
         assertFalse(session.state.value.guest)
         // Published, so the account section falls back to the sign-in wording.
         assertTrue(session.state.value.guestsRefused)
+        assertEquals("guests: refused by backend (404)", diagnostic(session))
     }
+
+    @Test fun aClientWithoutGuestScopeFallsBackToSignIn() = runTest {
+        for (status in listOf(401, 403)) {
+            val session = AppSession(config(), InMemoryCredentialStore(), Backend(status = status))
+            session.restore()
+            assertEquals("guests: ready", diagnostic(session))
+            assertFalse(session.ensureGuest())
+            assertFalse(session.canAnswerAsGuest)
+            assertEquals("guests: refused (401/403, client scope?)", diagnostic(session))
+        }
+    }
+
+    @Test fun theDiagnosticNamesTheBuildFirst() {
+        assertEquals("guests: off in this build", guestDiagnostic(false, true, ErrorKind.NOT_FOUND))
+        assertEquals("guests: writes off for this backend", guestDiagnostic(true, false, null))
+        assertEquals("guests: ready", guestDiagnostic(true, true, null))
+    }
+
+    private fun diagnostic(session: AppSession) =
+        guestDiagnostic(session.config.guests, session.config.writesAllowed, session.state.value.guestRefusal)
 
     @Test fun aFailedRegistrationTriesAgainLater() = runTest {
         val backend = Backend(status = 503)
