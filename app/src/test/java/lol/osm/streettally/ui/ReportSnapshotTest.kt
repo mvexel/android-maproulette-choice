@@ -135,7 +135,7 @@ class ReportSnapshotTest {
     private fun shoot(name: String, header: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
         compose.setContent {
             StreetTallyTheme(dark = false) {
-                CompositionLocalProvider(LocalMapPlaceholder provides { picked, modifier -> MapPlaceholder(picked, modifier) }) {
+                CompositionLocalProvider(LocalMapPlaceholder provides { picked, modifier, _ -> MapPlaceholder(picked, modifier) }) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         Column(
                             modifier = Modifier.testTag(SHOT).padding(horizontal = 16.dp, vertical = 8.dp),
