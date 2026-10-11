@@ -38,6 +38,10 @@ a live-writes build, anything else read-only. The SDK enforces it too.
 ## SDK
 
 The [MapRoulette Mobile SDK](https://github.com/mvexel/maproulette-mobile-sdk) (Kotlin) is the
-`sdk` git submodule, built with the app through a Gradle composite build. The submodule commit is
-the pin (today `07e192a`, SDK 0.2.0). Clone with `--recurse-submodules`, or run
-`git submodule update --init`. To move the pin: `git -C sdk checkout <commit>` and commit `sdk`.
+`sdk` git submodule, built with the app through a Gradle composite build, so no package
+repository is involved. The submodule commit is the pin: today the `0.2.0` tag (`b6f3177`).
+Clone with `--recurse-submodules`, or run `git submodule update --init`.
+
+To move to a new SDK release: `git -C sdk fetch --tags && git -C sdk checkout <tag>`, set the
+same version in the SDK dependency in `app/build.gradle.kts` (it only labels the substituted
+module), and commit `sdk` with that change.
