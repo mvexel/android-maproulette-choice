@@ -1,5 +1,7 @@
 package lol.osm.streettally.campaign
 
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
 
 /** Distance rules for "It's moved" (design/not-here-moved.md §3.2), as in the iOS MovedSpotView. */
@@ -23,6 +25,21 @@ object MovedSpot {
     }
 
     fun canSave(meters: Double): Boolean = check(meters).let { it == Check.OK || it == Check.FAR }
+
+    /** How far one TalkBack "Move …" action moves the new spot, as iOS. */
+    const val NUDGE_M = 5.0
+
+    /** [spot] moved [northM] meters north and [eastM] meters east (negative: south, west). */
+    fun nudge(spot: LatLon, northM: Double = 0.0, eastM: Double = 0.0): LatLon = LatLon(
+        spot.lat + northM / METERS_PER_DEGREE,
+        spot.lon + eastM / (METERS_PER_DEGREE * cos(spot.lat * PI / 180)),
+    )
+
+    /** TalkBack's value for the new spot: "About 30 m northeast of where the map has it". */
+    fun describe(mapped: LatLon, spot: LatLon): String =
+        "About ${roundedMeters(Places.meters(mapped, spot))} m ${Places.compass(Places.bearing(mapped, spot))} of where the map has it"
+
+    private const val METERS_PER_DEGREE = 111_320.0
 
     /** Under 100 m to the nearest 5 m, then to the nearest 10 m. */
     fun roundedMeters(meters: Double): Int {

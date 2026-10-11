@@ -2,17 +2,26 @@ package lol.osm.streettally.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.PointF
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlin.math.hypot
 import lol.osm.streettally.campaign.LatLon
+import lol.osm.streettally.campaign.MovedSpot
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -81,9 +90,23 @@ fun MovedSpotMap(
             holder.view.onDestroy()
         }
     }
-    AndroidView(factory = { holder.view }, modifier = modifier, update = { holder.showPick(picked) })
+    // TalkBack can't tap a spot on a map: once placed, the pin moves in 5 m steps (as iOS).
+    val accessible = if (interactive && picked != null) {
+        Modifier.semantics {
+            contentDescription = "New spot"
+            stateDescription = MovedSpot.describe(mapped, picked)
+            customActions = listOf(
+                "Move north" to MovedSpot.nudge(picked, northM = MovedSpot.NUDGE_M),
+                "Move south" to MovedSpot.nudge(picked, northM = -MovedSpot.NUDGE_M),
+                "Move east" to MovedSpot.nudge(picked, eastM = MovedSpot.NUDGE_M),
+                "Move west" to MovedSpot.nudge(picked, eastM = -MovedSpot.NUDGE_M),
+            ).map { (label, spot) -> CustomAccessibilityAction(label) { onPick(spot); true } }
+        }
+    } else Modifier
+    AndroidView(factory = { holder.view }, modifier = modifier.then(accessible), update = { holder.showPick(picked) })
 }
 
+@SuppressLint("ClickableViewAccessibility") // The pin drag; TalkBack moves it with custom actions.
 private class MovedSpotHolder(
     private val context: Context,
     styleUrl: String,
@@ -161,8 +184,34 @@ private class MovedSpotHolder(
                     onPick(LatLon(latLng.latitude, latLng.longitude))
                     true
                 }
+                view.setOnTouchListener { _, event -> drag(event) }
             }
         }
+    }
+
+    private var dragging = false
+
+    /** Dragging the navy pin moves the spot; a touch that doesn't start on it pans the map. */
+    private fun drag(event: MotionEvent): Boolean {
+        val map = map ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val spot = shown ?: return false
+                val pin = map.projection.toScreenLocation(LatLng(spot.lat, spot.lon))
+                dragging = hypot(event.x - pin.x, event.y - pin.y) <= DRAG_SLOP_DP * view.resources.displayMetrics.density
+                return dragging
+            }
+            MotionEvent.ACTION_MOVE -> if (dragging) {
+                val at = map.projection.fromScreenLocation(PointF(event.x, event.y))
+                onPick(LatLon(at.latitude, at.longitude))
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (dragging) {
+                dragging = false
+                return true
+            }
+        }
+        return false
     }
 
     @SuppressLint("MissingPermission") // Checked by Locator.permitted.
@@ -210,6 +259,7 @@ private class MovedSpotHolder(
         const val MAPPED_LABEL = "moved-mapped-label"
         const val LINE = "moved-line"
         const val PIN = "moved-pin"
+        const val DRAG_SLOP_DP = 32
     }
 }
 
