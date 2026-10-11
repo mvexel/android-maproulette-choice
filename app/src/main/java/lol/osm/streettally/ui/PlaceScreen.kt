@@ -395,6 +395,16 @@ fun PlaceScreen(
                         }
                         BackButton(noun, onBack)
                     }
+                    is TaskScreen.GuestSignIn -> {
+                        Text(Wording.guestSignIn(noun), style = MaterialTheme.typography.titleMedium)
+                        Text(Wording.guestSignInDetail(noun))
+                        // Most guests have no account: moving on comes first.
+                        next?.let { BigButton(Wording.next(noun, Places.directionText(here, it.position)), prominent = true) { open(it) } }
+                            ?: Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        BigButton("Sign in with OpenStreetMap", onClick = { accountNote = true; onSignIn() })
+                        Text(ACCOUNT_HINT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        BackButton(noun, onBack)
+                    }
                     is TaskScreen.SignInRequired -> {
                         Text(s.reason)
                         BigButton("Sign in again", onClick = onSignIn)
@@ -465,6 +475,7 @@ private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
     is TaskScreen.StaleOwnLock -> screen.task
     is TaskScreen.CheckAgain -> screen.task
     is TaskScreen.SignInRequired -> screen.task
+    is TaskScreen.GuestSignIn -> screen.task
     is TaskScreen.ElementInUse -> screen.task
 }
 

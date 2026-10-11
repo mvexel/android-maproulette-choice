@@ -131,6 +131,11 @@ object Wording {
     const val REPORTED_MOVED = "Thanks, reported. The organizer will move it on the map."
     fun skip(noun: Noun): String = "Skip this ${noun.one}"
     fun alreadyChecked(noun: Noun): String = "Someone already checked this ${noun.one}. Thanks anyway!"
+    /** A guest on a place the server won't keep guest answers for (Iris, copy-fixes-2026-10-11.md). */
+    fun guestSignIn(noun: Noun): String = "Sign in to check this ${noun.one}"
+    fun guestSignInDetail(noun: Noun): String =
+        "This ${noun.one} needs an OpenStreetMap account. Any answers you've saved stay saved."
+
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
     fun checkFailed(noun: Noun): String =
         "Couldn't check this ${noun.one} right now. Check your connection and try again."
