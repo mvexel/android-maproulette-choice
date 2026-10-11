@@ -34,6 +34,23 @@ class CampaignProgressTest {
         assertEquals(1, CampaignProgress(tasks, held = setOf(4L)).checked)
     }
 
+    @Test fun placesSavedHereCountStraightAwayAndAGuestsShowAsSaved() {
+        // 1 and 2 open, 3 open and held by this guest's own saved answer, 4 fixed.
+        val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 1))
+        val guest = CampaignProgress(tasks, held = setOf(3L), justDone = setOf(3L), guest = true)
+        assertEquals(setOf(3L, 4L), guest.done)
+        assertEquals(2, guest.checked)
+        assertEquals(4, guest.total)
+        assertEquals(listOf(1L, 2L, 3L, 4L), guest.shown.map { it.id })
+        assertEquals(listOf(1L, 2L), guest.open.map { it.id })
+        assertEquals(setOf(3L), guest.pending)
+        // Signed in, a place saved here is simply checked; one done on the server is never pending.
+        val account = CampaignProgress(tasks, held = emptySet(), justDone = setOf(2L, 4L))
+        assertEquals(emptySet<Long>(), account.pending)
+        assertEquals(listOf(1L, 3L), account.open.map { it.id })
+        assertEquals(setOf(2L), CampaignProgress(tasks, emptySet(), justDone = setOf(2L, 4L), guest = true).pending)
+    }
+
     @Test fun flagsAreUsedOnlyWhenEveryRowHasOne() {
         fun row(id: Long, pending: Boolean?) = TaskSummary(TaskId(id), ChallengeId(3), "t$id", TaskStatus(0), null, pending)
         assertEquals(setOf(2L), HeldTasks.fromFlags(listOf(row(1, false), row(2, true))))

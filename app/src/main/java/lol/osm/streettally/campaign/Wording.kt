@@ -185,6 +185,8 @@ object Wording {
     fun daySummarySaved(until: Instant?, zone: ZoneId = ZoneId.systemDefault()): String =
         (until?.let { "They're saved until ${day(it, zone)}." } ?: "They're saved for now.") +
             " If we emailed you a link, open it on a computer to put them on the map."
+    /** A guest's saved place on the map and in the list (the pending pin). */
+    const val SAVED_NOT_ON_MAP = "Saved, not on the map yet"
     const val DONE_FOR_TODAY = "I'm done for today"
     /** In the last 3 days before the saved answers are removed (§1.6). */
     fun savedClosing(count: Int, noun: Noun, on: Instant, zone: ZoneId = ZoneId.systemDefault()): String =

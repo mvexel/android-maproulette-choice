@@ -192,7 +192,11 @@ fun CampaignScreen(
 
     val current = places
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
-    val tally = remember(current, held) { CampaignProgress(current?.tasks.orEmpty(), held) }
+    // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
+    val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
+    val tally = remember(current, held, justDone, state.guest) {
+        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest)
+    }
     val shown = tally.shown
     val done = tally.done
     val open = Places.sorted(tally.open, origin)
@@ -309,14 +313,15 @@ fun CampaignScreen(
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (showList) {
-                    PlaceList(open, checked, origin, locationNote, noun) { open(it) }
+                    PlaceList(open, checked, tally.pending, origin, locationNote, noun) { open(it) }
                 } else {
                     PlacesMap(
                         styleUrl = session.config.mapStyleUrl,
                         places = shown,
                         done = done,
+                        pending = tally.pending,
                         locationPermitted = locationPermitted,
-                        onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen }?.let(::open) },
+                        onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen && it.id !in done }?.let(::open) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -381,6 +386,7 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
 private fun PlaceList(
     open: List<LocatedTask>,
     checked: List<LocatedTask>,
+    pending: Set<Long>,
     origin: LatLon?,
     locationNote: String?,
     noun: lol.osm.streettally.campaign.Noun,
@@ -402,10 +408,17 @@ private fun PlaceList(
         }
         if (checked.isNotEmpty()) item { SectionHeader("Already checked") }
         items(checked, key = { it.id }) { task ->
-            PlaceRow(task, origin, noun, done = true, onClick = null)
+            PlaceRow(task, origin, noun, done = true, pending = task.id in pending, onClick = null)
             HorizontalDivider()
         }
     }
+}
+
+/** A place's state for TalkBack, as iOS's VoiceOver value. */
+private fun placeState(done: Boolean, pending: Boolean): String? = when {
+    pending -> Wording.SAVED_NOT_ON_MAP
+    done -> "Already checked"
+    else -> null
 }
 
 @Composable
@@ -423,6 +436,7 @@ private fun PlaceRow(
     noun: lol.osm.streettally.campaign.Noun,
     done: Boolean,
     onClick: (() -> Unit)?,
+    pending: Boolean = false,
 ) {
     val name = Wording.placeName(task.task, noun)
     val distance = Places.rowText(origin, task.position)
@@ -434,7 +448,7 @@ private fun PlaceRow(
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(name, distance, if (done) "Already checked" else null).joinToString(", ")
+                contentDescription = listOfNotNull(name, distance, placeState(done, pending)).joinToString(", ")
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
