@@ -19,6 +19,9 @@ class WordingTest {
         assertEquals("stop", Noun.from(mapOf("highway" to "bus_stop")).one)
         assertEquals("benches", Noun.from(mapOf("amenity" to "bench")).many)
         assertEquals(Noun.PLACE, Noun.from(mapOf("shop" to "bakery")))
+        // Woodbine: the entrance tag's value differs per task (main, yes).
+        assertEquals(Noun("entrance", "entrances"), Noun.from(mapOf("entrance" to "main")))
+        assertEquals("entrances", Noun.from(mapOf("entrance" to "yes")).many)
         assertEquals(Noun.PLACE, Noun.from(emptyList<Task>()))
     }
 
