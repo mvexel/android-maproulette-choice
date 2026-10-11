@@ -284,6 +284,8 @@ object Wording {
     const val UPDATE_LOCATION = "Update my location"
     /** A place reported as not here, moved, or another status 6 outcome (not-here-moved.md §4). */
     const val NEEDS_LOOK = "Needs another look"
+    /** The map name card's second line for a place to check (iOS callout). */
+    const val TAP_TO_ANSWER = "Tap to answer"
     /** A draft opened without its preview link (an old link, the last campaign). */
     const val NOT_PUBLISHED = "This campaign isn't published yet."
     const val CANCEL = "Cancel"
