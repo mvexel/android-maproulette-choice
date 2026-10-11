@@ -163,7 +163,6 @@ object Wording {
     const val SEND_ME_THE_LINK = "Send me the link"
     const val RESEND_THE_LINK = "Resend the link"
     const val I_ALREADY_USE_OSM = "I already use OpenStreetMap"
-    /** Phone sign-in doesn't claim saved answers yet (Iris fix 5). */
     /** Phone sign-in claims the saved answers (B5), so the original line is back (copy fix 5). */
     const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     /** Only a bad address is the participant's to fix (shown in the error color); the rest are calm. */
