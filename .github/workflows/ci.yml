@@ -25,6 +25,19 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      # JitPack builds an SDK commit on its first request, which can outlast Gradle's read timeout.
+      # Ask for the POM up front and wait for that build. The version is the one in app/build.gradle.kts.
+      - name: Warm the SDK build on JitPack
+        run: |
+          version=$(sed -n 's/.*com\.github\.mvexel:maproulette-mobile-sdk:\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          test -n "$version"
+          url="https://jitpack.io/com/github/mvexel/maproulette-mobile-sdk/$version/maproulette-mobile-sdk-$version.pom"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 240 -o /dev/null "$url"; then echo "SDK $version ready"; exit 0; fi
+            echo "JitPack not ready (attempt $attempt), waiting"; sleep 20
+          done
+          echo "JitPack build log: https://jitpack.io/com/github/mvexel/maproulette-mobile-sdk/$version/build.log"
+          exit 1
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
       - name: Assemble (dev and stage), unit tests, lint
         run: ./gradlew assembleDevDebug assembleStageDebug testDevDebugUnitTest lintDevDebug --console=plain
