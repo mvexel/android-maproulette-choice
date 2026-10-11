@@ -30,6 +30,10 @@ class StreetTallyApp : Application() {
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
             OkHttpTransport(),
         )
-        scope.launch { session.restore() }
+        scope.launch {
+            session.restore()
+            // A guest who signed in but whose answers weren't claimed yet (offline then): try again.
+            session.claimKeptGuest()
+        }
     }
 }

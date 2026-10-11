@@ -4,7 +4,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import org.maproulette.sdk.ClaimState
+import org.maproulette.sdk.ClaimStatus
 import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.GuestClaim
 import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.Task
@@ -158,8 +161,8 @@ object Wording {
     const val RESEND_THE_LINK = "Resend the link"
     const val I_ALREADY_USE_OSM = "I already use OpenStreetMap"
     /** Phone sign-in doesn't claim saved answers yet (Iris fix 5). */
-    const val SIGN_IN_PUTS_ON_MAP =
-        "Sign in now and your next answers go straight on the map. The ones you already saved stay saved until you finish on a computer."
+    /** Phone sign-in claims the saved answers (B5), so the original line is back (copy fix 5). */
+    const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     /** Only a bad address is the participant's to fix (shown in the error color); the rest are calm. */
     fun isInputError(error: Throwable): Boolean =
         error is IllegalArgumentException || (error as? MapRouletteException)?.status.let { it == 400 || it == 422 }
@@ -212,6 +215,53 @@ object Wording {
         }
         return "$who$onMap New answers go straight on the map from now on."
     }
+
+    /** Phone claim lines (B5, Iris's list in copy-fixes-2026-10-11.md): the ones about the claim
+     * itself start by naming the account, since answers can turn out to be linked to another one. */
+    fun signedInAs(displayName: String?): String =
+        displayName?.let { "You're signed in as $it." } ?: "You're signed in with OpenStreetMap."
+
+    /** "I already use OpenStreetMap" with saved answers: the claim was accepted. */
+    fun claimStarted(claim: GuestClaim): String {
+        val n = claim.pendingCount
+        val rest = when {
+            n == 0 -> "New answers go straight on the map from now on."
+            claim.state == ClaimState.WAITING ->
+                if (n == 1) "Your saved answer is now linked to your account. It'll go on the map later."
+                else "Your $n saved answers are now linked to your account. They'll go on the map later."
+            n == 1 -> "Putting your saved answer on the map…"
+            else -> "Putting your $n saved answers on the map…"
+        }
+        return "${signedInAs(claim.account.displayName)} $rest"
+    }
+
+    /** The publish job's progress, then its result. Counts come from the job, never from the claim. */
+    fun claimProgress(status: ClaimStatus): String {
+        val onMap = status.published
+        val notAdded = status.skipped + status.superseded
+        return when (status.state) {
+            ClaimState.QUEUED, ClaimState.RUNNING -> "Putting your answers on the map… $onMap of ${status.total}"
+            ClaimState.WAITING -> "Your saved answers are now linked to your account. They'll go on the map later."
+            ClaimState.DONE, ClaimState.FAILED -> when {
+                status.failed > 0 -> "$onMap of ${status.total} are on the map. The rest are still saved."
+                else -> buildString {
+                    append(if (onMap == 1) "✓ 1 answer is on the map." else "✓ $onMap answers are on the map.")
+                    if (notAdded == 1) append(" 1 wasn't added, because someone changed that place on the map after you checked.")
+                    if (notAdded > 1) append(" $notAdded weren't added, because someone changed those places on the map after you checked.")
+                }
+            }
+        }
+    }
+
+    /** The guest is gone: expired, deleted, or claimed by another account. */
+    fun claimGone(displayName: String?): String = "${signedInAs(displayName)} We couldn't find your saved answers. " +
+        "They may have expired, or they're linked to a different OpenStreetMap account."
+    /** OpenStreetMap needs a fresh sign-in before the answers can be published. */
+    fun claimSignInAgain(displayName: String?): String =
+        "${signedInAs(displayName)} Sign in again so we can put your saved answers on the map."
+    /** The claim didn't go through (offline, or the server was busy); tried again on the next launch. */
+    fun claimLater(displayName: String?): String =
+        "${signedInAs(displayName)} Your answers are still saved. We'll try again next time you open the app."
 
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =
