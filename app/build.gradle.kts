@@ -56,9 +56,9 @@ android {
 }
 
 dependencies {
-    // MapRoulette Mobile SDK (Kotlin) from JitPack, pinned to main @ 07e192a (0.2.0) until the
-    // 0.2.0 tag exists.
-    implementation("com.github.mvexel:maproulette-mobile-sdk:07e192a1702963c095231bb7c81367d07a2aec3d")
+    // MapRoulette Mobile SDK (Kotlin), substituted by the `sdk` submodule build (settings.gradle.kts).
+    // The submodule commit is the pin; the JitPack coordinate also works once a tag exists.
+    implementation("com.github.mvexel:maproulette-mobile-sdk:0.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")

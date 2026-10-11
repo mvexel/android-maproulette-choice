@@ -10,11 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // The MapRoulette Mobile SDK (Kotlin) is served by JitPack from mvexel/maproulette-mobile-sdk.
-        maven("https://jitpack.io") {
-            content { includeGroup("com.github.mvexel") }
-        }
     }
 }
 rootProject.name = "street-tally-android"
 include(":app")
+// The MapRoulette Mobile SDK (Kotlin) builds from the `sdk` submodule, pinned to an SDK commit.
+// It substitutes com.github.mvexel:maproulette-mobile-sdk. Run `git submodule update --init` first.
+includeBuild("sdk/kotlin")

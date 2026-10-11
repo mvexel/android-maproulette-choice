@@ -11,7 +11,7 @@ OpenFreeMap tiles.
 
 ## Build
 
-CI builds every pull request on GitHub's Ubuntu runners and uploads the debug APKs as the
+CI builds every pull request (with submodules) on GitHub's Ubuntu runners and uploads the debug APKs as the
 `street-tally-debug-apks` artifact. Locally, with JDK 17 and the Android SDK (`ANDROID_HOME`):
 
 ```sh
@@ -37,5 +37,7 @@ a live-writes build, anything else read-only. The SDK enforces it too.
 
 ## SDK
 
-`com.github.mvexel:maproulette-mobile-sdk` from JitPack, pinned to the SDK's `main` at
-`07e192a` (0.2.0) until the 0.2.0 tag exists.
+The [MapRoulette Mobile SDK](https://github.com/mvexel/maproulette-mobile-sdk) (Kotlin) is the
+`sdk` git submodule, built with the app through a Gradle composite build. The submodule commit is
+the pin (today `07e192a`, SDK 0.2.0). Clone with `--recurse-submodules`, or run
+`git submodule update --init`. To move the pin: `git -C sdk checkout <commit>` and commit `sdk`.
