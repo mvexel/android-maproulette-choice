@@ -278,7 +278,7 @@ fun PlaceScreen(
                 is TaskScreen.CheckAgain -> if (s.checking) {
                     Busy("Checking…")
                 } else {
-                    Text(if (c.isGuest) "The connection dropped, so we're not sure your answers were saved."
+                    Text(if (c.isGuest) "We haven't confirmed these answers were saved."
                         else "The connection dropped, so we're not sure your answers were saved. Tap Check again to find out. They weren't sent twice.")
                     Text(s.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     BigButton("Check again", prominent = true) { c.recheck() }

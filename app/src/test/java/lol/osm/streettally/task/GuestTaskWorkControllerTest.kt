@@ -172,16 +172,37 @@ class GuestTaskWorkControllerTest {
         assertTrue(requests.single().body!!.contains("backrest"))
     }
 
-    @Test fun definiteGuestRefusalNeverShowsSuccessOrKeepsOfferingResend() = runTest {
+
+    @Test fun firstDefiniteGuestRefusalReleasesSlotForAnotherTask() = runTest {
         val ops = GuestOps().apply { post = { throw MapRouletteException(ErrorKind.CONFLICT, reason = "task_completed") } }
         val store = PendingSaveStore(InMemoryCredentialStore())
         val c = TaskWorkController(ops, Writer(0, false, BINDING), this, StandardTestDispatcher(testScheduler), pendingSaves = store)
         c.load(TaskId(42)); advanceUntilIdle()
         c.perform(ANSWERS); advanceUntilIdle()
-        assertFalse((c.state.value as TaskScreen.CheckAgain).canResend)
-        assertNotNull(store.read())
+        assertTrue(c.state.value is TaskScreen.NoLongerNeeded)
+        assertNull(store.read())
+        ops.freshTask = task().copy(id = TaskId(43))
+        ops.post = { receipt(43) }
+        c.load(TaskId(43)); advanceUntilIdle()
+        c.perform(ANSWERS); advanceUntilIdle()
+        assertTrue((c.state.value as TaskScreen.Done).savedForLater)
+        assertEquals(2, ops.submissions.size)
+    }
+
+    @Test fun priorUnknownThenDefiniteRefusedResendRetainsOriginalIntent() = runTest {
+        val ops = GuestOps().apply { post = { throw MapRouletteException(ErrorKind.NETWORK) } }
+        val store = PendingSaveStore(InMemoryCredentialStore())
+        val c = TaskWorkController(ops, Writer(0, false, BINDING), this, StandardTestDispatcher(testScheduler), pendingSaves = store)
+        c.load(TaskId(42)); advanceUntilIdle()
+        c.perform(ANSWERS); advanceUntilIdle()
+        val original = store.read()
+        ops.post = { throw MapRouletteException(ErrorKind.CONFLICT, reason = "task_completed") }
         c.resendSame(); advanceUntilIdle()
-        assertEquals(1, ops.submissions.size)
+        assertFalse((c.state.value as TaskScreen.CheckAgain).canResend)
+        assertEquals(original, store.read())
+        assertEquals(ops.submissions[0], ops.submissions[1])
+        c.resendSame(); advanceUntilIdle()
+        assertEquals(2, ops.submissions.size)
     }
 
 }

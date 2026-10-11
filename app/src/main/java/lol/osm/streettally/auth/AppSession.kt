@@ -1,6 +1,8 @@
 package lol.osm.streettally.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -78,10 +80,15 @@ class AppSession(
         }
         mutableState.update { it.copy(busy = true, message = null) }
         try {
-            signIn.startGuest()
-            publish(null)
+            // Registration establishes process-wide credentials. Finish persistence even when
+            // the opening screen leaves; SDK assigns guest before its store write completes.
+            withContext(NonCancellable) {
+                signIn.startGuest()
+                publish(null)
+            }
         } catch (e: CancellationException) {
-            publish(null)
+            // Do not publish a possibly non-durable SDK identity after a cancelled store.
+            mutableState.update { it.copy(busy = false) }
             throw e
         } catch (_: Exception) {
             publish("Couldn't start without an account. Check your connection and try again.")

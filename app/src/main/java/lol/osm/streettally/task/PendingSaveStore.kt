@@ -27,7 +27,7 @@ class PendingSaveStore(private val store: CredentialStore) {
     suspend fun read(): PendingSaveIntent? = mutex.withLock { readLocked() }
 
     /** Never overwrite a different unresolved save, including one belonging to another identity. */
-    suspend fun keep(intent: PendingSaveIntent) = mutex.withLock {
+    suspend fun keep(intent: PendingSaveIntent): Boolean = mutex.withLock {
         val existing = readLocked()
         check(existing == null || existing == intent) { "Another save needs recovery" }
         val p = Properties().apply {
@@ -40,6 +40,7 @@ class PendingSaveStore(private val store: CredentialStore) {
             setProperty("kind", if (intent.answers != null) "answers" else "outcome")
         }
         store.write(StringWriter().also { p.store(it, null) }.toString())
+        existing != null // Atomic evidence of an earlier attempt whose outcome may be unknown.
     }
 
     suspend fun clear(intent: PendingSaveIntent) = mutex.withLock {

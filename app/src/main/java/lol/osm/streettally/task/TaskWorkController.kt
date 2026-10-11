@@ -338,7 +338,7 @@ class TaskWorkController(
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
             val store = pendingSaves
-            try {
+            val hadEarlierAttempt = try {
                 checkNotNull(store).keep(save) // Commit exact intent before any POST.
             } catch (e: CancellationException) {
                 throw e
@@ -360,6 +360,7 @@ class TaskWorkController(
                     runCatching { store.clear(save) }
                     Result.success(receipt)
                 } catch (e: Exception) {
+                    if (!hadEarlierAttempt && definiteGuestRefusal(e)) runCatching { store.clear(save) }
                     Result.failure(e)
                 }
             }
@@ -370,6 +371,15 @@ class TaskWorkController(
             } else {
                 val error = result.exceptionOrNull() as? MapRouletteException
                 val unresolved = guestUnknown(task, challenge, form, action)
+                if (!hadEarlierAttempt && error != null && definiteGuestRefusal(error)) {
+                    mutableState.value = when {
+                        error.reason == "task_completed" || error.problem is ChoiceProblem.TaskIneligible -> TaskScreen.NoLongerNeeded(task, challenge)
+                        else -> TaskScreen.Answering(task, challenge, form,
+                            if (error.reason == "pending_limit") "This save wasn't accepted. Nothing was saved. Finish your saved answers on a computer before saving more."
+                            else "This phone's saved-answer access wasn't accepted. Nothing was saved. If you received a finish link, open it on a computer.")
+                    }
+                    return@launch
+                }
                 when {
                     error?.reason == "task_completed" || error?.problem is ChoiceProblem.TaskIneligible -> unresolved.copy(
                         message = "This ${noun.one} no longer accepts answers. Your earlier save is still unconfirmed. Ask your organizer if you need help.", canResend = false)
@@ -382,6 +392,10 @@ class TaskWorkController(
             }
         }
     }
+
+    private fun definiteGuestRefusal(error: Exception): Boolean = error is MapRouletteException &&
+        (error.reason in setOf("task_completed", "pending_limit", "guest_claimed", "guest_expired") ||
+            error.problem is ChoiceProblem.TaskIneligible || error.kind == ErrorKind.AUTHENTICATION)
 
     private suspend fun verifyGuest(pending: TaskScreen.CheckAgain) {
         mutableState.value = pending.copy(checking = true)

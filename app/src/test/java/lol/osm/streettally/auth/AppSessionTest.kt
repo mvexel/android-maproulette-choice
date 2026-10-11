@@ -4,6 +4,9 @@ import java.net.URI
 import java.net.URLDecoder
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.delay
 import org.maproulette.sdk.CredentialStore
 import lol.osm.streettally.AppConfig
@@ -11,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.maproulette.sdk.HttpRequest
@@ -223,6 +227,43 @@ class AppSessionTest {
         session.ensureGuest()
         assertNull(session.writer())
         assertEquals(AppSession.SAVED_ACCESS_UNAVAILABLE, session.state.value.message)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun leavingScreenDuringRegistrationFinishesDurableCredentialWrite() = runTest {
+        val disk = InMemoryCredentialStore()
+        val writing = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val delayedStore = object : CredentialStore {
+            override suspend fun read() = disk.read()
+            override suspend fun write(data: String) {
+                writing.complete(Unit)
+                finish.await()
+                disk.write(data)
+            }
+            override suspend fun clear() = disk.clear()
+        }
+        var registrations = 0
+        val backend = Transport {
+            registrations++
+            HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-abcdefghijklmnopqrstuvwxyz"}""")
+        }
+        val session = AppSession(config(guest = true), delayedStore, backend)
+        session.restore()
+        val screen = launch { session.ensureGuest() }
+        runCurrent()
+        writing.await()
+        assertNull(session.writer()) // SDK may have assigned it, but the app has not published it.
+        screen.cancel()
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertNotNull(disk.read())
+        assertTrue(session.writer()!!.isGuest)
+        val again = AppSession(config(guest = true), disk, backend)
+        again.restore()
+        again.ensureGuest()
+        assertEquals("guest-1", again.state.value.guest?.guestId)
+        assertEquals(1, registrations)
     }
 
 }
