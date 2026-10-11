@@ -15,6 +15,8 @@ data class AppConfig(
     val allowLiveWrites: Boolean,
     val mapStyleUrl: String,
     val campaignLinkHost: String,
+    /** Participants may answer before signing in (deferred sign-up), where this build takes writes. */
+    val guests: Boolean = false,
 ) {
     init {
         require(origin(baseUrl) == baseUrl) { "baseUrl must be an https origin without a path: $baseUrl" }
@@ -41,6 +43,7 @@ data class AppConfig(
             allowLiveWrites = BuildConfig.MAPROULETTE_ALLOW_LIVE_WRITES,
             mapStyleUrl = BuildConfig.MAP_STYLE_URL,
             campaignLinkHost = BuildConfig.CAMPAIGN_LINK_HOST,
+            guests = BuildConfig.MAPROULETTE_GUESTS,
         )
 
         /** `https://host[:port]` of [url], or null when it is not a plain https origin. */

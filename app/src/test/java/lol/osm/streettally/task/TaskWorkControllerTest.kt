@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -28,6 +29,8 @@ import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.MovedLocation
+import org.maproulette.sdk.PendingChoice
+import org.maproulette.sdk.PendingState
 import org.maproulette.sdk.ProjectId
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
@@ -81,6 +84,7 @@ private class FakeOps(val allowElementDeletion: Boolean = false) : TaskOps {
     var check: suspend () -> ChoiceEligibility = { ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }
     var submit: suspend (ChoiceSubmission) -> ChoiceResult = { ChoiceResult(TaskStatus(1), 99) }
     var skip: suspend () -> Unit = {}
+    var pending: suspend (ChoiceSubmission) -> PendingChoice = { PendingChoice(ID, state = PendingState.PENDING, answeredAt = Instant.EPOCH) }
 
     fun thenRead(vararg next: () -> Task) = apply { reads.addAll(next) }
 
@@ -104,6 +108,12 @@ private class FakeOps(val allowElementDeletion: Boolean = false) : TaskOps {
     override suspend fun skipTask(id: TaskId) {
         calls += "skip"
         skip()
+    }
+
+    override suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission): PendingChoice {
+        calls += "pending"
+        submissions += submission
+        return pending(submission)
     }
 }
 
@@ -605,6 +615,77 @@ class TaskWorkControllerTest {
         val refused = runCatching { preview.submitChoice(task(), ChoiceSubmission.Answers(mapOf("backrest" to "yes"))) }
         assertEquals(ErrorKind.PERMISSION, (refused.exceptionOrNull() as MapRouletteException).kind)
         assertTrue(runCatching { preview.skipTask(ID) }.isFailure)
+        assertTrue(runCatching { preview.submitPendingChoice(task(), ChoiceSubmission.Answers(mapOf("backrest" to "yes"))) }.isFailure)
         assertEquals(emptyList<String>(), ops.calls)
+    }
+
+    @Test
+    fun guestSavesForLaterWithoutLockingOrEditingOsm() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        val c = controller(ops, writer = Writer.GUEST)
+        val answers = ChoiceAction.Answers(mapOf("backrest" to "yes"))
+        assertTrue(c.offers(c.answering.task, c.answering.form, answers))
+        c.perform(answers)
+        advanceUntilIdle()
+        val done = c.state.value as TaskScreen.Done
+        assertTrue(done.savedForLater)
+        assertEquals(0L, done.me)
+        assertTrue(c.changed)
+        assertEquals(listOf("get", "challenge", "check", "pending"), ops.calls)
+        assertEquals(listOf<ChoiceSubmission>(ChoiceSubmission.Answers(mapOf("backrest" to "yes"))), ops.submissions)
+    }
+
+    @Test
+    fun guestSkipOnlyMovesOn() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        val c = controller(ops, writer = Writer.GUEST)
+        val loaded = c.answering.task
+        c.perform(ChoiceAction.Skip)
+        advanceUntilIdle()
+        assertEquals(TaskScreen.Skipped(loaded, CHALLENGE, uncertain = false), c.state.value)
+        assertFalse("skip" in ops.calls)
+    }
+
+    @Test
+    fun guestReportsAreSavedForLater() = runTest {
+        val spot = MovedLocation(40.7609, -111.891, MovedLocation.Source.HERE)
+        for (action in listOf(ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE), ChoiceAction.Moved(spot))) {
+            val ops = FakeOps().thenRead({ task() })
+            val c = controller(ops, writer = Writer.GUEST)
+            assertTrue(c.offers(c.answering.task, c.answering.form, action))
+            c.perform(action)
+            advanceUntilIdle()
+            val done = c.state.value as TaskScreen.Done
+            assertTrue(done.savedForLater)
+            assertEquals(listOf(action.submission), ops.submissions)
+        }
+    }
+
+    @Test
+    fun guestFailuresKeepTheAnswers() = runTest {
+        val cases = listOf(
+            MapRouletteException(ErrorKind.RATE_LIMIT, 429, reason = "pending_limit") to
+                "That's as many places as we can keep before they go on the map. Finish on a computer, or sign in with I already use OpenStreetMap to keep going.",
+            MapRouletteException(ErrorKind.NETWORK) to "Couldn't connect. Check your connection and try again.",
+            MapRouletteException(ErrorKind.AUTHENTICATION, 401) to "Couldn't save your answers. Try again in a moment.",
+        )
+        for ((error, notice) in cases) {
+            val ops = FakeOps().thenRead({ task() })
+            ops.pending = { throw error }
+            val c = controller(ops, writer = Writer.GUEST)
+            c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+            advanceUntilIdle()
+            assertEquals(notice, c.answering.notice)
+        }
+    }
+
+    @Test
+    fun guestOnAnUnpublishedCampaignIsNotAvailable() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.pending = { throw MapRouletteException(ErrorKind.PERMISSION, 403, reason = "challenge_not_published") }
+        val c = controller(ops, writer = Writer.GUEST)
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertEquals("This campaign isn't open for answers yet.", (c.state.value as TaskScreen.NotAvailable).reason)
     }
 }

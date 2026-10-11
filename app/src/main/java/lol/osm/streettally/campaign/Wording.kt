@@ -63,6 +63,9 @@ object Wording {
     fun locationStaysOnPhone(noun: Noun): String =
         "Your location stays on your phone. We use it to find the nearest ${noun.many}."
 
+    /** Guests' answers reach OSM only after they finish signing up, under the username they pick then. */
+    const val GUEST_ANSWERS_ARE_PUBLIC =
+        "Your answers go on OpenStreetMap, the free map anyone can use, when you finish on a computer. Map edits are public and show the username you choose then."
     const val ANSWERS_ARE_PUBLIC =
         "Your answers are saved to OpenStreetMap, the free map anyone can use and improve. Edits are public and show your OpenStreetMap username."
 
@@ -116,6 +119,15 @@ object Wording {
         "That's fine. The organizer can send someone back to ${noun.many} with open questions."
     fun nothingAnswered(noun: Noun): String =
         "You weren't sure about any question. You can skip this ${noun.one} instead."
+    /** A guest's answers: saved, not on the map yet (deferred sign-up copy, never "on the map"). */
+    fun savedForLater(todayCount: Int, noun: Noun): String = "Saved. That's ${noun.count(todayCount)} today."
+    const val SAVED_FOR_LATER_NOTE = "Saved on our server. They go on the map when you finish on a computer."
+    fun pendingLimit(noun: Noun): String =
+        "That's as many ${noun.many} as we can keep before they go on the map. Finish on a computer, or sign in with I already use OpenStreetMap to keep going."
+    /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
+    fun noAccountNeeded(noun: Noun = Noun.PLACE): String =
+        "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
+
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =
         "Someone else checked this ${noun.one} first, so your answers weren't saved."

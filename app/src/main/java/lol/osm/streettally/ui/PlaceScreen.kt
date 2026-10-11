@@ -67,7 +67,6 @@ import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
 import lol.osm.streettally.task.isReport
-import lol.osm.streettally.task.Writer
 import org.maproulette.sdk.ChoiceOutcome
 import org.maproulette.sdk.ChoiceQuestion
 import org.maproulette.sdk.MovedLocation
@@ -122,7 +121,18 @@ fun PlaceScreen(
         report = null
     }
 
-    LaunchedEffect(Unit) { controller.load(TaskId(taskId)) }
+    LaunchedEffect(Unit) {
+        // Registering a guest changes the session generation; do it before binding the controller.
+        // Never in preview: that would leave a guest behind (design/preview-mode.md §2).
+        if (!previewing && session.canAnswerAsGuest) session.ensureGuest()
+        val now = session.state.value.generation
+        if (now != generation) {
+            generation = now
+            controller.cancel()
+            controller = newController(session, scope, noun, previewing)
+        }
+        controller.load(TaskId(taskId))
+    }
     // Account switch or sign-out: discard the old account's controller and any late result.
     LaunchedEffect(state.generation) {
         if (state.generation == generation) return@LaunchedEffect
@@ -318,9 +328,14 @@ fun PlaceScreen(
                             // Counted once the effect above has recorded it; reading [counted] recomposes then.
                             val today = checked.today(campaignId) + if (counted) 0 else 1
                             Text(
-                                "✓ " + Wording.saved(today, noun),
+                                "✓ " + if (s.savedForLater) Wording.savedForLater(today, noun) else Wording.saved(today, noun),
                                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                             )
+                            // Only the first few times: by then the participant knows.
+                            if (s.savedForLater && today <= 3) {
+                                Text(Wording.SAVED_FOR_LATER_NOTE, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         nextButtons(true)
                     }
@@ -409,13 +424,8 @@ private class Confirmation(
 )
 
 /** A controller is bound to one account's client; results of a replaced one are never shown. */
-private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean): TaskWorkController {
-    val account = session.state.value.account
-    val writer = if (session.config.writesAllowed && account != null && account.canWriteTasks) {
-        Writer(account.userId, account.canEditOsm)
-    } else null
-    return TaskWorkController(ClientTaskOps(session.client()), writer, scope, noun = noun, previewing = previewing)
-}
+private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean): TaskWorkController =
+    TaskWorkController(ClientTaskOps(session.client()), session.writer(), scope, noun = noun, previewing = previewing)
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
     TaskScreen.Loading, is TaskScreen.LoadFailed -> null

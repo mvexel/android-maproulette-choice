@@ -47,6 +47,11 @@ Both flavors share the application id `lol.osm.maproulette.choice` and the OAuth
 The write rule matches the iOS app (`AppConfig.writesAllowed`): dev always, stage and prod only in
 a live-writes build, anything else read-only. The SDK enforces it too.
 
+Deferred sign-up (answering before signing in, as on iOS with `MAPROULETTE_GUESTS`) is off by
+default; turn it on with `-PmaprouletteGuests=true`. A guest's answers are saved on the server as
+pending answers (never an OSM edit, never a lock) and go on the map once the guest finishes signing
+up. Guests answer only where the build takes writes.
+
 ## SDK
 
 The [MapRoulette Mobile SDK](https://github.com/mvexel/maproulette-mobile-sdk) (Kotlin) is the

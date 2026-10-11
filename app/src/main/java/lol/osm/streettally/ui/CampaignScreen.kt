@@ -322,6 +322,7 @@ fun CampaignScreen(
             signedIn = state.account != null,
             onClose = { closeWelcome() },
             previewingAs = if (previewing) Wording.account(state.account?.userId, state.account?.displayName) ?: "" else null,
+            guest = !previewing && session.canAnswerAsGuest,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
         null -> Unit

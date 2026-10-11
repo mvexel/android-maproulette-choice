@@ -4,6 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import lol.osm.streettally.task.Writer
+import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.MapRouletteException
 import lol.osm.streettally.AppConfig
 import org.maproulette.sdk.CredentialStore
 import org.maproulette.sdk.MapRouletteClient
@@ -20,6 +25,8 @@ import org.maproulette.sdk.Transport
 data class SessionState(
     val restored: Boolean = false,
     val account: MobileAccount? = null,
+    /** Not signed in, answering as a guest: answers are saved, and put on the map later. */
+    val guest: Boolean = false,
     val generation: Int = 0,
     val busy: Boolean = false,
     /** A one-off note about the last sign-in or sign-out, or null. */
@@ -39,6 +46,42 @@ class AppSession(
     )
     private val mutableState = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = mutableState
+    /** The backend refused guests (for example turned off there); this launch falls back to signing in. */
+    private var guestsRefused = false
+    private val guestStart = Mutex()
+
+    /** Signed out in a build that lets participants answer first, unless the backend refused guests. */
+    val canAnswerAsGuest: Boolean
+        get() = config.guests && config.writesAllowed && state.value.account == null && !guestsRefused
+
+    /** Makes this phone a guest before its first answer (registering once; later launches restore it).
+     * False when signed in, when this build or backend has no guests, or when registering failed. */
+    suspend fun ensureGuest(): Boolean = guestStart.withLock {
+        if (!canAnswerAsGuest) return@withLock false
+        if (state.value.guest) return@withLock true
+        try {
+            signIn.startGuest()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: MapRouletteException) {
+            // Guests are off on this backend, or this client may not use them: sign in instead.
+            if (e.kind == ErrorKind.NOT_FOUND || e.kind == ErrorKind.AUTHENTICATION) guestsRefused = true
+        } catch (_: Exception) {
+            // Storage failed or the request didn't finish; the next place tries again.
+        }
+        publish(state.value.message)
+        state.value.guest
+    }
+
+    /** The writer for this session's answers: the signed-in account, or a guest; null when this
+     * build can't save answers for it. */
+    fun writer(): Writer? {
+        val s = state.value
+        if (!config.writesAllowed) return null
+        val account = s.account
+        if (account != null) return if (account.canWriteTasks) Writer(account.userId, account.canEditOsm) else null
+        return if (s.guest && config.guests) Writer.GUEST else null
+    }
 
     /** Scopes this build asks for: answering needs `tasks:write` and `osm:tagfix`. */
     val requestedScopes: Set<String> get() = MobileSignInConfiguration.scopes(config.writesAllowed)
@@ -89,6 +132,7 @@ class AppSession(
         mutableState.value = SessionState(
             restored = restored,
             account = account,
+            guest = account == null && signIn.guest != null,
             generation = signIn.generation,
             busy = false,
             message = message,
