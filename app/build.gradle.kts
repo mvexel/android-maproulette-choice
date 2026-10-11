@@ -26,7 +26,8 @@ android {
         targetSdk = 36
         // CI passes its run number so each test APK installs over the last one.
         versionCode = prop("versionCode", "1").toInt()
-        versionName = "0.1.0"
+        // The release workflow passes the tag's version (v0.2.0 -> 0.2.0).
+        versionName = prop("versionName", "0.1.0")
         manifestPlaceholders["appAuthRedirectScheme"] = callbackScheme
         buildConfigField("String", "MAPROULETTE_OAUTH_CLIENT_ID", quoted(oauthClientId))
         buildConfigField("String", "MAPROULETTE_OAUTH_CALLBACK_SCHEME", quoted(callbackScheme))
@@ -44,8 +45,25 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // The Street Tally release key, only in the release workflow: a keystore file and its
+        // passwords from repository secrets (.github/workflows/release.yml). Never committed.
+        val releaseStore = System.getenv("STREET_TALLY_KEYSTORE")
+        if (!releaseStore.isNullOrEmpty()) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("STREET_TALLY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("STREET_TALLY_KEY_ALIAS")
+                keyPassword = System.getenv("STREET_TALLY_KEY_PASSWORD")
+            }
+        }
     }
-    // One flavor per backend. Both share the application id and the OAuth callback scheme,
+    buildTypes {
+        getByName("release") {
+            // Unsigned without the release key; the release workflow refuses to publish that.
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+    // One flavor per backend. All share the application id and the OAuth callback scheme,
     // so install one at a time.
     flavorDimensions += "backend"
     productFlavors {
@@ -58,6 +76,12 @@ android {
             dimension = "backend"
             versionNameSuffix = "-stage"
             buildConfigField("String", "MAPROULETTE_BASE_URL", quoted(prop("maprouletteStageBaseUrl", "https://mr-stage.osm.lol")))
+        }
+        // The pilot backend (openstreetmap.org). Answers only with -PmaprouletteAllowLiveWrites=true,
+        // and sign-in needs prod's own OAuth client (-PmaprouletteOAuthClientId).
+        create("prod") {
+            dimension = "backend"
+            buildConfigField("String", "MAPROULETTE_BASE_URL", quoted(prop("maprouletteProdBaseUrl", "https://mr-prod.osm.lol")))
         }
     }
     buildFeatures {
