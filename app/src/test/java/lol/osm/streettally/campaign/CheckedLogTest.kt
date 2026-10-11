@@ -28,6 +28,16 @@ class CheckedLogTest {
         assertEquals(0, log.today(99))
     }
 
+    @Test fun aReportCountsTodayButIsNotDone() {
+        val log = CheckedLog()
+        log.record(3, 10, look = true)
+        log.record(3, 10)
+        log.record(3, 11)
+        assertEquals(2, log.today(3))
+        assertEquals(setOf(10L), log.reported(3))
+        assertEquals(setOf(11L), log.done(3))
+    }
+
     @Test fun todaysCountOutlivesTheProcessButDoneDoesNot() {
         val clock = MovableClock(Instant.parse("2026-10-11T10:00:00Z"))
         val counts = CheckedLog.Counts.inMemory()

@@ -34,7 +34,8 @@ data class AppConfig(
 
     companion object {
         val WRITE_ORIGINS = setOf("https://mr-api.osm.lol", "https://mr-dev.osm.lol")
-        val LIVE_WRITE_ORIGINS = setOf("https://mr-stage.osm.lol", "https://mr-prod.osm.lol")
+        const val PROD_ORIGIN = "https://mr-prod.osm.lol"
+        val LIVE_WRITE_ORIGINS = setOf("https://mr-stage.osm.lol", PROD_ORIGIN)
 
         fun fromBuild(): AppConfig = AppConfig(
             baseUrl = BuildConfig.MAPROULETTE_BASE_URL,

@@ -27,17 +27,25 @@ class CheckedLog(
     }
 
     private val saved = mutableMapOf<Long, MutableSet<Long>>()
+    private val reported = mutableMapOf<Long, MutableSet<Long>>()
 
-    /** Counts [taskId] once, however often it's recorded. */
-    fun record(campaignId: Long, taskId: Long) {
-        if (!saved.getOrPut(campaignId) { mutableSetOf() }.add(taskId)) return
+    /** Counts [taskId] once, however often it's recorded. [look]: a status 6 result ("It's not
+     * here", "It's moved", or a campaign outcome such as "There's no door"). It counts for the
+     * participant but leaves the place as "Needs another look" (not-here-moved.md §3.3). */
+    fun record(campaignId: Long, taskId: Long, look: Boolean = false) {
+        if (taskId in done(campaignId) || taskId in reported(campaignId)) return
+        (if (look) reported else saved).getOrPut(campaignId) { mutableSetOf() }.add(taskId)
         val key = key(campaignId)
         counts.set(key, counts.get(key) + 1)
     }
 
     fun today(campaignId: Long): Int = counts.get(key(campaignId))
 
+    /** Places checked here: they count toward the campaign's tally. */
     fun done(campaignId: Long): Set<Long> = saved[campaignId].orEmpty()
+
+    /** Places reported here as needing another look: not checked, not offered as next. */
+    fun reported(campaignId: Long): Set<Long> = reported[campaignId].orEmpty()
 
     /** One count per campaign per local calendar day, like iOS's CampaignStore. */
     private fun key(campaignId: Long) = "checked.$campaignId.${LocalDate.now(clock)}"

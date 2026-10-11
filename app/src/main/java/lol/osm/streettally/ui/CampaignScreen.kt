@@ -104,7 +104,6 @@ fun CampaignScreen(
     var reload by remember { mutableStateOf(0) }
     var showList by rememberSaveable { mutableStateOf(false) }
     var origin by remember { mutableStateOf<LatLon?>(null) }
-    var locationNote by remember { mutableStateOf<String?>(null) }
     var locationPermitted by remember { mutableStateOf(Locator.permitted(context)) }
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf(if (preview) PreviewPhase.OPENING else null) }
@@ -112,15 +111,10 @@ fun CampaignScreen(
     var previewWelcomeSeen by remember { mutableStateOf(false) }
     val previewing = phase == PreviewPhase.ACTIVE || phase == PreviewPhase.PUBLISHED_NOW
 
+    // Without a location, the line above Map/List says so (Iris, parity row 12); the list has no notes.
     fun locate() {
-        locationNote = "Finding your location…"
         scope.launch {
-            locationNote = when (val result = Locator.locate(context)) {
-                is LocateResult.Found -> { origin = result.position; "Nearest first." }
-                LocateResult.Denied -> "Location is off, so the list isn't sorted by distance."
-                LocateResult.Unavailable -> "Your location isn't available right now, so the list isn't sorted by distance."
-                LocateResult.TimedOut -> "No location yet, so the list isn't sorted by distance."
-            }
+            (Locator.locate(context) as? LocateResult.Found)?.let { origin = it.position }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -131,12 +125,17 @@ fun CampaignScreen(
     fun askLocation() {
         if (Locator.permitted(context)) locate() else permission.launch(Locator.PERMISSIONS)
     }
-    // First visit: the welcome card explains location before the system asks.
-    var sheet by remember { mutableStateOf(if (preview || prefs.hasSeenWelcome(campaignId)) null else Sheet.WELCOME) }
+    // First visit: the welcome card explains location before the system asks. It opens once the
+    // campaign has loaded, so it never shows (and gets marked seen) without its description.
+    val welcomeDue = remember { !preview && !prefs.hasSeenWelcome(campaignId) }
+    var sheet by remember { mutableStateOf<Sheet?>(null) }
+    // Signed in from a sheet here: the sign-in and claim notes show on this screen too.
+    var accountNote by remember { mutableStateOf(false) }
+    val signInHere = { accountNote = true; onSignIn() }
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
-        if (sheet == null) askLocation()
+        if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
         if (phase == PreviewPhase.ACTIVE && !previewWelcomeSeen) sheet = Sheet.WELCOME
@@ -167,6 +166,12 @@ fun CampaignScreen(
                     return@LaunchedEffect
                 }
                 phase = if (published) PreviewPhase.PUBLISHED_NOW else PreviewPhase.ACTIVE
+            } else if (loaded.challenge.enabled == false) {
+                // A draft without its preview link: nothing to answer, even where the server
+                // doesn't refuse writes to drafts yet (as on iOS).
+                places = loaded.copy(tasks = emptyList())
+                status = Wording.NOT_PUBLISHED
+                return@LaunchedEffect
             }
             // Preview hides the tally, so held places aren't looked up.
             val heldNow = if (preview) emptySet() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
@@ -177,6 +182,7 @@ fun CampaignScreen(
                 preview -> Wording.previewNoPlaces(loaded.noun)
                 else -> "Nothing to check in this campaign yet."
             }
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -195,13 +201,15 @@ fun CampaignScreen(
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
-    val tally = remember(current, held, justDone, state.guest) {
-        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest)
+    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet()
+    val tally = remember(current, held, justDone, reported, state.guest) {
+        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
     }
     val shown = tally.shown
     val done = tally.done
     val open = Places.sorted(tally.open, origin)
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
+    val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) { current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) } }
 
@@ -262,6 +270,7 @@ fun CampaignScreen(
                 notice?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (accountNote) AccountNote(state)
                 // Tally and progress are hidden in preview: nothing changes them (§4.2).
                 if (tally.total > 0 && !preview) {
                     Text(
@@ -293,6 +302,10 @@ fun CampaignScreen(
                     Button(onClick = { showList = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.choose(noun))
                     }
+                    // A denied or timed-out location can be retried here (iOS: More > Update my location).
+                    TextButton(onClick = { askLocation() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(Wording.UPDATE_LOCATION)
+                    }
                 } else if (nearest != null) {
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
@@ -318,7 +331,7 @@ fun CampaignScreen(
                         onRefresh = { reload++ },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        PlaceList(open, checked, tally.pending, origin, locationNote, noun) { open(it) }
+                        PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
                     }
                 } else {
                     PlacesMap(
@@ -326,6 +339,7 @@ fun CampaignScreen(
                         places = shown,
                         done = done,
                         pending = tally.pending,
+                        look = tally.look,
                         locationPermitted = locationPermitted,
                         onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen && it.id !in done }?.let(::open) },
                         modifier = Modifier.fillMaxSize(),
@@ -348,10 +362,10 @@ fun CampaignScreen(
             guest = !previewing && session.canAnswerAsGuest,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
-        Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = onSignIn) { sheet = null }
+        Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = signInHere) { sheet = null }
         Sheet.DAY_SUMMARY -> DaySummarySheet(
             session, checkedToday = checkedLog.today(campaignId), done = tally.checked, total = tally.total, noun = noun,
-            onSignIn = onSignIn,
+            onSignIn = signInHere,
         ) { sheet = null }
         null -> Unit
     }
@@ -391,10 +405,11 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
 @Composable
 private fun PlaceList(
     open: List<LocatedTask>,
+    /** Reported here (not here, moved, status 6): still openable, never offered as nearest. */
+    look: List<LocatedTask>,
     checked: List<LocatedTask>,
     pending: Set<Long>,
     origin: LatLon?,
-    locationNote: String?,
     noun: lol.osm.streettally.campaign.Noun,
     onOpen: (LocatedTask) -> Unit,
 ) {
@@ -404,13 +419,10 @@ private fun PlaceList(
             PlaceRow(task, origin, noun, done = false, onClick = { onOpen(task) })
             HorizontalDivider()
         }
-        locationNote?.let {
-            item {
-                Text(
-                    it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
+        if (look.isNotEmpty()) item { SectionHeader(Wording.NEEDS_LOOK) }
+        items(look, key = { it.id }) { task ->
+            PlaceRow(task, origin, noun, done = false, look = true, onClick = { onOpen(task) })
+            HorizontalDivider()
         }
         if (checked.isNotEmpty()) item { SectionHeader("Already checked") }
         items(checked, key = { it.id }) { task ->
@@ -421,7 +433,8 @@ private fun PlaceList(
 }
 
 /** A place's state for TalkBack, as iOS's VoiceOver value. */
-private fun placeState(done: Boolean, pending: Boolean): String? = when {
+private fun placeState(done: Boolean, pending: Boolean, look: Boolean = false): String? = when {
+    look -> Wording.NEEDS_LOOK
     pending -> Wording.SAVED_NOT_ON_MAP
     done -> "Already checked"
     else -> null
@@ -443,6 +456,7 @@ private fun PlaceRow(
     done: Boolean,
     onClick: (() -> Unit)?,
     pending: Boolean = false,
+    look: Boolean = false,
 ) {
     val name = Wording.placeName(task.task, noun)
     val distance = Places.rowText(origin, task.position)
@@ -454,7 +468,7 @@ private fun PlaceRow(
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(name, distance, placeState(done, pending)).joinToString(", ")
+                contentDescription = listOfNotNull(name, distance, placeState(done, pending, look)).joinToString(", ")
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -25,6 +25,12 @@ class WordingTest {
         assertEquals(Noun.PLACE, Noun.from(emptyList<Task>()))
     }
 
+    @Test fun nounArticle() {
+        assertEquals("an entrance", Noun("entrance", "entrances").aOne)
+        assertEquals("a stop", Noun("stop", "stops").aOne)
+        assertEquals("Choose an entrance", Wording.choose(Noun("entrance", "entrances")))
+    }
+
     @Test fun nounCounts() {
         val stop = Noun("stop", "stops")
         assertEquals("1 stop", stop.count(1))

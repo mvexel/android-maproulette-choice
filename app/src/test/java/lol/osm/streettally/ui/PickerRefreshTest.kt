@@ -65,7 +65,7 @@ class PickerRefreshTest {
         runBlocking { session.restore() }
         compose.setContent {
             PickerScreen(
-                session = session, appScope = CoroutineScope(Dispatchers.Unconfined), privateSignIn = false,
+                session = session, appScope = CoroutineScope(Dispatchers.Unconfined),
                 authenticate = { error("no sign-in in this test") }, onCampaign = {},
             )
         }

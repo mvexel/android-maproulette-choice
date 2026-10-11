@@ -34,6 +34,21 @@ class CampaignProgressTest {
         assertEquals(1, CampaignProgress(tasks, held = setOf(4L)).checked)
     }
 
+    @Test fun reportedPlacesNeedAnotherLookAndAreNotCheckedOrOffered() {
+        // 1 open, 2 reported here (not here, moved, or "There's no door"), 3 reported but since fixed.
+        val tasks = listOf(place(1, 0), place(2, 0), place(3, 1))
+        for (guest in listOf(false, true)) {
+            val tally = CampaignProgress(tasks, held = emptySet(), guest = guest, reported = setOf(2L, 3L))
+            assertEquals(setOf(2L), tally.look)
+            assertEquals(setOf(3L), tally.done)
+            assertEquals(1, tally.checked)
+            assertEquals(3, tally.total)
+            assertEquals(listOf(1L, 2L, 3L), tally.shown.map { it.id })
+            assertEquals(listOf(1L), tally.open.map { it.id })
+            assertEquals(emptySet<Long>(), tally.pending)
+        }
+    }
+
     @Test fun placesSavedHereCountStraightAwayAndAGuestsShowAsSaved() {
         // 1 and 2 open, 3 open and held by this guest's own saved answer, 4 fixed.
         val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 1))

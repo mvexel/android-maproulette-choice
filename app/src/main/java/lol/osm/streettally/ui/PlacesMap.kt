@@ -42,9 +42,12 @@ private const val DONE_COLOR = "#1F7A4D"
 private const val DONE_RING = "#FFFFFF"
 private const val PENDING_COLOR = "#FFFFFF"
 private const val PENDING_RING = "#1F7A4D"
+/** "Needs another look" (PinLook on iOS): gray with a navy ring. */
+private const val LOOK_COLOR = "#8A8F98"
+private const val LOOK_RING = "#14213D"
 
-/** A campaign's places on a MapLibre map with OpenFreeMap tiles. Checked places are green, the
- * rest orange. Tapping a place calls [onPlace] with its task id. */
+/** A campaign's places on a MapLibre map with OpenFreeMap tiles. Checked places are green, reported
+ * ones gray, the rest orange. Tapping a place calls [onPlace] with its task id. */
 @Composable
 fun PlacesMap(
     styleUrl: String,
@@ -52,6 +55,8 @@ fun PlacesMap(
     done: Set<Long>,
     /** A guest's saved places (a subset of [done]): saved, not on the map yet. */
     pending: Set<Long> = emptySet(),
+    /** Reported places: "Needs another look", in gray. */
+    look: Set<Long> = emptySet(),
     locationPermitted: Boolean,
     onPlace: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -81,7 +86,7 @@ fun PlacesMap(
         }
     }
     AndroidView(factory = { holder.view }, modifier = modifier, update = {
-        holder.show(places, done, pending)
+        holder.show(places, done, pending, look)
         holder.syncLocation()
     })
 }
@@ -91,7 +96,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     var onPlace: (Long) -> Unit = {}
     private var map: MapLibreMap? = null
     private var source: GeoJsonSource? = null
-    private var waiting: Triple<List<LocatedTask>, Set<Long>, Set<Long>>? = null
+    private var waiting: Shown? = null
     private var framed = false
 
     init {
@@ -107,19 +112,19 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 style.addLayer(
                     CircleLayer(LAYER, SOURCE).withProperties(
                         PropertyFactory.circleRadius(Expression.switchCase(Expression.get("done"), Expression.literal(11f), Expression.literal(10f))),
-                        PropertyFactory.circleColor(byState(PENDING_COLOR, DONE_COLOR, TODO_COLOR)),
+                        PropertyFactory.circleColor(byState(PENDING_COLOR, DONE_COLOR, TODO_COLOR, LOOK_COLOR)),
                         PropertyFactory.circleStrokeWidth(
                             Expression.switchCase(
                                 Expression.get("pending"), Expression.literal(2.5f),
                                 Expression.get("done"), Expression.literal(2f), Expression.literal(3f),
                             ),
                         ),
-                        PropertyFactory.circleStrokeColor(byState(PENDING_RING, DONE_RING, TODO_RING)),
+                        PropertyFactory.circleStrokeColor(byState(PENDING_RING, DONE_RING, TODO_RING, LOOK_RING)),
                     ),
                 )
                 this.source = source
                 syncLocation()
-                waiting?.let { (places, done, pending) -> show(places, done, pending) }
+                waiting?.let { show(it.places, it.done, it.pending, it.look) }
             }
             map.addOnMapClickListener { latLng ->
                 val point = map.projection.toScreenLocation(latLng)
@@ -156,10 +161,10 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         if (!component.isLocationComponentEnabled) component.isLocationComponentEnabled = true
     }
 
-    fun show(places: List<LocatedTask>, done: Set<Long>, pending: Set<Long>) {
+    fun show(places: List<LocatedTask>, done: Set<Long>, pending: Set<Long>, look: Set<Long>) {
         val source = source
         if (source == null) {
-            waiting = Triple(places, done, pending)
+            waiting = Shown(places, done, pending, look)
             return
         }
         waiting = null
@@ -172,6 +177,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                         addNumberProperty("id", place.id)
                         addBooleanProperty("done", place.id in done)
                         addBooleanProperty("pending", place.id in pending)
+                        addBooleanProperty("look", place.id in look)
                     }
                 },
             ),
@@ -198,7 +204,10 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     }
 }
 
-private fun byState(pending: String, done: String, todo: String): Expression = Expression.switchCase(
+private data class Shown(val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>)
+
+private fun byState(pending: String, done: String, todo: String, look: String): Expression = Expression.switchCase(
+    Expression.get("look"), Expression.color(android.graphics.Color.parseColor(look)),
     Expression.get("pending"), Expression.color(android.graphics.Color.parseColor(pending)),
     Expression.get("done"), Expression.color(android.graphics.Color.parseColor(done)),
     Expression.color(android.graphics.Color.parseColor(todo)),

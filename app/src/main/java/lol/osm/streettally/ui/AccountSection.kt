@@ -17,7 +17,6 @@ import lol.osm.streettally.auth.SessionState
 internal fun AccountSection(
     state: SessionState,
     needsReconsent: Boolean,
-    privateSignIn: Boolean,
     /** Signed out in a build where guests answer first. */
     guestsAvailable: Boolean,
     onSignIn: () -> Unit,
@@ -30,13 +29,7 @@ internal fun AccountSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
-    state.message?.let {
-        Text(
-            it,
-            color = if (state.messageCalm) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
-    }
+    AccountNote(state)
     val enabled = state.restored && !state.busy
     when {
         account == null || needsReconsent -> Button(onClick = onSignIn, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
@@ -48,9 +41,22 @@ internal fun AccountSection(
     }
     if (account == null) {
         Text(
-            accountHint(privateSignIn),
+            ACCOUNT_HINT,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** The session's latest sign-in or claim note ([SessionState.message]): plain when calm, else in the
+ * error color. Also shown on the campaign and place screens after signing in from there (parity row 8). */
+@Composable
+internal fun AccountNote(state: SessionState) {
+    state.message?.let {
+        Text(
+            it,
+            color = if (state.messageCalm) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
     }
 }

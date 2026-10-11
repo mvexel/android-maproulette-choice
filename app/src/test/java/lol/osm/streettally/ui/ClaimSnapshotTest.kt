@@ -59,7 +59,7 @@ class ClaimSnapshotTest {
                     ) {
                         AccountSection(
                             state = SessionState(restored = true, account = account, message = message, messageCalm = calm),
-                            needsReconsent = false, privateSignIn = false, guestsAvailable = true,
+                            needsReconsent = false, guestsAvailable = true,
                             onSignIn = {}, onSignOut = {},
                         )
                     }

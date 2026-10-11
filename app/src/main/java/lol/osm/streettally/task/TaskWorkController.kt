@@ -97,6 +97,12 @@ val ChoiceAction.editsOsm: Boolean
 val ChoiceAction.isReport: Boolean
     get() = this is ChoiceAction.Moved || (this is ChoiceAction.Outcome && outcome == ChoiceOutcome.NOT_HERE)
 
+/** Whether [action] sets Too hard (status 6): the place then needs another look (not-here-moved.md
+ * §3.3) instead of counting as checked. */
+val ChoiceAction.needsLook: Boolean
+    get() = this is ChoiceAction.Moved ||
+        (this is ChoiceAction.Outcome && outcome.resolution == org.maproulette.sdk.TaskResolution.TOO_HARD)
+
 /** [me] is the signed-in MapRoulette user id; [canEditOsm]: the grant includes `osm:tagfix`.
  * A [guest] ([me] 0) saves answers on the server; they reach OSM once the guest finishes signing up. */
 data class Writer(val me: Long, val canEditOsm: Boolean, val guest: Boolean = false) {

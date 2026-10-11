@@ -21,6 +21,8 @@ data class Noun(val one: String, val many: String) {
     /** "1 stop", "7 stops". */
     fun count(n: Int): String = "$n ${if (n == 1) one else many}"
     val capitalized: String get() = one.replaceFirstChar { it.uppercase() }
+    /** "an entrance", "a stop": "an" before a vowel letter (as iOS `Noun.aOne`). */
+    val aOne: String get() = (if (one.firstOrNull()?.lowercaseChar()?.let { it in "aeiou" } == true) "an " else "a ") + one
 
     companion object {
         val PLACE = Noun("place", "places")
@@ -72,13 +74,14 @@ object Wording {
     fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun progress(done: Int, total: Int, noun: Noun): String = "The tally: $done of ${noun.count(total)} checked"
     /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
-    fun choose(noun: Noun): String = "Choose a ${noun.one}"
+    fun choose(noun: Noun): String = "Choose ${noun.aOne}"
     fun noLocation(noun: Noun, permitted: Boolean): String =
         (if (permitted) "Your location isn't available yet." else "Location is off.") +
-            " Choose a ${noun.one} on the map or in the list."
+            " Choose ${noun.aOne} on the map or in the list."
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
-        "Your location stays on your phone. We use it to find the nearest ${noun.many}."
+        "We use your location to find the nearest ${noun.many}. It stays on your phone, unless you tap " +
+            "“I'm standing at it” to show where ${noun.aOne} has moved."
 
     /** Guests' answers reach OSM only after they finish signing up, under the username they pick then. */
     const val GUEST_ANSWERS_ARE_PUBLIC =
@@ -170,7 +173,7 @@ object Wording {
     fun isNothingSaved(error: Throwable): Boolean =
         error is MapRouletteException && error.kind == ErrorKind.CONFLICT && error.reason == "nothing_saved"
     fun linkFailed(error: Throwable, noun: Noun = Noun.PLACE): String {
-        if (isNothingSaved(error)) return "Answer a ${noun.one} first, then we can send you the link."
+        if (isNothingSaved(error)) return "Answer ${noun.aOne} first, then we can send you the link."
         if (isInputError(error)) return "That doesn't look like an email address."
         val e = error as? MapRouletteException
         return when {
@@ -278,6 +281,11 @@ object Wording {
     const val PREVIEW_SIGN_IN_TEXT =
         "This campaign isn't published yet. Sign in with the OpenStreetMap account that manages it."
     const val PREVIEW_SIGN_IN = "Sign in to OpenStreetMap"
+    const val UPDATE_LOCATION = "Update my location"
+    /** A place reported as not here, moved, or another status 6 outcome (not-here-moved.md §4). */
+    const val NEEDS_LOOK = "Needs another look"
+    /** A draft opened without its preview link (an old link, the last campaign). */
+    const val NOT_PUBLISHED = "This campaign isn't published yet."
     const val CANCEL = "Cancel"
     const val PREVIEW_NO_ACCESS_TITLE = "You can't preview this campaign"
     /** [account]: who is signed in now; the parenthesis is left out when unknown. */

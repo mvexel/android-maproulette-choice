@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import lol.osm.streettally.AppConfig
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignList
 import lol.osm.streettally.campaign.Campaigns
@@ -48,7 +49,6 @@ import org.maproulette.sdk.Challenge
 fun PickerScreen(
     session: AppSession,
     appScope: CoroutineScope,
-    privateSignIn: Boolean,
     authenticate: suspend (String) -> String,
     onCampaign: (Long) -> Unit,
 ) {
@@ -132,13 +132,13 @@ fun PickerScreen(
                         AccountSection(
                             state = state,
                             needsReconsent = AppSession.needsReconsent(session.config.writesAllowed, state.account),
-                            privateSignIn = privateSignIn,
                             guestsAvailable = session.canAnswerAsGuest,
                             onSignIn = { appScope.launch { session.signIn(authenticate) } },
                             onSignOut = { appScope.launch { session.signOut() } },
                         )
                         DeleteMyData(session)
-                        Text(
+                        // Test builds name their backend; participants on prod don't need to see it.
+                        if (session.config.baseUrl != AppConfig.PROD_ORIGIN) Text(
                             session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
