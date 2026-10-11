@@ -131,12 +131,14 @@ fun CampaignScreen(
     fun askLocation() {
         if (Locator.permitted(context)) locate() else permission.launch(Locator.PERMISSIONS)
     }
-    // First visit: the welcome card explains location before the system asks.
-    var sheet by remember { mutableStateOf(if (preview || prefs.hasSeenWelcome(campaignId)) null else Sheet.WELCOME) }
+    // First visit: the welcome card explains location before the system asks. It opens once the
+    // campaign has loaded, so it never shows (and gets marked seen) without its description.
+    val welcomeDue = remember { !preview && !prefs.hasSeenWelcome(campaignId) }
+    var sheet by remember { mutableStateOf<Sheet?>(null) }
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
-        if (sheet == null) askLocation()
+        if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
         if (phase == PreviewPhase.ACTIVE && !previewWelcomeSeen) sheet = Sheet.WELCOME
@@ -167,6 +169,12 @@ fun CampaignScreen(
                     return@LaunchedEffect
                 }
                 phase = if (published) PreviewPhase.PUBLISHED_NOW else PreviewPhase.ACTIVE
+            } else if (loaded.challenge.enabled == false) {
+                // A draft without its preview link: nothing to answer, even where the server
+                // doesn't refuse writes to drafts yet (as on iOS).
+                places = loaded.copy(tasks = emptyList())
+                status = Wording.NOT_PUBLISHED
+                return@LaunchedEffect
             }
             // Preview hides the tally, so held places aren't looked up.
             val heldNow = if (preview) emptySet() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
@@ -177,6 +185,7 @@ fun CampaignScreen(
                 preview -> Wording.previewNoPlaces(loaded.noun)
                 else -> "Nothing to check in this campaign yet."
             }
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -292,6 +301,10 @@ fun CampaignScreen(
                     Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { showList = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.choose(noun))
+                    }
+                    // A denied or timed-out location can be retried here (iOS: More > Update my location).
+                    TextButton(onClick = { askLocation() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(Wording.UPDATE_LOCATION)
                     }
                 } else if (nearest != null) {
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {

@@ -278,6 +278,9 @@ object Wording {
     const val PREVIEW_SIGN_IN_TEXT =
         "This campaign isn't published yet. Sign in with the OpenStreetMap account that manages it."
     const val PREVIEW_SIGN_IN = "Sign in to OpenStreetMap"
+    const val UPDATE_LOCATION = "Update my location"
+    /** A draft opened without its preview link (an old link, the last campaign). */
+    const val NOT_PUBLISHED = "This campaign isn't published yet."
     const val CANCEL = "Cancel"
     const val PREVIEW_NO_ACCESS_TITLE = "You can't preview this campaign"
     /** [account]: who is signed in now; the parenthesis is left out when unknown. */

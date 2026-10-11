@@ -12,9 +12,9 @@ import org.maproulette.sdk.TaskId
 import org.maproulette.sdk.TaskStatus
 
 class CampaignsTest {
-    private fun challenge(id: Long, type: Int?, tags: List<String>?, archived: Boolean? = false) = Challenge(
+    private fun challenge(id: Long, type: Int?, tags: List<String>?, archived: Boolean? = false, enabled: Boolean? = true) = Challenge(
         id = ChallengeId(id), projectId = ProjectId(1), name = "c$id", instruction = null, description = null,
-        tags = tags, enabled = true, archived = archived, requiresLocal = null, cooperativeType = type,
+        tags = tags, enabled = enabled, archived = archived, requiresLocal = null, cooperativeType = type,
     )
 
     @Test fun publishedKeepsUnarchivedTaggedChoiceChallenges() {
@@ -25,8 +25,11 @@ class CampaignsTest {
             challenge(4, 3, listOf("mobile-survey-v1"), archived = true),
             challenge(5, 3, null),
             challenge(6, 3, listOf("x", "mobile-survey-v1"), archived = null),
+            // A draft is hidden; an unknown `enabled` is listed, as on iOS.
+            challenge(7, 3, listOf("mobile-survey-v1"), enabled = false),
+            challenge(8, 3, listOf("mobile-survey-v1"), enabled = null),
         )
-        assertEquals(listOf(1L, 6L), Campaigns.published(all).map { it.id.value })
+        assertEquals(listOf(1L, 6L, 8L), Campaigns.published(all).map { it.id.value })
     }
 
     @Test fun shownDropsTasksThatAreNeitherOpenNorDone() {

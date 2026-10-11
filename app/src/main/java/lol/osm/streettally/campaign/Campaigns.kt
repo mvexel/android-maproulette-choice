@@ -33,9 +33,10 @@ object Campaigns {
     fun isPublished(challenge: Challenge): Boolean =
         challenge.enabled == true && challenge.tags?.contains(PUBLISHED_TAG) == true
 
-    /** Unarchived choice challenges published for mobile. */
+    /** Unarchived, enabled choice challenges published for mobile. */
     fun published(all: List<Challenge>): List<Challenge> = all.filter {
-        it.cooperativeType == CHOICE_TYPE && it.archived != true && it.tags?.contains(PUBLISHED_TAG) == true
+        it.cooperativeType == CHOICE_TYPE && it.archived != true && it.enabled != false &&
+            it.tags?.contains(PUBLISHED_TAG) == true
     }
 
     suspend fun load(client: MapRouletteClient): CampaignList {
