@@ -178,7 +178,7 @@ class AppSession(
                 e.kind == ErrorKind.NOT_FOUND && e.reason == "not_found" || e.reason == "guest_claimed" ->
                     publish(Wording.claimGone(name), calm = true)
                 // The one the participant has to act on.
-                e.reason == "osm_reauth_required" -> publish(Wording.claimSignInAgain(name))
+                e.reason == "osm_reauth_required" -> publish(Wording.CLAIM_SIGN_IN_AGAIN)
                 else -> publish(Wording.claimLater(name), calm = true)
             }
             return

@@ -167,7 +167,7 @@ class GuestClaimTest {
         val backend = Backend(listOf(HttpResponse(401, body = """{"error":"osm_reauth_required"}""")))
         val session = guest(backend)
         session.signIn(::approve)
-        assertEquals("You're signed in as rosa_slc. Sign in again so we can put your saved answers on the map.", session.state.value.message)
+        assertEquals("Sign in again so we can put your saved answers on the map.", session.state.value.message)
         assertFalse(session.state.value.messageCalm)
     }
 
