@@ -135,7 +135,7 @@ object Wording {
     fun savedForLater(todayCount: Int, noun: Noun): String = "Saved. That's ${noun.count(todayCount)} today."
     const val SAVED_FOR_LATER_NOTE = "Saved on our server. They go on the map when you finish on a computer."
     fun pendingLimit(noun: Noun): String =
-        "That's as many ${noun.many} as we can keep before they go on the map. Finish on a computer, or sign in with I already use OpenStreetMap to keep going."
+        "That's as many ${noun.many} as we can keep before they go on the map. Finish on a computer, or tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
     fun noAccountNeeded(noun: Noun = Noun.PLACE): String =
         "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
