@@ -204,13 +204,15 @@ fun CampaignScreen(
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
-    val tally = remember(current, held, justDone, state.guest) {
-        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest)
+    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet()
+    val tally = remember(current, held, justDone, reported, state.guest) {
+        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
     }
     val shown = tally.shown
     val done = tally.done
     val open = Places.sorted(tally.open, origin)
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
+    val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) { current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) } }
 
@@ -331,7 +333,7 @@ fun CampaignScreen(
                         onRefresh = { reload++ },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        PlaceList(open, checked, tally.pending, origin, locationNote, noun) { open(it) }
+                        PlaceList(open, look, checked, tally.pending, origin, locationNote, noun) { open(it) }
                     }
                 } else {
                     PlacesMap(
@@ -339,6 +341,7 @@ fun CampaignScreen(
                         places = shown,
                         done = done,
                         pending = tally.pending,
+                        look = tally.look,
                         locationPermitted = locationPermitted,
                         onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen && it.id !in done }?.let(::open) },
                         modifier = Modifier.fillMaxSize(),
@@ -404,6 +407,8 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
 @Composable
 private fun PlaceList(
     open: List<LocatedTask>,
+    /** Reported here (not here, moved, status 6): still openable, never offered as nearest. */
+    look: List<LocatedTask>,
     checked: List<LocatedTask>,
     pending: Set<Long>,
     origin: LatLon?,
@@ -425,6 +430,11 @@ private fun PlaceList(
                 )
             }
         }
+        if (look.isNotEmpty()) item { SectionHeader(Wording.NEEDS_LOOK) }
+        items(look, key = { it.id }) { task ->
+            PlaceRow(task, origin, noun, done = false, look = true, onClick = { onOpen(task) })
+            HorizontalDivider()
+        }
         if (checked.isNotEmpty()) item { SectionHeader("Already checked") }
         items(checked, key = { it.id }) { task ->
             PlaceRow(task, origin, noun, done = true, pending = task.id in pending, onClick = null)
@@ -434,7 +444,8 @@ private fun PlaceList(
 }
 
 /** A place's state for TalkBack, as iOS's VoiceOver value. */
-private fun placeState(done: Boolean, pending: Boolean): String? = when {
+private fun placeState(done: Boolean, pending: Boolean, look: Boolean = false): String? = when {
+    look -> Wording.NEEDS_LOOK
     pending -> Wording.SAVED_NOT_ON_MAP
     done -> "Already checked"
     else -> null
@@ -456,6 +467,7 @@ private fun PlaceRow(
     done: Boolean,
     onClick: (() -> Unit)?,
     pending: Boolean = false,
+    look: Boolean = false,
 ) {
     val name = Wording.placeName(task.task, noun)
     val distance = Places.rowText(origin, task.position)
@@ -467,7 +479,7 @@ private fun PlaceRow(
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(name, distance, placeState(done, pending)).joinToString(", ")
+                contentDescription = listOfNotNull(name, distance, placeState(done, pending, look)).joinToString(", ")
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

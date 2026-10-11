@@ -19,6 +19,8 @@ class CampaignProgress(
     justDone: Set<Long> = emptySet(),
     /** Answering as a guest: [justDone] places are saved, not on the map yet. */
     guest: Boolean = false,
+    /** Reported here as needing another look (status 6, not-here-moved.md §3.3). */
+    reported: Set<Long> = emptySet(),
 ) {
     /** Checked: done on the server, or saved on this phone since launch ([justDone]). */
     val done: Set<Long> = tasks.filter { it.isDone || it.id in justDone }.map { it.id }.toSet()
@@ -28,8 +30,10 @@ class CampaignProgress(
     val total: Int = tasks.count { it.isOpen || it.id in done }
     /** Open places that are not held, and checked ones; the rest are left off the map and list. */
     val shown: List<LocatedTask> = tasks.filter { (it.isOpen && it.id !in held) || it.id in done }
-    /** Still to check: open, not saved here, not held. In task order. */
-    val open: List<LocatedTask> = tasks.filter { it.isOpen && it.id !in justDone && it.id !in held }
+    /** Needs another look: reported here and still open. Shown, but neither checked nor offered. */
+    val look: Set<Long> = tasks.filter { it.isOpen && it.id in reported && it.id !in done }.map { it.id }.toSet()
+    /** Still to check: open, not saved or reported here, not held. In task order. */
+    val open: List<LocatedTask> = tasks.filter { it.isOpen && it.id !in justDone && it.id !in reported && it.id !in held }
 
     /** A guest's own saved answers: checked here, but not on the map until they finish signing up. */
     val pending: Set<Long> =

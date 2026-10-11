@@ -67,6 +67,7 @@ import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
 import lol.osm.streettally.task.isReport
+import lol.osm.streettally.task.needsLook
 import org.maproulette.sdk.ChoiceOutcome
 import org.maproulette.sdk.ChoiceQuestion
 import org.maproulette.sdk.MovedLocation
@@ -161,7 +162,7 @@ fun PlaceScreen(
         val done = screen as? TaskScreen.Done
         if (done != null && !done.byOther && !counted) {
             counted = true
-            checked.record(campaignId, done.task.id.value)
+            checked.record(campaignId, done.task.id.value, look = done.action.needsLook)
             // Once, after the first saved answer; later from the campaign's banner.
             if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
         }
@@ -170,7 +171,7 @@ fun PlaceScreen(
 
     val here: LatLon? = loadedTask(screen)?.let { Places.position(it) }
         ?: candidates.firstOrNull { it.id == taskId }?.position
-    val next = Places.nearest(here, candidates, visited + checked.done(campaignId))
+    val next = Places.nearest(here, candidates, visited + checked.done(campaignId) + checked.reported(campaignId))
 
     fun open(place: LocatedTask) {
         if (c.busy) return
