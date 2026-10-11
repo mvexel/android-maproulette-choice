@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -214,11 +215,10 @@ fun CampaignScreen(
                     }
                 },
                 actions = {
-                    if (preview) {
-                        // Reloads the draft's places and questions after an edit in the admin (§4.3).
-                        IconButton(onClick = { reload++ }, enabled = previewing && !loading) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-                        }
+                    // Reloads places and progress; in preview, the draft's places and questions after an
+                    // edit in the admin (§4.3). The list also reloads when pulled down; the map can't.
+                    IconButton(onClick = { reload++ }, enabled = (!preview || previewing) && !loading) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = { sheet = Sheet.WELCOME }, enabled = !preview || previewing) {
                         Icon(Icons.Filled.Info, contentDescription = "About this campaign")
@@ -313,7 +313,13 @@ fun CampaignScreen(
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (showList) {
-                    PlaceList(open, checked, tally.pending, origin, locationNote, noun) { open(it) }
+                    PullToRefreshBox(
+                        isRefreshing = loading && places != null,
+                        onRefresh = { reload++ },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        PlaceList(open, checked, tally.pending, origin, locationNote, noun) { open(it) }
+                    }
                 } else {
                     PlacesMap(
                         styleUrl = session.config.mapStyleUrl,
