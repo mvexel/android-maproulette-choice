@@ -18,13 +18,15 @@ internal fun AccountSection(
     state: SessionState,
     needsReconsent: Boolean,
     privateSignIn: Boolean,
+    /** Signed out in a build where guests answer first. */
+    guestsAvailable: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val account = state.account
     Text("Account", style = MaterialTheme.typography.titleMedium)
     Text(
-        accountLine(state),
+        accountLine(state, guestsAvailable),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
@@ -34,7 +36,7 @@ internal fun AccountSection(
     val enabled = state.restored && !state.busy
     when {
         account == null || needsReconsent -> Button(onClick = onSignIn, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text(signInLabel(account != null, needsReconsent))
+            Text(signInLabel(account != null, needsReconsent, guestsAvailable))
         }
         else -> OutlinedButton(onClick = onSignOut, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Text("Sign out")

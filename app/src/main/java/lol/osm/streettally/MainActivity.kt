@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { place = null },
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
+                            firstSavedForLater = { app.prefs.takePutOnMapCard() },
                         )
                     }
                     else -> saved.SaveableStateProvider("campaign-$id-$previewing-$visit") {

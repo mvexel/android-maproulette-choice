@@ -47,6 +47,8 @@ fun WelcomeDialog(
     onClose: () -> Unit,
     /** In preview: "You're previewing as …", in place of the account line. */
     previewingAs: String? = null,
+    /** Signed out in a build where guests answer first (deferred sign-up). */
+    guest: Boolean = false,
 ) {
     AlertDialog(
         onDismissRequest = onClose,
@@ -66,9 +68,10 @@ fun WelcomeDialog(
                         }
                     }
                 }
-                Text(Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
+                Text(if (guest) Wording.GUEST_ANSWERS_ARE_PUBLIC else Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
                 if (previewingAs != null) Text(Wording.previewingAs(previewingAs), style = MaterialTheme.typography.bodySmall)
+                else if (guest) Text(Wording.noAccountNeeded(noun), style = MaterialTheme.typography.bodySmall)
                 else if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
             }
         },

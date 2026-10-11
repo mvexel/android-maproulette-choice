@@ -13,6 +13,9 @@ val oauthClientId = prop("maprouletteOAuthClientId", "maproulette-ios-choice")
 val callbackScheme = prop("maprouletteOAuthCallbackScheme", "lol.osm.maproulette.choice")
 // true lets stage and prod (which edit the real OpenStreetMap) receive answers. Off by default.
 val allowLiveWrites = prop("maprouletteAllowLiveWrites", "false").toBoolean()
+// true lets participants answer before signing in (deferred sign-up, like iOS MAPROULETTE_GUESTS).
+// Guests save only where this build takes writes. Off by default.
+val guests = prop("maprouletteGuests", "false").toBoolean()
 
 android {
     namespace = "lol.osm.streettally"
@@ -28,6 +31,7 @@ android {
         buildConfigField("String", "MAPROULETTE_OAUTH_CLIENT_ID", quoted(oauthClientId))
         buildConfigField("String", "MAPROULETTE_OAUTH_CALLBACK_SCHEME", quoted(callbackScheme))
         buildConfigField("boolean", "MAPROULETTE_ALLOW_LIVE_WRITES", allowLiveWrites.toString())
+        buildConfigField("boolean", "MAPROULETTE_GUESTS", guests.toString())
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
     }

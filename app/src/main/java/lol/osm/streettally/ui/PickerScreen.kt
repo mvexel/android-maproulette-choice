@@ -125,9 +125,11 @@ fun PickerScreen(
                         state = state,
                         needsReconsent = AppSession.needsReconsent(session.config.writesAllowed, state.account),
                         privateSignIn = privateSignIn,
+                        guestsAvailable = session.canAnswerAsGuest,
                         onSignIn = { appScope.launch { session.signIn(authenticate) } },
                         onSignOut = { appScope.launch { session.signOut() } },
                     )
+                    DeleteMyData(session)
                     Text(
                         session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",
                         style = MaterialTheme.typography.bodySmall,

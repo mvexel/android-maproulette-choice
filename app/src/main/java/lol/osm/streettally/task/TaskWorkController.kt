@@ -22,6 +22,7 @@ import org.maproulette.sdk.ChoiceSubmission
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.MapRouletteException
+import org.maproulette.sdk.PendingChoice
 import org.maproulette.sdk.MobileSupport
 import org.maproulette.sdk.MovedLocation
 import org.maproulette.sdk.ResolutionCheck
@@ -45,6 +46,8 @@ interface TaskOps {
     suspend fun checkChoice(id: TaskId): ChoiceEligibility
     suspend fun submitChoice(task: Task, submission: ChoiceSubmission): ChoiceResult
     suspend fun skipTask(id: TaskId)
+    /** A guest's answers, stored on the server until the guest puts them on the map. */
+    suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission): PendingChoice
 }
 
 /**
@@ -59,6 +62,7 @@ class ClientTaskOps(private val client: MapRouletteClient) : TaskOps {
     override suspend fun checkChoice(id: TaskId) = client.checkChoice(id)
     override suspend fun submitChoice(task: Task, submission: ChoiceSubmission) = client.submitChoice(task, submission)
     override suspend fun skipTask(id: TaskId) = client.skipTask(id)
+    override suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission) = client.submitPendingChoice(task, submission)
 }
 
 /** Preview mode's ops (design/preview-mode.md §2): reads pass through; every write is refused
@@ -71,6 +75,8 @@ class PreviewTaskOps(private val reads: TaskOps) : TaskOps {
     override suspend fun submitChoice(task: Task, submission: ChoiceSubmission): ChoiceResult =
         throw MapRouletteException(ErrorKind.PERMISSION)
     override suspend fun skipTask(id: TaskId): Unit = throw MapRouletteException(ErrorKind.PERMISSION)
+    override suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission): PendingChoice =
+        throw MapRouletteException(ErrorKind.PERMISSION)
 }
 
 sealed interface ChoiceAction {
@@ -91,8 +97,22 @@ val ChoiceAction.editsOsm: Boolean
 val ChoiceAction.isReport: Boolean
     get() = this is ChoiceAction.Moved || (this is ChoiceAction.Outcome && outcome == ChoiceOutcome.NOT_HERE)
 
-/** [me] is the signed-in MapRoulette user id; [canEditOsm]: the grant includes `osm:tagfix`. */
-data class Writer(val me: Long, val canEditOsm: Boolean)
+/** [me] is the signed-in MapRoulette user id; [canEditOsm]: the grant includes `osm:tagfix`.
+ * A [guest] ([me] 0) saves answers on the server; they reach OSM once the guest finishes signing up. */
+data class Writer(val me: Long, val canEditOsm: Boolean, val guest: Boolean = false) {
+    companion object {
+        val GUEST = Writer(0, canEditOsm = true, guest = true)
+    }
+}
+
+/** The submission [action] sends; null for a skip. */
+val ChoiceAction.submission: ChoiceSubmission?
+    get() = when (this) {
+        is ChoiceAction.Answers -> ChoiceSubmission.Answers(byQuestion)
+        is ChoiceAction.Outcome -> ChoiceSubmission.Outcome(outcome)
+        is ChoiceAction.Moved -> ChoiceSubmission.Moved(location)
+        ChoiceAction.Skip -> null
+    }
 
 /** The questions and offered outcomes of an eligible task, plus the user's current answers. */
 data class ChoiceForm(
@@ -122,10 +142,12 @@ sealed interface TaskScreen {
     data class Answering(val task: Task, val challenge: Challenge, val form: ChoiceForm, val notice: String? = null) : TaskScreen
     data class Submitting(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** [task] is the fresh read after the write, or the pre-write task when [readFailed].
-     * [byOther]: a check found someone else's result; this user's submission was not recorded. */
+     * [byOther]: a check found someone else's result; this user's submission was not recorded.
+     * [savedForLater]: a guest's answers, saved on the server and not on the map yet; the task is unchanged. */
     data class Done(
         val task: Task, val challenge: Challenge, val action: ChoiceAction, val me: Long,
         val changesetId: Long?, val readFailed: Boolean, val byOther: Boolean = false, val checking: Boolean = false,
+        val savedForLater: Boolean = false,
     ) : TaskScreen
     /** A skip leaves the status unchanged. [uncertain]: the outcome is unknown and it was not resent. */
     data class Skipped(val task: Task, val challenge: Challenge, val uncertain: Boolean) : TaskScreen
@@ -280,7 +302,12 @@ class TaskWorkController(
             else TaskScreen.PreviewSaved(task, challenge, form, action)
             return
         }
-        val me = writer?.me ?: return
+        val writer = writer ?: return
+        if (writer.guest) {
+            saveForLater(task, challenge, form, action)
+            return
+        }
+        val me = writer.me
         changed = true // Before publishing: observers read it while rendering Submitting.
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
@@ -329,19 +356,61 @@ class TaskWorkController(
     }
 
     private suspend fun send(task: Task, action: ChoiceAction): Result<ChoiceResult?> = try {
-        Result.success(when (action) {
-            is ChoiceAction.Answers -> ops.submitChoice(task, ChoiceSubmission.Answers(action.byQuestion))
-            is ChoiceAction.Outcome -> ops.submitChoice(task, ChoiceSubmission.Outcome(action.outcome))
-            is ChoiceAction.Moved -> ops.submitChoice(task, ChoiceSubmission.Moved(action.location))
-            ChoiceAction.Skip -> {
-                ops.skipTask(task.id)
-                null
-            }
+        val submission = action.submission
+        Result.success(if (submission != null) ops.submitChoice(task, submission) else {
+            ops.skipTask(task.id)
+            null
         })
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Result.failure(e)
+    }
+
+    /** A guest's submission: stored as a pending answer (never an OSM edit, never a lock). Skipping
+     * only moves on. Resending after a failure is safe: the server keeps one answer per task. */
+    private fun saveForLater(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
+        val submission = action.submission
+        if (submission == null) {
+            mutableState.value = TaskScreen.Skipped(task, challenge, uncertain = false)
+            return
+        }
+        changed = true
+        mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
+        job = scope.launch {
+            val outcome = withContext(NonCancellable + io) {
+                try {
+                    Result.success(ops.submitPendingChoice(task, submission))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+            ensureActive()
+            mutableState.value = outcome.fold(
+                onSuccess = {
+                    TaskScreen.Done(task, challenge, action, me = 0, changesetId = null, readFailed = false, savedForLater = true)
+                },
+                onFailure = { error -> failedForLater(task, challenge, form, action, error as Exception) },
+            )
+        }
+    }
+
+    private suspend fun failedForLater(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction, error: Exception): TaskScreen {
+        fun answering(notice: String) = TaskScreen.Answering(task, challenge, form, notice)
+        if (error !is MapRouletteException) return answering("Couldn't save your answers. Try again.")
+        if (error.reason == "task_completed") return notAccepted(task, challenge)
+        if (error.kind == ErrorKind.RATE_LIMIT && error.reason == "pending_limit") return answering(Wording.pendingLimit(noun))
+        if (error.kind == ErrorKind.PERMISSION && error.reason == "challenge_not_published") {
+            return TaskScreen.NotAvailable(task, challenge, "This campaign isn't open for answers yet.")
+        }
+        if (error.kind == ErrorKind.AUTHENTICATION) return answering("Couldn't save your answers. Try again in a moment.")
+        // The network may have dropped after the server stored it; sending again replaces it.
+        if (error.problem == WriteProblem.OutcomeUnknown || error.kind == ErrorKind.NETWORK) {
+            return answering("Couldn't connect. Check your connection and try again.")
+        }
+        return failed(task, challenge, form, action, error)
     }
 
     private suspend fun succeeded(task: Task, challenge: Challenge, action: ChoiceAction, me: Long, result: ChoiceResult?): TaskScreen =
