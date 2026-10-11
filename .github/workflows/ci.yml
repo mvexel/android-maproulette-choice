@@ -35,6 +35,15 @@ jobs:
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
       - name: Assemble (dev and stage), unit tests, lint
         run: ./gradlew assembleDevDebug assembleStageDebug testDevDebugUnitTest lintDevDebug -PversionCode=${{ github.run_number }} --console=plain
+      # PNGs of the report screens from the snapshot tests (ReportSnapshotTest), for design review.
+      - name: Upload report screen snapshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: street-tally-report-snapshots
+          path: app/build/outputs/snapshots/*.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:
