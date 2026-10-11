@@ -21,7 +21,8 @@ android {
         applicationId = "lol.osm.maproulette.choice"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // CI passes its run number so each test APK installs over the last one.
+        versionCode = prop("versionCode", "1").toInt()
         versionName = "0.1.0"
         manifestPlaceholders["appAuthRedirectScheme"] = callbackScheme
         buildConfigField("String", "MAPROULETTE_OAUTH_CLIENT_ID", quoted(oauthClientId))
@@ -29,6 +30,16 @@ android {
         buildConfigField("boolean", "MAPROULETTE_ALLOW_LIVE_WRITES", allowLiveWrites.toString())
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
+    }
+    // A shared debug key (standard public debug credentials, not a secret), so APKs from
+    // different CI runs and machines install over each other and keep the sign-in.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
     // One flavor per backend. Both share the application id and the OAuth callback scheme,
     // so install one at a time.
@@ -66,6 +77,8 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk:13.6.1")
     // LocationManagerCompat.getCurrentLocation for the nearest-first list.
     implementation("androidx.core:core-ktx:1.16.0")
+    // QR codes for sharing a campaign link.
+    implementation("com.google.zxing:core:3.5.3")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")
     implementation(composeBom)

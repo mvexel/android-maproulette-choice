@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,8 +52,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.campaign.CampaignLink
 import lol.osm.streettally.campaign.CampaignPlaces
+import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.Campaigns
+import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
@@ -67,6 +72,8 @@ import org.maproulette.sdk.ChallengeId
 @Composable
 fun CampaignScreen(
     session: AppSession,
+    prefs: CampaignPrefs,
+    checkedLog: CheckedLog,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -97,8 +104,20 @@ fun CampaignScreen(
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { locate() }
 
-    LaunchedEffect(Unit) {
+    fun askLocation() {
         if (Locator.permitted(context)) locate() else permission.launch(Locator.PERMISSIONS)
+    }
+    // First visit: the welcome card explains location before the system asks.
+    var sheet by remember { mutableStateOf(if (prefs.hasSeenWelcome(campaignId)) null else Sheet.WELCOME) }
+    LaunchedEffect(Unit) {
+        prefs.lastCampaign = campaignId
+        if (sheet == null) askLocation()
+    }
+    fun closeWelcome() {
+        val first = !prefs.hasSeenWelcome(campaignId)
+        prefs.markWelcomeSeen(campaignId)
+        sheet = null
+        if (first || origin == null) askLocation()
     }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
@@ -135,6 +154,14 @@ fun CampaignScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { sheet = Sheet.WELCOME }) {
+                        Icon(Icons.Filled.Info, contentDescription = "About this campaign")
+                    }
+                    IconButton(onClick = { sheet = Sheet.SHARE }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share campaign")
+                    }
+                },
             )
         },
     ) { padding ->
@@ -153,6 +180,8 @@ fun CampaignScreen(
                         progress = { done.size.toFloat() / shown.size },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    val today = checkedLog.today(campaignId)
+                    if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (loading) CircularProgressIndicator()
@@ -194,7 +223,23 @@ fun CampaignScreen(
             }
         }
     }
+    val name = current?.challenge?.name ?: "Campaign"
+    when (sheet) {
+        Sheet.WELCOME -> WelcomeDialog(
+            name = name,
+            description = current?.challenge?.description,
+            openCount = open.size,
+            questions = remember(current) { current?.let { c -> Campaigns.questions(c.tasks.map { it.task }) }.orEmpty() },
+            noun = noun,
+            signedIn = state.account != null,
+            onClose = { closeWelcome() },
+        )
+        Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
+        null -> Unit
+    }
 }
+
+private enum class Sheet { WELCOME, SHARE }
 
 @Composable
 private fun PlaceList(

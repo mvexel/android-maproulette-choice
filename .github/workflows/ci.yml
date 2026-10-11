@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      live_writes:
+        description: "Also build a stage APK that sends answers to stage (edits the real OpenStreetMap)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,11 +34,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
       - name: Assemble (dev and stage), unit tests, lint
-        run: ./gradlew assembleDevDebug assembleStageDebug testDevDebugUnitTest lintDevDebug --console=plain
+        run: ./gradlew assembleDevDebug assembleStageDebug testDevDebugUnitTest lintDevDebug -PversionCode=${{ github.run_number }} --console=plain
       - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:
           name: street-tally-debug-apks
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      # Manual runs only. Installing it and answering on stage still need Martijn's go-ahead.
+      - name: Assemble stage APK with live writes
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_writes }}
+        run: |
+          rm -rf app/build/outputs/apk
+          ./gradlew assembleStageDebug -PmaprouletteAllowLiveWrites=true -PversionCode=${{ github.run_number }} --console=plain
+      - name: Upload stage live-writes APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_writes }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: street-tally-stage-live-writes-apk
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14

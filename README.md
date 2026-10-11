@@ -19,6 +19,18 @@ CI builds every pull request (with submodules) on GitHub's Ubuntu runners and up
 adb install -r app/build/outputs/apk/stage/debug/app-stage-debug.apk
 ```
 
+Debug APKs are signed with the shared `app/debug.keystore` (the standard public debug
+credentials) and numbered with the CI run, so a newer test APK installs over the last one and keeps
+the sign-in. A manual run of the CI workflow with `live_writes` also builds a stage APK that sends
+answers to stage (`street-tally-stage-live-writes-apk`); stage edits the real OpenStreetMap.
+
+## Campaign links
+
+`mrchoice://challenge/<id>` opens a campaign. The share screen's QR code points at
+`https://<campaignLinkHost>/challenge/<id>`, the participant page, as on iOS. On Android that link
+opens the page, not the app, until App Links are set up (an `assetlinks.json` on
+`streettally.osm.lol` and a verified intent filter here); `CampaignLink` already parses it.
+
 ## Backends
 
 | Flavor | API | OpenStreetMap | Answers sent |
