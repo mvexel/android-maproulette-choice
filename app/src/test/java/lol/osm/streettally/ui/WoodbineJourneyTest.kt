@@ -26,6 +26,7 @@ import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,9 +46,8 @@ private val MOVED_TO = WoodbineBackend.DOORS.single { it.id == 103L }.position.l
 
 /**
  * The Woodbine pilot journey end to end, as a guest on dev, against [WoodbineBackend] (no network):
- * the welcome card, the map and the list, an answer saved for later, the sign-in gate on a place
- * that can't take guest answers, "There's no door" and "It's moved" (both "Needs another look"),
- * and the tally. Compose under Robolectric rather than an emulator, so it runs in CI's unit tests.
+ * the welcome card, the map and the list (without the door that needs an account), an answer
+ * saved for later, "There's no door" and "It's moved" (both "Needs another look"), and the tally. Compose under Robolectric rather than an emulator, so it runs in CI's unit tests.
  * Maps are placeholders (MapLibre doesn't draw here); a tap on the moved map picks [MOVED_TO].
  * No location: the phone never answers the permission prompt, so places are in id order.
  */
@@ -70,10 +70,11 @@ class WoodbineJourneyTest {
         tap("Let's go")
         waitFor("The tally: 0 of 4 entrances checked")
 
-        // The map first, then the list.
+        // The map first, then the list. A guest isn't offered the door that needs an account.
         compose.onNodeWithTag(MAP).assertExists()
         tap("List")
         waitFor("To check")
+        assertGone("Loading dock door")
 
         // An answer, saved for later.
         tap("Main door")
@@ -84,14 +85,6 @@ class WoodbineJourneyTest {
         waitFor("Check your answers")
         tapButton(Wording.DONE)
         waitFor("✓ Saved. That's 1 entrance today.")
-        tap(BACK)
-
-        // A place the server won't keep guest answers for: sign in first, no questions shown.
-        tap("Loading dock door")
-        waitFor("Sign in to check this entrance")
-        compose.onNodeWithText("This entrance needs an OpenStreetMap account. Any answers you've saved stay saved.").assertExists()
-        compose.onNodeWithText("Sign in with OpenStreetMap").assertExists()
-        assertEquals(0, compose.onAllNodesWithText("How does this door open?").fetchSemanticsNodes().size)
         tap(BACK)
 
         // "There's no door": the place needs another look.
@@ -117,18 +110,38 @@ class WoodbineJourneyTest {
         waitFor("✓ " + Wording.REPORTED_MOVED)
         tap(BACK)
 
-        // The tally counts the answer; the two reports need another look; one place is left.
+        // The tally counts the answer (and the hidden door); the two reports need another look.
         waitFor("The tally: 1 of 4 entrances checked")
         compose.onNodeWithText(Wording.NEEDS_LOOK).assertExists()
         compose.onNodeWithText("Already checked").assertExists()
-        compose.onNodeWithText("Loading dock door").assertExists()
+        assertGone("Loading dock door")
 
         assertEquals(listOf(101L, 102L, 103L), backend.pending.keys.toList())
         assertEquals("""{"answers":{"automatic-opening":"button","door-type":"hinged"}}""", backend.pending[101])
         assertEquals("""{"outcome":"no-door"}""", backend.pending[102])
         assertTrue(backend.pending[103]!!.startsWith("""{"outcome":"moved","location":"""))
-        // The gated place was never checked against OSM, nor answered.
-        assertFalse(backend.paths.any { it.contains("task/104/choice") })
+        // The hidden place was never opened.
+        assertFalse(backend.paths.any { it.contains("task/104") })
+    }
+
+    /** A campaign without a place a guest can answer asks to sign in, and doesn't promise otherwise. */
+    @Test fun aGuestIsAskedToSignInWhereNothingTakesGuestAnswers() {
+        val backend = WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) })
+        val session = AppSession(WoodbineBackend.CONFIG, InMemoryCredentialStore(), backend)
+        runBlocking { session.restore() }
+        compose.setContent {
+            StreetTallyTheme(dark = false) { App(session, CampaignPrefs(RuntimeEnvironment.getApplication()), CheckedLog()) }
+        }
+        waitFor("Let's go")
+        compose.onNodeWithText(Wording.NEEDS_ACCOUNT).assertExists()
+        assertGone(Wording.noAccountNeeded(Noun("entrance", "entrances")))
+        tap("Let's go")
+        waitFor("Sign in to check these entrances")
+        compose.onNodeWithText("These entrances need an OpenStreetMap account. Any answers you've saved stay saved.").assertExists()
+        compose.onNodeWithText("Sign in with OpenStreetMap").assertExists()
+        compose.onNodeWithText("The tally: 0 of 4 entrances checked").assertExists()
+        tap("List")
+        assertGone("Main door")
     }
 
     /** Campaign → place, as MainActivity: the campaign keeps its saveable state (the list) while a
@@ -157,6 +170,9 @@ class WoodbineJourneyTest {
             }
         }
     }
+
+    private fun assertGone(text: String) =
+        assertEquals(0, compose.onAllNodesWithText(text).fetchSemanticsNodes().size)
 
     private fun waitFor(text: String) = compose.waitUntil(10_000) {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()

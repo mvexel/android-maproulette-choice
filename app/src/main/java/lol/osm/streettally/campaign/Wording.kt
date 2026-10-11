@@ -136,6 +136,11 @@ object Wording {
     fun guestSignInDetail(noun: Noun): String =
         "This ${noun.one} needs an OpenStreetMap account. Any answers you've saved stay saved."
 
+    /** A guest on a campaign with nothing left to answer without an account (Iris, as iOS #25). */
+    fun guestCampaignNeedsAccount(noun: Noun): String = "Sign in to check these ${noun.many}"
+    fun guestCampaignNeedsAccountDetail(noun: Noun): String =
+        "These ${noun.many} need an OpenStreetMap account. Any answers you've saved stay saved."
+
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
     fun checkFailed(noun: Noun): String =
         "Couldn't check this ${noun.one} right now. Check your connection and try again."
