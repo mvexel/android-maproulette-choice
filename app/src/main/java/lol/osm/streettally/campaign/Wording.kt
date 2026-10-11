@@ -21,6 +21,8 @@ data class Noun(val one: String, val many: String) {
     /** "1 stop", "7 stops". */
     fun count(n: Int): String = "$n ${if (n == 1) one else many}"
     val capitalized: String get() = one.replaceFirstChar { it.uppercase() }
+    /** "an entrance", "a stop": "an" before a vowel letter (as iOS `Noun.aOne`). */
+    val aOne: String get() = (if (one.firstOrNull()?.lowercaseChar()?.let { it in "aeiou" } == true) "an " else "a ") + one
 
     companion object {
         val PLACE = Noun("place", "places")
@@ -72,10 +74,10 @@ object Wording {
     fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun progress(done: Int, total: Int, noun: Noun): String = "The tally: $done of ${noun.count(total)} checked"
     /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
-    fun choose(noun: Noun): String = "Choose a ${noun.one}"
+    fun choose(noun: Noun): String = "Choose ${noun.aOne}"
     fun noLocation(noun: Noun, permitted: Boolean): String =
         (if (permitted) "Your location isn't available yet." else "Location is off.") +
-            " Choose a ${noun.one} on the map or in the list."
+            " Choose ${noun.aOne} on the map or in the list."
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
         "Your location stays on your phone. We use it to find the nearest ${noun.many}."
@@ -170,7 +172,7 @@ object Wording {
     fun isNothingSaved(error: Throwable): Boolean =
         error is MapRouletteException && error.kind == ErrorKind.CONFLICT && error.reason == "nothing_saved"
     fun linkFailed(error: Throwable, noun: Noun = Noun.PLACE): String {
-        if (isNothingSaved(error)) return "Answer a ${noun.one} first, then we can send you the link."
+        if (isNothingSaved(error)) return "Answer ${noun.aOne} first, then we can send you the link."
         if (isInputError(error)) return "That doesn't look like an email address."
         val e = error as? MapRouletteException
         return when {
