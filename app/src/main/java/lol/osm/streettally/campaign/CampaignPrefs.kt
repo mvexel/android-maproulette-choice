@@ -2,8 +2,9 @@ package lol.osm.streettally.campaign
 
 import android.content.Context
 
-/** Small per-device campaign state: the last campaign (reopened once per launch) and which
- * campaigns' welcome cards were seen. Nothing here leaves the phone. */
+/** Small per-device campaign state: the last campaign (reopened once per launch), which
+ * campaigns' welcome cards were seen, and how many places were checked per campaign per day.
+ * Nothing here leaves the phone. */
 class CampaignPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("campaigns", Context.MODE_PRIVATE)
 
@@ -17,6 +18,14 @@ class CampaignPrefs(context: Context) {
 
     fun markWelcomeSeen(campaign: Long) {
         prefs.edit().putBoolean("$WELCOME$campaign", true).apply()
+    }
+
+    /** The checked-today counts ([CheckedLog]), so "You've checked 3 today" survives a restart. */
+    val checkedCounts: CheckedLog.Counts = object : CheckedLog.Counts {
+        override fun get(key: String) = prefs.getInt(key, 0)
+        override fun set(key: String, value: Int) {
+            prefs.edit().putInt(key, value).apply()
+        }
     }
 
     private companion object {

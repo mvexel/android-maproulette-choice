@@ -15,13 +15,15 @@ class StreetTallyApp : Application() {
     val scope: CoroutineScope = MainScope()
     lateinit var session: AppSession
         private set
-    val checked = CheckedLog()
+    lateinit var checked: CheckedLog
+        private set
     lateinit var prefs: CampaignPrefs
         private set
 
     override fun onCreate() {
         super.onCreate()
         prefs = CampaignPrefs(this)
+        checked = CheckedLog(prefs.checkedCounts)
         val config = AppConfig.fromBuild()
         session = AppSession(
             config,
