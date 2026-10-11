@@ -13,17 +13,27 @@ import org.maproulette.sdk.TaskSummary
  * Held places (open tasks someone's saved guest answer holds) count as checked in the tally and
  * toward the total (design/live-progress.md §3.2): they are answered, just not on the map yet.
  * They are neither shown nor offered. */
-class CampaignProgress(tasks: List<LocatedTask>, held: Set<Long>) {
-    /** Checked on the server. */
-    val done: Set<Long> = tasks.filter { it.isDone }.map { it.id }.toSet()
+class CampaignProgress(
+    tasks: List<LocatedTask>,
+    held: Set<Long>,
+    justDone: Set<Long> = emptySet(),
+    /** Answering as a guest: [justDone] places are saved, not on the map yet. */
+    guest: Boolean = false,
+) {
+    /** Checked: done on the server, or saved on this phone since launch ([justDone]). */
+    val done: Set<Long> = tasks.filter { it.isDone || it.id in justDone }.map { it.id }.toSet()
     /** The tally's "N": checked places plus held ones. */
     val checked: Int = tasks.count { it.id in done || (it.isOpen && it.id in held) }
     /** The campaign's size: open places (held ones included) and checked ones. */
     val total: Int = tasks.count { it.isOpen || it.id in done }
     /** Open places that are not held, and checked ones; the rest are left off the map and list. */
     val shown: List<LocatedTask> = tasks.filter { (it.isOpen && it.id !in held) || it.id in done }
-    /** Still to check: open and not held. In task order. */
-    val open: List<LocatedTask> = tasks.filter { it.isOpen && it.id !in held }
+    /** Still to check: open, not saved here, not held. In task order. */
+    val open: List<LocatedTask> = tasks.filter { it.isOpen && it.id !in justDone && it.id !in held }
+
+    /** A guest's own saved answers: checked here, but not on the map until they finish signing up. */
+    val pending: Set<Long> =
+        if (guest) tasks.filter { !it.isDone && it.id in justDone }.map { it.id }.toSet() else emptySet()
 }
 
 /** Which open tasks a guest's saved answer holds until it goes on the map or expires. */
