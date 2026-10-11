@@ -50,6 +50,10 @@ fun PlacesMap(
     modifier: Modifier = Modifier,
     onBackground: () -> Unit = {},
 ) {
+    LocalMapPlaceholder.current?.let { placeholder ->
+        placeholder(null, modifier, {})
+        return
+    }
     val context = LocalContext.current
     val holder = remember { PlacesMapHolder(context, styleUrl) }
     holder.onPlace = onPlace

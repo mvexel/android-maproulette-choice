@@ -47,9 +47,10 @@ import org.maplibre.geojson.Point
 private const val NAVY = "#14213D"
 private const val GRAY = "#6B7280"
 
-/** Draws in place of the map when set. Snapshot tests set it: MapLibre's view doesn't render under
- * Robolectric. Gets the picked spot, or null, and the map's modifier. */
-internal val LocalMapPlaceholder = staticCompositionLocalOf<(@Composable (LatLon?, Modifier) -> Unit)?> { null }
+/** Draws in place of every map when set. Robolectric tests set it: MapLibre's view doesn't render
+ * there. Gets the picked spot (or null), the map's modifier, and what a tap on the map picks. */
+internal val LocalMapPlaceholder =
+    staticCompositionLocalOf<(@Composable (LatLon?, Modifier, (LatLon) -> Unit) -> Unit)?> { null }
 
 /** "It's moved" (design/not-here-moved.md §3.2): the place's mapped position as a gray hollow ring
  * labeled [onTheMapLabel], the picked spot as a navy pin, and a dashed line between them. Tapping the
@@ -65,7 +66,7 @@ fun MovedSpotMap(
     modifier: Modifier = Modifier,
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
-        placeholder(picked, modifier)
+        placeholder(picked, modifier, onPick)
         return
     }
     val context = LocalContext.current
