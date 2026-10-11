@@ -44,6 +44,7 @@ fun WelcomeDialog(
     questions: List<ChoiceQuestion>,
     noun: Noun,
     signedIn: Boolean,
+    guestEnabled: Boolean = false,
     onClose: () -> Unit,
 ) {
     AlertDialog(
@@ -66,7 +67,7 @@ fun WelcomeDialog(
                 }
                 Text(Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
-                if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
+                if (!signedIn) Text(if (guestEnabled) Wording.guestStart(noun) else Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {

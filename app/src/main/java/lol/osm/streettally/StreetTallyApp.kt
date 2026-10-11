@@ -9,6 +9,7 @@ import lol.osm.streettally.auth.KeystoreCredentialStore
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
 import org.maproulette.sdk.OkHttpTransport
+import lol.osm.streettally.task.PendingSaveStore
 
 /** Holds the process-wide session, so sign-in survives activity recreation. */
 class StreetTallyApp : Application() {
@@ -27,6 +28,7 @@ class StreetTallyApp : Application() {
             config,
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
             OkHttpTransport(),
+            PendingSaveStore(KeystoreCredentialStore(this, "pending|${config.baseUrl}|${config.oauthClientId}")),
         )
         scope.launch { session.restore() }
     }

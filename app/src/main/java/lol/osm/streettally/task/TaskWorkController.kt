@@ -21,6 +21,8 @@ import org.maproulette.sdk.ChoiceSubmission
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.MapRouletteException
+import org.maproulette.sdk.PendingChoice
+import org.maproulette.sdk.PendingState
 import org.maproulette.sdk.MobileSupport
 import org.maproulette.sdk.ResolutionCheck
 import org.maproulette.sdk.Task
@@ -43,6 +45,8 @@ interface TaskOps {
     suspend fun checkChoice(id: TaskId): ChoiceEligibility
     suspend fun submitChoice(task: Task, submission: ChoiceSubmission): ChoiceResult
     suspend fun skipTask(id: TaskId)
+    suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission): PendingChoice = error("Guest writes unavailable")
+    suspend fun pendingReceipt(id: TaskId): PendingChoice? = error("Guest reads unavailable")
 }
 
 /**
@@ -57,6 +61,17 @@ class ClientTaskOps(private val client: MapRouletteClient) : TaskOps {
     override suspend fun checkChoice(id: TaskId) = client.checkChoice(id)
     override suspend fun submitChoice(task: Task, submission: ChoiceSubmission) = client.submitChoice(task, submission)
     override suspend fun skipTask(id: TaskId) = client.skipTask(id)
+    override suspend fun submitPendingChoice(task: Task, submission: ChoiceSubmission) = client.submitPendingChoice(task, submission)
+    override suspend fun pendingReceipt(id: TaskId): PendingChoice? {
+        var page = client.listPendingChoices()
+        // Bound a manual check; a partial search never proves absence.
+        repeat(100) {
+            page.items.firstOrNull { it.taskId == id }?.let { return it }
+            val next = page.next ?: return null
+            page = client.listPendingChoices(after = next)
+        }
+        error("Pending list exceeded recovery limit")
+    }
 }
 
 sealed interface ChoiceAction {
@@ -71,7 +86,9 @@ val ChoiceAction.editsOsm: Boolean
     get() = this is ChoiceAction.Answers || (this is ChoiceAction.Outcome && outcome.deletesElement)
 
 /** [me] is the signed-in MapRoulette user id; [canEditOsm]: the grant includes `osm:tagfix`. */
-data class Writer(val me: Long, val canEditOsm: Boolean)
+data class Writer(val me: Long, val canEditOsm: Boolean, val guestBinding: String? = null) {
+    val isGuest: Boolean get() = guestBinding != null
+}
 
 /** The questions and offered outcomes of an eligible task, plus the user's current answers. */
 data class ChoiceForm(
@@ -103,6 +120,7 @@ sealed interface TaskScreen {
     data class Done(
         val task: Task, val challenge: Challenge, val action: ChoiceAction, val me: Long,
         val changesetId: Long?, val readFailed: Boolean, val byOther: Boolean = false, val checking: Boolean = false,
+        val savedForLater: Boolean = false,
     ) : TaskScreen
     /** A skip leaves the status unchanged. [uncertain]: the outcome is unknown and it was not resent. */
     data class Skipped(val task: Task, val challenge: Challenge, val uncertain: Boolean) : TaskScreen
@@ -140,6 +158,8 @@ class TaskWorkController(
     private val noun: Noun = Noun.PLACE,
     /** Diagnostics without credentials or server text (debug builds only in the app). */
     private val log: (String) -> Unit = {},
+    private val pendingSaves: PendingSaveStore? = null,
+    private val campaignId: Long = 0,
 ) {
     private val mutableState = MutableStateFlow<TaskScreen>(TaskScreen.Loading)
     val state: StateFlow<TaskScreen> = mutableState
@@ -153,6 +173,8 @@ class TaskWorkController(
         get() = state.value.let { it is TaskScreen.Submitting || (it is TaskScreen.CheckAgain && it.checking) }
 
     val canEditOsm: Boolean get() = writer?.canEditOsm == true
+    val isGuest: Boolean get() = writer?.isGuest == true
+    val canAnswer: Boolean get() = canEditOsm || isGuest
 
     fun load(id: TaskId) {
         if (busy) return
@@ -172,6 +194,15 @@ class TaskWorkController(
 
     private suspend fun opened(task: Task, challenge: Challenge): TaskScreen {
         val work = task.work()
+        if (isGuest && work is TaskWork.Choice) {
+            val intent = pendingSaves?.read()
+            if (intent != null && intent.binding == writer?.guestBinding && intent.campaignId == campaignId && intent.taskId == task.id.value) {
+                val recoveredForm = form(work, ops.choiceOutcomes(task), false).copy(answers = intent.answers.orEmpty())
+                val action = intent.action(recoveredForm)
+                    ?: return TaskScreen.LoadFailed("Your earlier save still needs recovery, but this survey has changed. Ask your organizer.")
+                return guestUnknown(task, challenge, recoveredForm, action)
+            }
+        }
         if (task.mobileSupport() != MobileSupport.IN_PLACE || work !is TaskWork.Choice) {
             return TaskScreen.NotAvailable(task, challenge, TaskText.unavailableReason(task))
         }
@@ -193,7 +224,7 @@ class TaskWorkController(
         val current = eligibility.questionIds?.let { ids ->
             work.copy(questions = work.questions.filter { it.id in ids })
         } ?: work
-        return TaskScreen.Answering(task, challenge, form(current, ops.choiceOutcomes(task), eligibility.deleteAllowed))
+        return TaskScreen.Answering(task, challenge, form(current, ops.choiceOutcomes(task), eligibility.deleteAllowed && !isGuest))
     }
 
     /** [optionId] null means "Can't tell": the question is left out of the submission. */
@@ -208,7 +239,7 @@ class TaskWorkController(
     /** Whether [action] may be offered on [form]'s task for this writer. */
     fun offers(task: Task, form: ChoiceForm, action: ChoiceAction): Boolean {
         val w = writer ?: return false
-        if (action.editsOsm && !w.canEditOsm) return false
+        if (action.editsOsm && !w.canEditOsm && !w.isGuest) return false
         return when (action) {
             is ChoiceAction.Answers -> action.byQuestion.isNotEmpty() && action.byQuestion.all { (q, o) ->
                 form.work.questions.any { it.id == q && it.options.any { option -> option.id == o } }
@@ -239,6 +270,7 @@ class TaskWorkController(
 
     private fun submit(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
         val me = writer?.me ?: return
+        if (isGuest) { submitGuest(task, challenge, form, action); return }
         changed = true // Before publishing: observers read it while rendering Submitting.
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
@@ -264,7 +296,9 @@ class TaskWorkController(
     fun recheck() {
         val me = writer?.me ?: return
         when (val current = state.value) {
-            is TaskScreen.CheckAgain -> if (!current.checking) job = scope.launch { verify(current, me) }
+            is TaskScreen.CheckAgain -> if (!current.checking) job = scope.launch {
+                if (isGuest) verifyGuest(current) else verify(current, me)
+            }
             is TaskScreen.Done -> if (current.readFailed && !current.checking) {
                 mutableState.value = current.copy(checking = true)
                 job = scope.launch {
@@ -284,6 +318,86 @@ class TaskWorkController(
     fun whenIdle(block: () -> Unit) {
         val current = job
         if (current == null || current.isCompleted) block() else current.invokeOnCompletion { block() }
+    }
+
+    private fun guestUnknown(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction,
+                             message: String = "We haven't confirmed this save. You can check, or send the same answers again.") =
+        TaskScreen.CheckAgain(task, challenge, form, action, message, null, false, canResend = true)
+
+    private fun intent(task: Task, action: ChoiceAction) = PendingSaveIntent(
+        requireNotNull(writer?.guestBinding), campaignId, task.id.value,
+        (action as? ChoiceAction.Answers)?.byQuestion?.toMap(), (action as? ChoiceAction.Outcome)?.outcome?.id,
+    )
+
+    private fun submitGuest(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
+        if (action == ChoiceAction.Skip) {
+            mutableState.value = TaskScreen.Skipped(task, challenge, uncertain = false)
+            return // Local navigation only: no task mutation or lock.
+        }
+        val save = intent(task, action)
+        mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
+        job = scope.launch {
+            val store = pendingSaves
+            try {
+                checkNotNull(store).keep(save) // Commit exact intent before any POST.
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                mutableState.value = TaskScreen.Answering(task, challenge, form,
+                    "Couldn't keep this save safely on your phone. No answers were sent. An earlier save may need recovery.")
+                return@launch
+            }
+            val result = withContext(NonCancellable + io) {
+                try {
+                    val submission = when (action) {
+                        is ChoiceAction.Answers -> ChoiceSubmission.Answers(save.answers!!)
+                        is ChoiceAction.Outcome -> ChoiceSubmission.Outcome(action.outcome)
+                        ChoiceAction.Skip -> error("Local skip")
+                    }
+                    val receipt = ops.submitPendingChoice(task, submission)
+                    check(receipt.taskId == task.id && receipt.state == PendingState.PENDING)
+                    // A failed local cleanup must not turn a confirmed receipt into failure.
+                    runCatching { store.clear(save) }
+                    Result.success(receipt)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+            ensureActive() // No result from a discarded account/controller reaches the UI.
+            mutableState.value = if (result.isSuccess) {
+                changed = true
+                TaskScreen.Done(task, challenge, action, 0, null, false, savedForLater = true)
+            } else {
+                val error = result.exceptionOrNull() as? MapRouletteException
+                val unresolved = guestUnknown(task, challenge, form, action)
+                when {
+                    error?.reason == "task_completed" || error?.problem is ChoiceProblem.TaskIneligible -> unresolved.copy(
+                        message = "This ${noun.one} no longer accepts answers. Your earlier save is still unconfirmed. Ask your organizer if you need help.", canResend = false)
+                    error?.reason == "pending_limit" -> unresolved.copy(
+                        message = "You've reached the saved-answer limit. Finish your saved answers on a computer before saving more.", canResend = false)
+                    error?.reason in setOf("guest_claimed", "guest_expired") || error?.kind == ErrorKind.AUTHENTICATION -> unresolved.copy(
+                        message = "This phone's saved-answer access wasn't accepted. Your earlier save is still unconfirmed. If you received a finish link, open it on a computer.", canResend = false)
+                    else -> unresolved
+                }
+            }
+        }
+    }
+
+    private suspend fun verifyGuest(pending: TaskScreen.CheckAgain) {
+        mutableState.value = pending.copy(checking = true)
+        val message = try {
+            val save = pendingSaves?.read()
+            check(save == intent(pending.task, pending.action)) // Never recover another identity or revision.
+            val receipt = ops.pendingReceipt(pending.task.id)
+            if (receipt != null) {
+                "The server has an earlier save for this ${noun.one}, but we can't confirm these exact answers. Send the same answers again to confirm."
+            } else "We couldn't find a receipt for these answers. You can send the same answers again."
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            "Couldn't check your saved answers. Check your connection and try again."
+        }
+        mutableState.value = pending.copy(checking = false, message = message)
     }
 
     private suspend fun send(task: Task, action: ChoiceAction): Result<ChoiceResult?> = try {

@@ -4,6 +4,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import lol.osm.streettally.task.Writer
+import lol.osm.streettally.task.PendingSaveStore
+import org.maproulette.sdk.InMemoryCredentialStore
+import org.maproulette.sdk.MobileGuest
 import lol.osm.streettally.AppConfig
 import org.maproulette.sdk.CredentialStore
 import org.maproulette.sdk.MapRouletteClient
@@ -20,6 +26,7 @@ import org.maproulette.sdk.Transport
 data class SessionState(
     val restored: Boolean = false,
     val account: MobileAccount? = null,
+    val guest: MobileGuest? = null,
     val generation: Int = 0,
     val busy: Boolean = false,
     /** A one-off note about the last sign-in or sign-out, or null. */
@@ -32,11 +39,14 @@ class AppSession(
     val config: AppConfig,
     store: CredentialStore,
     transport: Transport,
+    val pendingSaves: PendingSaveStore = PendingSaveStore(InMemoryCredentialStore()),
 ) {
     private val signIn = MobileSignIn(
         MobileSignInConfiguration(config.environment(), config.oauthClientId, config.redirectUri),
         store, transport,
     )
+    private val guestMutex = Mutex()
+    private var guestRestoreFailed = false
     private val mutableState = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = mutableState
 
@@ -50,11 +60,40 @@ class AppSession(
     /** Reads the saved sign-in. Call once at startup. */
     suspend fun restore() {
         val result = signIn.restore()
+        guestRestoreFailed = result == RestoreResult.Unreadable
         val message = when (result) {
-            RestoreResult.RefreshInterrupted, RestoreResult.Unreadable -> SIGNED_OUT_AGAIN
+            RestoreResult.Unreadable -> SAVED_ACCESS_UNAVAILABLE
+            RestoreResult.RefreshInterrupted -> SIGNED_OUT_AGAIN
             else -> null
         }
         publish(message, restored = true)
+    }
+
+    /** Serialized because SDK registration deliberately runs outside its own credential lock. */
+    suspend fun ensureGuest() = guestMutex.withLock {
+        if (!state.value.restored || !config.guestWritesAllowed || signIn.account != null || signIn.guest != null) return@withLock
+        if (guestRestoreFailed || runCatching { pendingSaves.read() != null }.getOrDefault(true)) {
+            publish(SAVED_ACCESS_UNAVAILABLE)
+            return@withLock
+        }
+        mutableState.update { it.copy(busy = true, message = null) }
+        try {
+            signIn.startGuest()
+            publish(null)
+        } catch (e: CancellationException) {
+            publish(null)
+            throw e
+        } catch (_: Exception) {
+            publish("Couldn't start without an account. Check your connection and try again.")
+        }
+    }
+
+    /** Account precedence is explicit; a guest never gets an OSM writer. */
+    fun writer(): Writer? {
+        val account = state.value.account
+        if (account != null) return if (config.writesAllowed && account.canWriteTasks) Writer(account.userId, account.canEditOsm) else null
+        val guest = state.value.guest ?: return null
+        return if (config.guestWritesAllowed) Writer(0, false, "${config.baseUrl}|${config.oauthClientId}|${guest.guestId}") else null
     }
 
     /** Runs browser sign-in. [authenticate] opens the URL and returns the callback URL; throwing
@@ -89,6 +128,7 @@ class AppSession(
         mutableState.value = SessionState(
             restored = restored,
             account = account,
+            guest = signIn.guest,
             generation = signIn.generation,
             busy = false,
             message = message,
@@ -96,6 +136,7 @@ class AppSession(
     }
 
     companion object {
+        const val SAVED_ACCESS_UNAVAILABLE = "We couldn't restore this phone's saved-answer access. If you received a finish link, open it on a computer. Don't assume your earlier answers were removed."
         const val TRY_AGAIN = "Couldn't sign in. Please try again."
         const val SIGNED_OUT_AGAIN = "You were signed out. Please sign in again."
         const val SIGNED_OUT_HERE_ONLY = "Signed out, but this phone couldn't forget the sign-in. Sign out again to be sure."

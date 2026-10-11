@@ -12,6 +12,7 @@ fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\
 val oauthClientId = prop("maprouletteOAuthClientId", "maproulette-ios-choice")
 val callbackScheme = prop("maprouletteOAuthCallbackScheme", "lol.osm.maproulette.choice")
 // true lets stage and prod (which edit the real OpenStreetMap) receive answers. Off by default.
+val guestEnabled = prop("maprouletteGuestEnabled", "false").toBoolean()
 val allowLiveWrites = prop("maprouletteAllowLiveWrites", "false").toBoolean()
 
 android {
@@ -28,6 +29,7 @@ android {
         buildConfigField("String", "MAPROULETTE_OAUTH_CLIENT_ID", quoted(oauthClientId))
         buildConfigField("String", "MAPROULETTE_OAUTH_CALLBACK_SCHEME", quoted(callbackScheme))
         buildConfigField("boolean", "MAPROULETTE_ALLOW_LIVE_WRITES", allowLiveWrites.toString())
+        buildConfigField("boolean", "MAPROULETTE_GUEST_ENABLED", guestEnabled.toString())
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
     }

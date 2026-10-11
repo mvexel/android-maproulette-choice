@@ -51,4 +51,11 @@ class AppConfigTest {
         assertNull(AppConfig.origin("https://user@mr-api.osm.lol"))
         assertThrows(IllegalArgumentException::class.java) { config("https://mr-api.osm.lol/") }
     }
+    @Test fun guestOptInKeepsLiveWriteGate() {
+        assertFalse(config("https://mr-api.osm.lol").guestWritesAllowed)
+        assertTrue(config("https://mr-api.osm.lol").copy(guestEnabled = true).guestWritesAllowed)
+        assertFalse(config("https://mr-stage.osm.lol").copy(guestEnabled = true).guestWritesAllowed)
+        assertFalse(config("https://example.com", live = true).copy(guestEnabled = true).guestWritesAllowed)
+    }
+
 }

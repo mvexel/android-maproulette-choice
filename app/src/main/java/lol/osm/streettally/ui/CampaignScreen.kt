@@ -237,6 +237,7 @@ fun CampaignScreen(
             questions = remember(current) { current?.let { c -> Campaigns.questions(c.tasks.map { it.task }) }.orEmpty() },
             noun = noun,
             signedIn = state.account != null,
+            guestEnabled = session.config.guestWritesAllowed,
             onClose = { closeWelcome() },
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }

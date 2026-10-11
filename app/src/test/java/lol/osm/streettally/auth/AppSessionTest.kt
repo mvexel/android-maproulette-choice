@@ -3,6 +3,9 @@ package lol.osm.streettally.auth
 import java.net.URI
 import java.net.URLDecoder
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import org.maproulette.sdk.CredentialStore
 import lol.osm.streettally.AppConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,13 +23,14 @@ import org.maproulette.sdk.Transport
 class AppSessionTest {
     private val writeScopes = "osm:tagfix tasks:read tasks:write"
 
-    private fun config(baseUrl: String = "https://mr-api.osm.lol", live: Boolean = false) = AppConfig(
+    private fun config(baseUrl: String = "https://mr-api.osm.lol", live: Boolean = false, guest: Boolean = false) = AppConfig(
         baseUrl = baseUrl,
         oauthClientId = "maproulette-ios-choice",
         callbackScheme = "lol.osm.maproulette.choice",
         allowLiveWrites = live,
         mapStyleUrl = "https://tiles.openfreemap.org/styles/positron",
         campaignLinkHost = "streettally.osm.lol",
+        guestEnabled = guest,
     )
 
     /** The backend's mobile OAuth routes with canned answers; records request paths. */
@@ -141,4 +145,84 @@ class AppSessionTest {
         assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.ProviderError("server_error")))
         assertEquals("Sign-in was declined on OpenStreetMap.", AppSession.failureMessage(SignInFailure.Denied))
     }
+    @Test fun guestRegistrationIsSerializedAndRestoresSameIdentity() = runTest {
+        var registrations = 0
+        val backend = Transport { request ->
+            assertEquals("/oauth/mobile/guest", URI(request.url).path)
+            registrations++
+            delay(10)
+            HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-abcdefghijklmnopqrstuvwxyz"}""")
+        }
+        val store = InMemoryCredentialStore()
+        val session = AppSession(config(guest = true), store, backend)
+        session.restore()
+        launch { session.ensureGuest() }
+        launch { session.ensureGuest() }
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, registrations)
+        assertEquals("guest-1", session.state.value.guest?.guestId)
+        assertTrue(session.writer()!!.isGuest)
+        assertFalse(session.writer()!!.canEditOsm)
+        val again = AppSession(config(guest = true), store, backend)
+        again.restore()
+        again.ensureGuest()
+        assertEquals("guest-1", again.state.value.guest?.guestId)
+        assertEquals(1, registrations)
+    }
+
+    @Test fun guestStorageFailureDoesNotExposeWriter() = runTest {
+        val store = object : CredentialStore {
+            override suspend fun read(): String? = null
+            override suspend fun write(data: String) { error("disk unavailable") }
+            override suspend fun clear() {}
+        }
+        val session = AppSession(config(guest = true), store, Transport {
+            HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-abcdefghijklmnopqrstuvwxyz"}""")
+        })
+        session.restore()
+        session.ensureGuest()
+        assertNull(session.state.value.guest)
+        assertNull(session.writer())
+        assertFalse(session.state.value.busy)
+        assertTrue(session.state.value.message!!.contains("Couldn't start"))
+    }
+
+    @Test fun guestRefusalDoesNotBecomeAccountOrWriter() = runTest {
+        val session = AppSession(config(guest = true), InMemoryCredentialStore(), Transport { HttpResponse(404) })
+        session.restore()
+        session.ensureGuest()
+        assertNull(session.state.value.guest)
+        assertNull(session.state.value.account)
+        assertNull(session.writer())
+        assertTrue(session.state.value.message != null)
+    }
+
+    @Test fun disabledGuestAndReadOnlyPreviewNeverRegister() = runTest {
+        for (cfg in listOf(config(), config("https://mr-stage.osm.lol", guest = true))) {
+            val session = AppSession(cfg, InMemoryCredentialStore(), Transport { error("must not register") })
+            session.restore()
+            session.ensureGuest()
+            assertNull(session.writer())
+            assertNull(session.state.value.guest)
+        }
+    }
+
+    @Test fun signedInAccountHasPrecedenceOverGuestOptIn() = runTest {
+        val session = AppSession(config(guest = true), InMemoryCredentialStore(), Backend(writeScopes))
+        session.restore()
+        session.signIn(::approve)
+        session.ensureGuest()
+        assertEquals(900L, session.writer()?.me)
+        assertFalse(session.writer()!!.isGuest)
+    }
+
+    @Test fun unreadableIdentityDoesNotSilentlyCreateReplacementGuest() = runTest {
+        val store = InMemoryCredentialStore().apply { write("unreadable credential") }
+        val session = AppSession(config(guest = true), store, Transport { error("must not register a replacement") })
+        session.restore()
+        session.ensureGuest()
+        assertNull(session.writer())
+        assertEquals(AppSession.SAVED_ACCESS_UNAVAILABLE, session.state.value.message)
+    }
+
 }

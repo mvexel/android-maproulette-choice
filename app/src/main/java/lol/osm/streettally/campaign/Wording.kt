@@ -45,6 +45,9 @@ data class Noun(val one: String, val many: String) {
 
 /** Participant-facing copy, as in the iOS app's `Wording`. */
 object Wording {
+    fun guestStart(noun: Noun) = "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
+    const val SAVED_FOR_LATER = "Saved on our server. They go on the map when you finish on a computer."
+
     const val NEEDS_ACCOUNT = "To save answers you'll sign in with a free OpenStreetMap account."
     const val NO_CAMPAIGNS =
         "No campaigns here yet. Got a campaign link or QR code from your organizer? Open it to jump straight in."

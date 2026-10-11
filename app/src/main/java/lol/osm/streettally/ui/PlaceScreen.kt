@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
@@ -60,7 +61,6 @@ import lol.osm.streettally.task.ClientTaskOps
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
-import lol.osm.streettally.task.Writer
 import org.maproulette.sdk.ChoiceOutcome
 import org.maproulette.sdk.ChoiceQuestion
 import org.maproulette.sdk.Task
@@ -89,8 +89,7 @@ fun PlaceScreen(
     val scope = rememberCoroutineScope()
     var taskId by remember { mutableStateOf(firstTaskId) }
     val visited = remember { mutableSetOf(firstTaskId) }
-    var generation by remember { mutableIntStateOf(state.generation) }
-    var controller by remember { mutableStateOf(newController(session, scope, noun)) }
+    var controller by remember { mutableStateOf(newController(session, scope, noun, campaignId)) }
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
@@ -99,21 +98,26 @@ fun PlaceScreen(
     var counted by remember { mutableStateOf(false) }
     var showProblems by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { controller.load(TaskId(taskId)) }
-    // Account switch or sign-out: discard the old account's controller and any late result.
-    LaunchedEffect(state.generation) {
-        if (state.generation == generation) return@LaunchedEffect
-        generation = state.generation
+    // Guest registration changes generation. Bind only after restore/registration finishes.
+    LaunchedEffect(state.restored, state.generation) {
+        if (!state.restored) return@LaunchedEffect
+        session.ensureGuest()
+        if (session.state.value.generation != state.generation) return@LaunchedEffect
         val old = controller
         val interrupted = old.busy || old.state.value is TaskScreen.CheckAgain
         old.cancel()
         confirmation = null
-        controller = newController(session, scope, noun)
+        controller = newController(session, scope, noun, campaignId)
         switchNotice = if (interrupted) {
             "Your sign-in changed while your answers were being saved, so we can't tell whether they were."
         } else null
         step = 0
         notSure = emptySet()
+        val recovery = runCatching { session.pendingSaves.read() }.getOrNull()
+        if (recovery != null && recovery.binding == session.writer()?.guestBinding && recovery.campaignId == campaignId) {
+            taskId = recovery.taskId
+            visited += taskId
+        }
         controller.load(TaskId(taskId))
     }
     val c = controller
@@ -139,7 +143,7 @@ fun PlaceScreen(
         counted = false
         step = 0
         notSure = emptySet()
-        controller = newController(session, scope, noun)
+        controller = newController(session, scope, noun, campaignId)
         controller.load(TaskId(place.id))
     }
 
@@ -188,7 +192,8 @@ fun PlaceScreen(
                     Text(Wording.cannotAnswer(noun), style = MaterialTheme.typography.titleMedium)
                     nextButtons(true)
                 }
-                is TaskScreen.Preview -> Preview(s.work, noun, session, state.account != null, onSignIn) { BackButton(noun, onBack) }
+                is TaskScreen.Preview -> Preview(s.work, noun, session, state.account != null,
+                    onGuestRetry = { scope.launch { session.ensureGuest() } }, onSignIn = onSignIn) { BackButton(noun, onBack) }
                 is TaskScreen.CheckFailed -> {
                     Text(Wording.checkFailed(noun))
                     BigButton("Try again") { c.load(TaskId(taskId)) }
@@ -200,7 +205,7 @@ fun PlaceScreen(
                 }
                 is TaskScreen.Answering -> {
                     s.notice?.let { Banner(it) }
-                    if (!c.canEditOsm) {
+                    if (!c.canAnswer) {
                         Text("This sign-in can't save answers to OpenStreetMap.")
                         BigButton("Sign in again", onClick = onSignIn)
                     } else {
@@ -251,6 +256,7 @@ fun PlaceScreen(
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                         )
                     }
+                    if (s.savedForLater) Text(Wording.SAVED_FOR_LATER)
                     nextButtons(true)
                 }
                 is TaskScreen.Skipped -> {
@@ -272,14 +278,16 @@ fun PlaceScreen(
                 is TaskScreen.CheckAgain -> if (s.checking) {
                     Busy("Checking…")
                 } else {
-                    Text("The connection dropped, so we're not sure your answers were saved. Tap Check again to find out. They weren't sent twice.")
+                    Text(if (c.isGuest) "The connection dropped, so we're not sure your answers were saved."
+                        else "The connection dropped, so we're not sure your answers were saved. Tap Check again to find out. They weren't sent twice.")
                     Text(s.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     BigButton("Check again", prominent = true) { c.recheck() }
                     if (s.canResend) {
                         BigButton("Send the same answers again") {
                             confirmation = Confirmation(
                                 "Send the same answers again?",
-                                "This finishes your earlier try. Your answers are never saved twice.",
+                                if (c.isGuest) "This replaces any earlier pending save for this ${noun.one} with the same answers. It does not publish to OpenStreetMap."
+                                else "This finishes your earlier try. Your answers are never saved twice.",
                                 "Send again", c,
                             ) { it.resendSame() }
                         }
@@ -337,13 +345,9 @@ private class Confirmation(
 )
 
 /** A controller is bound to one account's client; results of a replaced one are never shown. */
-private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun): TaskWorkController {
-    val account = session.state.value.account
-    val writer = if (session.config.writesAllowed && account != null && account.canWriteTasks) {
-        Writer(account.userId, account.canEditOsm)
-    } else null
-    return TaskWorkController(ClientTaskOps(session.client()), writer, scope, noun = noun)
-}
+private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun, campaignId: Long): TaskWorkController =
+    TaskWorkController(ClientTaskOps(session.client()), session.writer(), scope, noun = noun,
+        pendingSaves = session.pendingSaves, campaignId = campaignId)
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
     TaskScreen.Loading, is TaskScreen.LoadFailed -> null
@@ -486,9 +490,18 @@ private fun Preview(
     noun: Noun,
     session: AppSession,
     signedIn: Boolean,
+    onGuestRetry: () -> Unit,
     onSignIn: () -> Unit,
     back: @Composable () -> Unit,
 ) {
+    val state by session.state.collectAsState()
+    if (session.config.guestWritesAllowed && !signedIn) {
+        Text(Wording.guestStart(noun))
+        state.message?.let { Banner(it) }
+        BigButton("Try again", prominent = true, enabled = !state.busy, onClick = onGuestRetry)
+        back()
+        return
+    }
     Text("Sign in to answer", style = MaterialTheme.typography.titleMedium)
     val count = work.questions.size
     Text("You'll be asked ${if (count == 1) "one question" else "$count questions"} about this ${noun.one}:")

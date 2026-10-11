@@ -15,6 +15,7 @@ data class AppConfig(
     val allowLiveWrites: Boolean,
     val mapStyleUrl: String,
     val campaignLinkHost: String,
+    val guestEnabled: Boolean = false,
 ) {
     init {
         require(origin(baseUrl) == baseUrl) { "baseUrl must be an https origin without a path: $baseUrl" }
@@ -23,6 +24,8 @@ data class AppConfig(
     /** Whether this build sends answers to [baseUrl]. */
     val writesAllowed: Boolean
         get() = baseUrl in WRITE_ORIGINS || (allowLiveWrites && baseUrl in LIVE_WRITE_ORIGINS)
+
+    val guestWritesAllowed: Boolean get() = guestEnabled && writesAllowed
 
     /** The OAuth callback registered with the backend (`<scheme>:/oauth2redirect`). */
     val redirectUri: String get() = "$callbackScheme:/oauth2redirect"
@@ -41,6 +44,7 @@ data class AppConfig(
             allowLiveWrites = BuildConfig.MAPROULETTE_ALLOW_LIVE_WRITES,
             mapStyleUrl = BuildConfig.MAP_STYLE_URL,
             campaignLinkHost = BuildConfig.CAMPAIGN_LINK_HOST,
+            guestEnabled = BuildConfig.MAPROULETTE_GUEST_ENABLED,
         )
 
         /** `https://host[:port]` of [url], or null when it is not a plain https origin. */
