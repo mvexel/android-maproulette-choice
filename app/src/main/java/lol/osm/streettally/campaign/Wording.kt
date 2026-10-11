@@ -46,7 +46,7 @@ data class Noun(val one: String, val many: String) {
 /** Participant-facing copy, as in the iOS app's `Wording`. */
 object Wording {
     fun guestStart(noun: Noun) = "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
-    const val PUT_ON_MAP_INTRO = "To put them on the map, finish on a computer. We'll email you a link."
+    const val PUT_ON_MAP_INTRO = "You can request an email link to finish on a computer. Your answers stay saved if the link can't be sent."
     const val EMAIL_USE = "We only email you about these answers, and delete your address once they're on the map or removed."
     const val EXISTING_ACCOUNT_HANDOFF = "Already have an OpenStreetMap account? Open the finish link on a computer and sign in there to put your saved answers on the map."
     fun day(date: java.time.Instant): String = java.time.format.DateTimeFormatter.ofPattern("MMM d")
