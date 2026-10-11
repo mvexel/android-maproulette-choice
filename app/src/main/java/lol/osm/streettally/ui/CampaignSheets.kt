@@ -73,7 +73,8 @@ fun WelcomeDialog(
                 Text(if (guest) Wording.GUEST_ANSWERS_ARE_PUBLIC else Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
                 if (previewingAs != null) Text(Wording.previewingAs(previewingAs), style = MaterialTheme.typography.bodySmall)
-                else if (guest && !needsAccount) Text(Wording.noAccountNeeded(noun), style = MaterialTheme.typography.bodySmall)
+                else if (guest && needsAccount) Text(Wording.CAMPAIGN_NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
+                else if (guest) Text(Wording.noAccountNeeded(noun), style = MaterialTheme.typography.bodySmall)
                 else if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
             }
         },

@@ -209,20 +209,19 @@ fun CampaignScreen(
     val tally = remember(current, held, justDone, reported, state.guest) {
         CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
     }
-    // A guest is offered only places the server keeps guest answers for (Martijn, 2026-10-11): the
-    // rest stay off the map, the list and Nearest until signing in, but still count in the tally.
     val asGuest = !preview && state.account == null && (state.guest || session.canAnswerAsGuest)
-    fun answerable(task: LocatedTask) = !asGuest || task.task.takesGuestAnswers()
-    val shown = tally.shown.filter { it.id in tally.done || answerable(it) }
+    val shown = tally.shown
     val done = tally.done
-    val open = Places.sorted(tally.open.filter(::answerable), origin)
-    // Open places remain, but none a guest can answer: signing in comes first.
-    val shutOut = asGuest && open.isEmpty() && tally.shown.any { it.isOpen && it.id !in done && it.id !in tally.look }
+    val open = Places.sorted(tally.open, origin)
+    // A guest in a campaign whose open places all need an account (no liveMissingQuestions;
+    // guest-vs-signed-in-review.md): said once, on the welcome card and above Nearest. Places stay
+    // shown and say so when opened.
+    val shutOut = asGuest && open.isNotEmpty() && open.none { it.task.takesGuestAnswers() }
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
-        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held && answerable(t) }), origin) }
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) }
     }
 
     Scaffold(
@@ -307,6 +306,7 @@ fun CampaignScreen(
                         if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
                     }
                 }
+                if (shutOut) GuestNeedsAccount(noun, onSignIn = signInHere)
                 val nearest = open.firstOrNull()
                 if (nearest != null && origin == null) {
                     // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
@@ -322,8 +322,6 @@ fun CampaignScreen(
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                     }
-                } else if (shutOut) {
-                    GuestNeedsAccount(noun, onSignIn = signInHere)
                 } else if (tally.total > 0) {
                     Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                 }
@@ -537,7 +535,7 @@ private fun PlaceRow(
 @Composable
 private fun GuestNeedsAccount(noun: lol.osm.streettally.campaign.Noun, onSignIn: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(Wording.guestCampaignNeedsAccount(noun), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(Wording.guestCampaignNeedsAccountDetail(noun))
         Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Sign in with OpenStreetMap") }
         Text(ACCOUNT_HINT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

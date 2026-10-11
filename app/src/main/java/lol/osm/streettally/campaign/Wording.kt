@@ -136,10 +136,13 @@ object Wording {
     fun guestSignInDetail(noun: Noun): String =
         "This ${noun.one} needs an OpenStreetMap account. Any answers you've saved stay saved."
 
-    /** A guest on a campaign with nothing left to answer without an account (Iris, as iOS #25). */
-    fun guestCampaignNeedsAccount(noun: Noun): String = "Sign in to check these ${noun.many}"
+    /** A guest on a campaign none of whose open places take guest answers (Iris, as iOS #25). */
+    const val GUEST_CAMPAIGN_NEEDS_ACCOUNT = "Sign in to check the rest"
     fun guestCampaignNeedsAccountDetail(noun: Noun): String =
-        "These ${noun.many} need an OpenStreetMap account. Any answers you've saved stay saved."
+        "The ${noun.many} still open in this campaign need an OpenStreetMap account. Any answers you've saved stay saved."
+    /** Said once per campaign a guest can't answer: picker badge, welcome card (guest-vs-signed-in-review.md). */
+    const val NEEDS_ACCOUNT_BADGE = "Needs an OpenStreetMap account"
+    const val CAMPAIGN_NEEDS_ACCOUNT = "This campaign needs an OpenStreetMap account."
 
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
     fun checkFailed(noun: Noun): String =
