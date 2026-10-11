@@ -62,6 +62,31 @@ object Wording {
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
         "Your location stays on your phone. We use it to find the nearest ${noun.many}."
+
+    // The place screen.
+    const val NOT_SURE = "I'm not sure"
+    const val NOT_SURE_SHORT = "Not sure"
+    const val SOMETHING_WRONG = "Something's wrong here"
+    const val DONE = "Done"
+    fun cantCheck(noun: Noun): String = "I can't check this ${noun.one}"
+    fun problemsMessage(noun: Noun): String =
+        "Skip leaves it for someone else. “${cantCheck(noun)}” tells the organizer it needs another look."
+    fun skip(noun: Noun): String = "Skip this ${noun.one}"
+    fun alreadyChecked(noun: Noun): String = "Someone already checked this ${noun.one}. Thanks anyway!"
+    fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
+    fun checkFailed(noun: Noun): String =
+        "Couldn't check this ${noun.one} right now. Check your connection and try again."
+    fun takenByOther(noun: Noun): String = "Someone else is checking this ${noun.one} right now. Try another one."
+    fun notSureCloses(noun: Noun): String =
+        "That's fine. The organizer can send someone back to ${noun.many} with open questions."
+    fun nothingAnswered(noun: Noun): String =
+        "You weren't sure about any question. You can skip this ${noun.one} instead."
+    fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
+    fun checkedByOtherFirst(noun: Noun): String =
+        "Someone else checked this ${noun.one} first, so your answers weren't saved."
+    fun next(noun: Noun, distance: String?): String = "Next nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
+    fun lastOne(noun: Noun): String = "That was the last ${noun.one} to check. Thank you!"
+    fun backToAll(noun: Noun): String = "Back to all ${noun.many}"
 }
 
 /** Plain words for a failed read, as in the iOS picker. */

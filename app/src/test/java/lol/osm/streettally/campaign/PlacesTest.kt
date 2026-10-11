@@ -80,4 +80,20 @@ class PlacesTest {
         assertNull(Places.rowText(null, a))
         assertNull(Places.distanceText(a, null))
     }
+
+    @Test fun nearestSkipsVisitedAndClosedPlaces() {
+        val origin = LatLon(40.74, -111.87)
+        val a = at(1, 40.741, -111.87)
+        val b = at(2, 40.75, -111.87)
+        // No choice payload: none is open, so nothing is offered.
+        assertNull(Places.nearest(origin, listOf(a, b), emptySet()))
+    }
+
+    @Test fun directionTexts() {
+        val a = LatLon(0.0, 0.0)
+        val b = LatLon(0.0, 0.002)
+        assertEquals("220 m east", Places.directionText(a, b, Locale.GERMANY))
+        assertEquals("220 m east of you", Places.fromYouText(a, b, Locale.GERMANY))
+        assertNull(Places.fromYouText(null, b))
+    }
 }

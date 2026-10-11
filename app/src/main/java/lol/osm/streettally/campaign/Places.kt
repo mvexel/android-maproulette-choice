@@ -112,6 +112,18 @@ object Places {
     fun distanceText(a: LatLon?, b: LatLon?, locale: Locale = Locale.getDefault()): String? =
         if (a == null || b == null) null else distance(meters(a, b), locale)
 
+    /** The nearest open place to [origin] that is not in [excluding]; by id when [origin] is null. */
+    fun nearest(origin: LatLon?, tasks: List<LocatedTask>, excluding: Set<Long>): LocatedTask? =
+        sorted(tasks.filter { it.isOpen && it.id !in excluding }, origin).firstOrNull()
+
+    /** "180 m northeast", for "Next nearest". */
+    fun directionText(a: LatLon?, b: LatLon?, locale: Locale = Locale.getDefault()): String? =
+        if (a == null || b == null) null else "${distance(meters(a, b), locale)} ${compass(bearing(a, b))}"
+
+    /** "130 m northeast of you", for the place header. */
+    fun fromYouText(you: LatLon?, place: LatLon?, locale: Locale = Locale.getDefault()): String? =
+        directionText(you, place, locale)?.let { "$it of you" }
+
     /** "130 m · northeast", for list rows. */
     fun rowText(a: LatLon?, b: LatLon?, locale: Locale = Locale.getDefault()): String? =
         if (a == null || b == null) null else "${distance(meters(a, b), locale)} · ${compass(bearing(a, b))}"

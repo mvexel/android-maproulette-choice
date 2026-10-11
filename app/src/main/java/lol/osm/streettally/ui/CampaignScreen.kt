@@ -69,7 +69,8 @@ fun CampaignScreen(
     session: AppSession,
     campaignId: Long,
     onBack: () -> Unit,
-    onPlace: (LocatedTask, CampaignPlaces) -> Unit,
+    /** The tapped place, the campaign's places, and where the person is (if known). */
+    onPlace: (LocatedTask, CampaignPlaces, LatLon?) -> Unit,
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
@@ -123,7 +124,7 @@ fun CampaignScreen(
     val done = shown.filter { it.isDone }.map { it.id }.toSet()
     val open = Places.sorted(shown.filter { it.isOpen }, origin)
     val checked = Places.sorted(shown.filter { it.isDone }, origin)
-    fun open(task: LocatedTask) { current?.let { onPlace(task, it) } }
+    fun open(task: LocatedTask) { current?.let { onPlace(task, it, origin) } }
 
     Scaffold(
         topBar = {

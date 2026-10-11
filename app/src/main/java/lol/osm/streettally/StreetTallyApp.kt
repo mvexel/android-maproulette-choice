@@ -6,6 +6,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.auth.KeystoreCredentialStore
+import lol.osm.streettally.campaign.CheckedLog
 import org.maproulette.sdk.OkHttpTransport
 
 /** Holds the process-wide session, so sign-in survives activity recreation. */
@@ -13,6 +14,7 @@ class StreetTallyApp : Application() {
     val scope: CoroutineScope = MainScope()
     lateinit var session: AppSession
         private set
+    val checked = CheckedLog()
 
     override fun onCreate() {
         super.onCreate()
