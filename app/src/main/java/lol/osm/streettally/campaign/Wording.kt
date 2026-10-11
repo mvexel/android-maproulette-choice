@@ -256,9 +256,9 @@ object Wording {
     /** The guest is gone: expired, deleted, or claimed by another account. */
     fun claimGone(displayName: String?): String = "${signedInAs(displayName)} We couldn't find your saved answers. " +
         "They may have expired, or they're linked to a different OpenStreetMap account."
-    /** OpenStreetMap needs a fresh sign-in before the answers can be published. */
-    fun claimSignInAgain(displayName: String?): String =
-        "${signedInAs(displayName)} Sign in again so we can put your saved answers on the map."
+    /** OpenStreetMap needs a fresh sign-in before the answers can be published. No "You're signed in"
+     * prefix: it would contradict the ask (Iris, 2026-10-11). */
+    const val CLAIM_SIGN_IN_AGAIN = "Sign in again so we can put your saved answers on the map."
     /** The claim didn't go through (offline, or the server was busy); tried again on the next launch. */
     fun claimLater(displayName: String?): String =
         "${signedInAs(displayName)} Your answers are still saved. We'll try again next time you open the app."

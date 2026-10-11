@@ -46,7 +46,7 @@ class ClaimSnapshotTest {
     @Test fun someFailed() = shoot("claim-5-some-failed", Wording.claimProgress(status(ClaimState.FAILED, 8, failed = 6)), calm = false)
     @Test fun waiting() = shoot("claim-6-waiting", Wording.claimStarted(claim.copy(state = ClaimState.WAITING)), calm = true)
     @Test fun gone() = shoot("claim-7-gone", Wording.claimGone("rosa_slc"), calm = true)
-    @Test fun signInAgain() = shoot("claim-8-sign-in-again", Wording.claimSignInAgain("rosa_slc"), calm = false)
+    @Test fun signInAgain() = shoot("claim-8-sign-in-again", Wording.CLAIM_SIGN_IN_AGAIN, calm = false)
     @Test fun later() = shoot("claim-9-later", Wording.claimLater("rosa_slc"), calm = true)
 
     private fun shoot(name: String, message: String, calm: Boolean) {
