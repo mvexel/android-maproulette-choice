@@ -60,9 +60,11 @@ android {
         buildConfig = true
         compose = true
     }
-    // Robolectric (the report screen snapshots) needs the merged resources and manifest.
+    // Robolectric (the report screen snapshots) needs the merged resources and manifest. The
+    // property makes Roborazzi write the PNGs (without its Gradle plugin it records nothing).
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -97,8 +99,10 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-    // Screen snapshots on the JVM: Compose rendered by Robolectric's native graphics, saved as PNGs.
+    // Screen snapshots on the JVM: Compose rendered by Robolectric's native graphics, saved as
+    // PNGs by Roborazzi.
     testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.75.0")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

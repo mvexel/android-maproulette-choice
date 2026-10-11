@@ -1,7 +1,6 @@
 package lol.osm.streettally.ui
 
 import android.Manifest
-import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,14 +19,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 import java.util.Locale
 import lol.osm.streettally.campaign.LatLon
@@ -60,7 +58,8 @@ private fun north(meters: Double) = LatLon(MAPPED.lat + meters / 111_320.0, MAPP
 
 /**
  * The not-here and moved screens (design/not-here-moved.md), the same set as iOS #17, saved as
- * PNGs for design review. The map is a placeholder: MapLibre's view doesn't draw under Robolectric.
+ * PNGs for design review with Roborazzi (its library only; the record flag is set in
+ * app/build.gradle.kts). The map is a placeholder: MapLibre's view doesn't draw under Robolectric.
  * The problems list is drawn on a dialog-shaped card rather than in a real dialog window.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -150,9 +149,9 @@ class ReportSnapshotTest {
             }
         }
         compose.waitForIdle()
-        val bitmap = compose.onNodeWithTag(SHOT).captureToImage().asAndroidBitmap()
+        // Roborazzi draws the views itself; captureToImage's PixelCopy never returns under Robolectric.
         OUT.mkdirs()
-        File(OUT, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        compose.onNodeWithTag(SHOT).captureRoboImage(File(OUT, "$name.png"))
     }
 
     private companion object {
