@@ -92,13 +92,17 @@ fun PlaceScreen(
     origin: LatLon?,
     onSignIn: () -> Unit,
     onBack: () -> Unit,
+    /** Campaign preview (design/preview-mode.md): places "saved" in this visit; null when not previewing. */
+    previewSaved: MutableSet<Long>? = null,
+    onExitPreview: () -> Unit = {},
 ) {
+    val previewing = previewSaved != null
     val state by session.state.collectAsState()
     val scope = rememberCoroutineScope()
     var taskId by remember { mutableStateOf(firstTaskId) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
-    var controller by remember { mutableStateOf(newController(session, scope, noun)) }
+    var controller by remember { mutableStateOf(newController(session, scope, noun, previewing)) }
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
@@ -127,7 +131,7 @@ fun PlaceScreen(
         val interrupted = old.busy || old.state.value is TaskScreen.CheckAgain
         old.cancel()
         confirmation = null
-        controller = newController(session, scope, noun)
+        controller = newController(session, scope, noun, previewing)
         switchNotice = if (interrupted) {
             "Your sign-in changed while your answers were being saved, so we can't tell whether they were."
         } else null
@@ -138,6 +142,10 @@ fun PlaceScreen(
     }
     val c = controller
     val screen by c.state.collectAsState()
+    // A preview save counts only in this visit's preview (§4.4).
+    LaunchedEffect(c, screen) {
+        (screen as? TaskScreen.PreviewSaved)?.let { previewSaved?.add(it.task.id.value) }
+    }
     // Count a place this person saved (not skipped, not someone else's result) once.
     LaunchedEffect(c, screen) {
         val done = screen as? TaskScreen.Done
@@ -160,7 +168,7 @@ fun PlaceScreen(
         step = 0
         notSure = emptySet()
         resetReport()
-        controller = newController(session, scope, noun)
+        controller = newController(session, scope, noun, previewing)
         controller.load(TaskId(place.id))
     }
 
@@ -178,189 +186,202 @@ fun PlaceScreen(
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            loadedTask(screen)?.let { task ->
-                Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
-                task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
-            }
-            if (screen !is TaskScreen.Loading) switchNotice?.let { Banner(it) }
-
-            val nextButtons: @Composable (Boolean) -> Unit = { prominent ->
-                if (next != null) {
-                    BigButton(Wording.next(noun, Places.directionText(here, next.position)), prominent) { open(next) }
-                } else {
-                    Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (previewing) PreviewBanner(published = false, onExit = onExitPreview, onOpenForReal = {})
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                loadedTask(screen)?.let { task ->
+                    Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
+                    task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                 }
-                BackButton(noun, onBack)
-            }
+                if (screen !is TaskScreen.Loading) switchNotice?.let { Banner(it) }
 
-            when (val s = screen) {
-                TaskScreen.Loading -> Busy("Loading…")
-                is TaskScreen.LoadFailed -> {
-                    Text(s.message)
-                    BigButton("Try again") { c.load(TaskId(taskId)) }
+                val nextButtons: @Composable (Boolean) -> Unit = { prominent ->
+                    if (next != null) {
+                        BigButton(Wording.next(noun, Places.directionText(here, next.position)), prominent) { open(next) }
+                    } else {
+                        Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     BackButton(noun, onBack)
                 }
-                is TaskScreen.NotAvailable -> {
-                    Text(Wording.cannotAnswer(noun), style = MaterialTheme.typography.titleMedium)
-                    nextButtons(true)
-                }
-                is TaskScreen.Preview -> Preview(s.work, noun, session, state.account != null, onSignIn) { BackButton(noun, onBack) }
-                is TaskScreen.CheckFailed -> {
-                    Text(Wording.checkFailed(noun))
-                    BigButton("Try again") { c.load(TaskId(taskId)) }
-                    nextButtons(false)
-                }
-                is TaskScreen.NoLongerNeeded -> {
-                    Text(Wording.alreadyChecked(noun), style = MaterialTheme.typography.titleMedium)
-                    nextButtons(true)
-                }
-                is TaskScreen.Answering -> {
-                    s.notice?.let { Banner(it) }
-                    val mapped = Places.position(s.task)
-                    val pending = report
-                    if (pending != null) {
-                        ReportReview(pending, mapped, noun, session.config.mapStyleUrl, onDone = {
-                            resetReport()
-                            switchNotice = null
-                            c.perform(pending)
-                        }, onBack = {
-                            report = null
-                            picking = pending is ChoiceAction.Moved
-                        })
-                    } else if (picking && mapped != null) {
-                        MovedPicker(
-                            mapped, picked, pickedFromHere, noun, session.config.mapStyleUrl,
-                            onPick = { spot, fromHere ->
-                                picked = spot
-                                pickedFromHere = fromHere
-                            },
-                            onSave = { spot ->
-                                val source = if (pickedFromHere) MovedLocation.Source.HERE else MovedLocation.Source.TAP
-                                report = ChoiceAction.Moved(MovedLocation(spot.lat, spot.lon, source))
-                                picking = false
-                            },
-                            onCancel = { resetReport() },
-                        )
-                    } else if (!c.canEditOsm) {
-                        Text("This sign-in can't save answers to OpenStreetMap.")
-                        BigButton("Sign in again", onClick = onSignIn)
-                    } else {
-                        val questions = s.form.work.questions
-                        if (step < questions.size) {
-                            Question(
-                                questions[step], step, questions.size,
-                                selected = s.form.answers[questions[step].id], notSure = questions[step].id in notSure,
-                                onAnswer = { optionId ->
-                                    val id = questions[step].id
-                                    c.select(id, optionId)
-                                    notSure = if (optionId == null) notSure + id else notSure - id
-                                    step += 1
+
+                when (val s = screen) {
+                    TaskScreen.Loading -> Busy("Loading…")
+                    is TaskScreen.LoadFailed -> {
+                        Text(s.message)
+                        BigButton("Try again") { c.load(TaskId(taskId)) }
+                        BackButton(noun, onBack)
+                    }
+                    is TaskScreen.NotAvailable -> {
+                        Text(Wording.cannotAnswer(noun), style = MaterialTheme.typography.titleMedium)
+                        nextButtons(true)
+                    }
+                    is TaskScreen.Preview -> Preview(s.work, noun, session, state.account != null, onSignIn) { BackButton(noun, onBack) }
+                    is TaskScreen.CheckFailed -> {
+                        Text(Wording.checkFailed(noun))
+                        BigButton("Try again") { c.load(TaskId(taskId)) }
+                        nextButtons(false)
+                    }
+                    is TaskScreen.NoLongerNeeded -> {
+                        Text(Wording.alreadyChecked(noun), style = MaterialTheme.typography.titleMedium)
+                        nextButtons(true)
+                    }
+                    is TaskScreen.Answering -> {
+                        s.notice?.let { Banner(it) }
+                        val mapped = Places.position(s.task)
+                        val pending = report
+                        if (pending != null) {
+                            ReportReview(pending, mapped, noun, session.config.mapStyleUrl, previewing, onDone = {
+                                resetReport()
+                                switchNotice = null
+                                c.perform(pending)
+                            }, onBack = {
+                                report = null
+                                picking = pending is ChoiceAction.Moved
+                            })
+                        } else if (picking && mapped != null) {
+                            MovedPicker(
+                                mapped, picked, pickedFromHere, noun, session.config.mapStyleUrl,
+                                onPick = { spot, fromHere ->
+                                    picked = spot
+                                    pickedFromHere = fromHere
                                 },
-                                onPrevious = { step -= 1 },
+                                onSave = { spot ->
+                                    val source = if (pickedFromHere) MovedLocation.Source.HERE else MovedLocation.Source.TAP
+                                    report = ChoiceAction.Moved(MovedLocation(spot.lat, spot.lon, source))
+                                    picking = false
+                                },
+                                onCancel = { resetReport() },
+                            )
+                        } else if (!c.canEditOsm) {
+                            Text("This sign-in can't save answers to OpenStreetMap.")
+                            BigButton("Sign in again", onClick = onSignIn)
+                        } else {
+                            val questions = s.form.work.questions
+                            if (step < questions.size) {
+                                Question(
+                                    questions[step], step, questions.size,
+                                    selected = s.form.answers[questions[step].id], notSure = questions[step].id in notSure,
+                                    onAnswer = { optionId ->
+                                        val id = questions[step].id
+                                        c.select(id, optionId)
+                                        notSure = if (optionId == null) notSure + id else notSure - id
+                                        step += 1
+                                    },
+                                    onPrevious = { step -= 1 },
+                                )
+                            } else {
+                                Review(c, s.task, s.form, noun, previewing, onEdit = { step = it })
+                            }
+                        }
+                        if (report == null && !picking) Problems(
+                            c, s.task, s.form, noun, showProblems, { showProblems = it },
+                            canMove = Places.position(s.task) != null,
+                            onNotHere = { report = ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE) },
+                            onMoved = { picking = true },
+                        ) { action ->
+                            switchNotice = null
+                            val outcome = (action as? ChoiceAction.Outcome)?.outcome
+                            val me = state.account?.userId
+                            if (outcome != null && outcome.deletesElement && me != null) {
+                                confirmation = Confirmation(
+                                    "Delete it from OpenStreetMap?",
+                                    TaskText.outcomeSummary(
+                                        outcome, s.form.work.element, s.task.id.value, me, null,
+                                        notDeletable = outcome.id in s.form.notDeletable,
+                                    ),
+                                    "Delete", c,
+                                ) { it.perform(action) }
+                            } else {
+                                c.perform(action)
+                            }
+                        }
+                    }
+                    is TaskScreen.Submitting -> Busy("Saving…")
+                    is TaskScreen.PreviewSaved -> {
+                        val realLine = when {
+                            s.action is ChoiceAction.Moved -> Wording.REPORTED_MOVED
+                            s.action.isReport -> Wording.REPORTED_NOT_HERE
+                            else -> Wording.saved((previewSaved.orEmpty() + s.task.id.value).size, noun)
+                        }
+                        Text(Wording.PREVIEW_NOT_SAVED, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Text(Wording.previewWouldSay(realLine))
+                        nextButtons(true)
+                    }
+                    is TaskScreen.Done -> {
+                        if (s.byOther) {
+                            Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
+                        } else if (s.action.isReport) {
+                            Text(
+                                "✓ " + if (s.action is ChoiceAction.Moved) Wording.REPORTED_MOVED else Wording.REPORTED_NOT_HERE,
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                             )
                         } else {
-                            Review(c, s.task, s.form, noun, onEdit = { step = it })
+                            // Counted once the effect above has recorded it; reading [counted] recomposes then.
+                            val today = checked.today(campaignId) + if (counted) 0 else 1
+                            Text(
+                                "✓ " + Wording.saved(today, noun),
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                            )
                         }
+                        nextButtons(true)
                     }
-                    if (report == null && !picking) Problems(
-                        c, s.task, s.form, noun, showProblems, { showProblems = it },
-                        canMove = Places.position(s.task) != null,
-                        onNotHere = { report = ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE) },
-                        onMoved = { picking = true },
-                    ) { action ->
-                        switchNotice = null
-                        val outcome = (action as? ChoiceAction.Outcome)?.outcome
-                        val me = state.account?.userId
-                        if (outcome != null && outcome.deletesElement && me != null) {
-                            confirmation = Confirmation(
-                                "Delete it from OpenStreetMap?",
-                                TaskText.outcomeSummary(
-                                    outcome, s.form.work.element, s.task.id.value, me, null,
-                                    notDeletable = outcome.id in s.form.notDeletable,
-                                ),
-                                "Delete", c,
-                            ) { it.perform(action) }
-                        } else {
-                            c.perform(action)
-                        }
-                    }
-                }
-                is TaskScreen.Submitting -> Busy("Saving…")
-                is TaskScreen.Done -> {
-                    if (s.byOther) {
-                        Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
-                    } else if (s.action.isReport) {
+                    is TaskScreen.Skipped -> {
                         Text(
-                            "✓ " + if (s.action is ChoiceAction.Moved) Wording.REPORTED_MOVED else Wording.REPORTED_NOT_HERE,
-                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                            if (s.uncertain) "The connection dropped, so we're not sure the skip went through. You don't need to do anything."
+                            else "Skipped. It stays open for someone else.",
                         )
+                        nextButtons(true)
+                    }
+                    is TaskScreen.TakenByOther -> {
+                        Text(Wording.takenByOther(noun))
+                        nextButtons(true)
+                    }
+                    is TaskScreen.StaleOwnLock -> {
+                        Text("Your last try on this ${noun.one} is still being processed. Wait a moment, then try again. Nothing was changed.")
+                        BigButton("Try again") { c.perform(s.action) }
+                        BackButton(noun, onBack)
+                    }
+                    is TaskScreen.CheckAgain -> if (s.checking) {
+                        Busy("Checking…")
                     } else {
-                        // Counted once the effect above has recorded it; reading [counted] recomposes then.
-                        val today = checked.today(campaignId) + if (counted) 0 else 1
-                        Text(
-                            "✓ " + Wording.saved(today, noun),
-                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    nextButtons(true)
-                }
-                is TaskScreen.Skipped -> {
-                    Text(
-                        if (s.uncertain) "The connection dropped, so we're not sure the skip went through. You don't need to do anything."
-                        else "Skipped. It stays open for someone else.",
-                    )
-                    nextButtons(true)
-                }
-                is TaskScreen.TakenByOther -> {
-                    Text(Wording.takenByOther(noun))
-                    nextButtons(true)
-                }
-                is TaskScreen.StaleOwnLock -> {
-                    Text("Your last try on this ${noun.one} is still being processed. Wait a moment, then try again. Nothing was changed.")
-                    BigButton("Try again") { c.perform(s.action) }
-                    BackButton(noun, onBack)
-                }
-                is TaskScreen.CheckAgain -> if (s.checking) {
-                    Busy("Checking…")
-                } else {
-                    Text("The connection dropped, so we're not sure your answers were saved. Tap Check again to find out. They weren't sent twice.")
-                    Text(s.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    BigButton("Check again", prominent = true) { c.recheck() }
-                    if (s.canResend) {
-                        BigButton("Send the same answers again") {
-                            confirmation = Confirmation(
-                                "Send the same answers again?",
-                                "This finishes your earlier try. Your answers are never saved twice.",
-                                "Send again", c,
-                            ) { it.resendSame() }
+                        Text("The connection dropped, so we're not sure your answers were saved. Tap Check again to find out. They weren't sent twice.")
+                        Text(s.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        BigButton("Check again", prominent = true) { c.recheck() }
+                        if (s.canResend) {
+                            BigButton("Send the same answers again") {
+                                confirmation = Confirmation(
+                                    "Send the same answers again?",
+                                    "This finishes your earlier try. Your answers are never saved twice.",
+                                    "Send again", c,
+                                ) { it.resendSame() }
+                            }
                         }
+                        BackButton(noun, onBack)
                     }
-                    BackButton(noun, onBack)
-                }
-                is TaskScreen.SignInRequired -> {
-                    Text(s.reason)
-                    BigButton("Sign in again", onClick = onSignIn)
-                    BackButton(noun, onBack)
-                }
-                is TaskScreen.ElementInUse -> {
-                    Text("OpenStreetMap wouldn't delete this ${noun.one} because something else uses it. Nothing was changed.")
-                    val me = state.account?.userId
-                    val plain = TaskWorkController.withoutDeletion(s.outcome)
-                    if (plain != null && me != null) {
-                        BigButton("Record “${s.outcome.label}” without deleting") {
-                            confirmation = Confirmation(
-                                "Record “${s.outcome.label}” without deleting?",
-                                TaskText.outcomeSummary(plain, s.form.work.element, s.task.id.value, me, null, notDeletable = true),
-                                "Confirm", c,
-                            ) { it.sendWithoutDeletion() }
+                    is TaskScreen.SignInRequired -> {
+                        Text(s.reason)
+                        BigButton("Sign in again", onClick = onSignIn)
+                        BackButton(noun, onBack)
+                    }
+                    is TaskScreen.ElementInUse -> {
+                        Text("OpenStreetMap wouldn't delete this ${noun.one} because something else uses it. Nothing was changed.")
+                        val me = state.account?.userId
+                        val plain = TaskWorkController.withoutDeletion(s.outcome)
+                        if (plain != null && me != null) {
+                            BigButton("Record “${s.outcome.label}” without deleting") {
+                                confirmation = Confirmation(
+                                    "Record “${s.outcome.label}” without deleting?",
+                                    TaskText.outcomeSummary(plain, s.form.work.element, s.task.id.value, me, null, notDeletable = true),
+                                    "Confirm", c,
+                                ) { it.sendWithoutDeletion() }
+                            }
                         }
+                        BackButton(noun, onBack)
                     }
-                    BackButton(noun, onBack)
                 }
             }
         }
@@ -393,18 +414,19 @@ private class Confirmation(
 )
 
 /** A controller is bound to one account's client; results of a replaced one are never shown. */
-private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun): TaskWorkController {
+private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean): TaskWorkController {
     val account = session.state.value.account
     val writer = if (session.config.writesAllowed && account != null && account.canWriteTasks) {
         Writer(account.userId, account.canEditOsm)
     } else null
-    return TaskWorkController(ClientTaskOps(session.client()), writer, scope, noun = noun)
+    return TaskWorkController(ClientTaskOps(session.client()), writer, scope, noun = noun, previewing = previewing)
 }
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
     TaskScreen.Loading, is TaskScreen.LoadFailed -> null
     is TaskScreen.NotAvailable -> screen.task
     is TaskScreen.Preview -> screen.task
+    is TaskScreen.PreviewSaved -> screen.task
     is TaskScreen.NoLongerNeeded -> screen.task
     is TaskScreen.CheckFailed -> screen.task
     is TaskScreen.Answering -> screen.task
@@ -450,7 +472,7 @@ private fun Question(
 }
 
 @Composable
-private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: Noun, onEdit: (Int) -> Unit) {
+private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: Noun, previewing: Boolean, onEdit: (Int) -> Unit) {
     Text("Check your answers", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     form.work.questions.forEachIndexed { index, q ->
         val answer = q.options.firstOrNull { it.id == form.answers[q.id] }
@@ -481,7 +503,9 @@ private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: No
         }
         // Answering is the intent: no confirmation dialog for the normal case.
         val action = ChoiceAction.Answers(form.answers)
-        BigButton(Wording.DONE, prominent = true, enabled = c.offers(task, form, action)) { c.perform(action) }
+        BigButton(if (previewing) Wording.DONE_PREVIEW else Wording.DONE, prominent = true, enabled = c.offers(task, form, action)) {
+            c.perform(action)
+        }
     }
 }
 
@@ -619,6 +643,7 @@ private fun ReportReview(
     mapped: LatLon?,
     noun: Noun,
     styleUrl: String,
+    previewing: Boolean,
     onDone: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -637,7 +662,7 @@ private fun ReportReview(
         Text(Wording.reportNotHere(noun), style = MaterialTheme.typography.titleMedium)
         Text(Wording.REPORT_NOT_HERE_NOTE)
     }
-    BigButton(Wording.DONE, prominent = true, onClick = onDone)
+    BigButton(if (previewing) Wording.DONE_PREVIEW else Wording.DONE, prominent = true, onClick = onDone)
     TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Back") }
 }
 

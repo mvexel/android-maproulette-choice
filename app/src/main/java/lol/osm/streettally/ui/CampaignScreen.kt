@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,9 +55,11 @@ import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignLink
 import lol.osm.streettally.campaign.CampaignPlaces
+import lol.osm.streettally.campaign.CampaignProgress
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.campaign.HeldTasks
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
@@ -65,6 +68,8 @@ import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.MapRouletteException
 
 /** One campaign: the tally, the nearest place still to check, and all its places on a map or in
  * a list sorted by distance. Checked places stay visible, greyed out. Mirrors the iOS screen. */
@@ -78,10 +83,19 @@ fun CampaignScreen(
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
     onPlace: (LocatedTask, CampaignPlaces, LatLon?) -> Unit,
+    /** Opened from a preview link (design/preview-mode.md): nothing is remembered on the phone. */
+    preview: Boolean = false,
+    onSignIn: () -> Unit = {},
+    /** Reopens the campaign without preview; [alreadyPublished]: it was published when the link opened. */
+    onOpenForReal: (alreadyPublished: Boolean) -> Unit = {},
+    /** A one-time note above the tally. */
+    notice: String? = null,
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
+    // Open places a guest's saved answer holds: counted as checked, not shown or offered.
+    var held by remember { mutableStateOf(emptySet<Long>()) }
     var status by remember { mutableStateOf("Loading…") }
     var failed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
@@ -91,6 +105,10 @@ fun CampaignScreen(
     var locationNote by remember { mutableStateOf<String?>(null) }
     var locationPermitted by remember { mutableStateOf(Locator.permitted(context)) }
     val scope = rememberCoroutineScope()
+    var phase by remember { mutableStateOf(if (preview) PreviewPhase.OPENING else null) }
+    // The welcome card in preview: shown on each visit, never stored (§4.4).
+    var previewWelcomeSeen by remember { mutableStateOf(false) }
+    val previewing = phase == PreviewPhase.ACTIVE || phase == PreviewPhase.PUBLISHED_NOW
 
     fun locate() {
         locationNote = "Finding your location…"
@@ -112,28 +130,57 @@ fun CampaignScreen(
         if (Locator.permitted(context)) locate() else permission.launch(Locator.PERMISSIONS)
     }
     // First visit: the welcome card explains location before the system asks.
-    var sheet by remember { mutableStateOf(if (prefs.hasSeenWelcome(campaignId)) null else Sheet.WELCOME) }
+    var sheet by remember { mutableStateOf(if (preview || prefs.hasSeenWelcome(campaignId)) null else Sheet.WELCOME) }
     LaunchedEffect(Unit) {
+        if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
         if (sheet == null) askLocation()
     }
+    LaunchedEffect(phase) {
+        if (phase == PreviewPhase.ACTIVE && !previewWelcomeSeen) sheet = Sheet.WELCOME
+    }
     fun closeWelcome() {
-        val first = !prefs.hasSeenWelcome(campaignId)
-        prefs.markWelcomeSeen(campaignId)
+        val first = if (preview) !previewWelcomeSeen else !prefs.hasSeenWelcome(campaignId)
+        if (preview) previewWelcomeSeen = true else prefs.markWelcomeSeen(campaignId)
         sheet = null
         if (first || origin == null) askLocation()
     }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
+        if (preview && state.account == null) {
+            // Drafts are readable only by their organizers (§3): a guest or signed out can't preview.
+            phase = PreviewPhase.SIGN_IN_NEEDED
+            return@LaunchedEffect
+        }
         loading = true
         failed = false
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
+            if (preview) {
+                val published = Campaigns.isPublished(loaded.challenge)
+                if (published && !previewing) {
+                    // Published already: open it normally, with a one-time note (§3 step 3).
+                    onOpenForReal(true)
+                    return@LaunchedEffect
+                }
+                phase = if (published) PreviewPhase.PUBLISHED_NOW else PreviewPhase.ACTIVE
+            }
+            // Preview hides the tally, so held places aren't looked up.
+            val heldNow = if (preview) emptySet() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
-            status = if (Campaigns.shown(loaded.tasks).isEmpty()) "Nothing to check in this campaign yet." else ""
+            held = heldNow
+            status = when {
+                Campaigns.shown(loaded.tasks).isNotEmpty() -> ""
+                preview -> Wording.previewNoPlaces(loaded.noun)
+                else -> "Nothing to check in this campaign yet."
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (preview && !previewing && refused(e)) {
+                phase = PreviewPhase.NO_ACCESS
+                return@LaunchedEffect
+            }
             if (places == null) status = errorMessage(e)
             failed = true
         } finally {
@@ -143,11 +190,13 @@ fun CampaignScreen(
 
     val current = places
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
-    val shown = current?.let { Campaigns.shown(it.tasks) }.orEmpty()
-    val done = shown.filter { it.isDone }.map { it.id }.toSet()
-    val open = Places.sorted(shown.filter { it.isOpen }, origin)
-    val checked = Places.sorted(shown.filter { it.isDone }, origin)
-    fun open(task: LocatedTask) { current?.let { onPlace(task, it, origin) } }
+    val tally = remember(current, held) { CampaignProgress(current?.tasks.orEmpty(), held) }
+    val shown = tally.shown
+    val done = tally.done
+    val open = Places.sorted(tally.open, origin)
+    val checked = Places.sorted(shown.filter { it.id in done }, origin)
+    // Held places are not offered by "Next nearest" either.
+    fun open(task: LocatedTask) { current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) } }
 
     Scaffold(
         topBar = {
@@ -159,34 +208,68 @@ fun CampaignScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { sheet = Sheet.WELCOME }) {
+                    if (preview) {
+                        // Reloads the draft's places and questions after an edit in the admin (§4.3).
+                        IconButton(onClick = { reload++ }, enabled = previewing && !loading) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                        }
+                    }
+                    IconButton(onClick = { sheet = Sheet.WELCOME }, enabled = !preview || previewing) {
                         Icon(Icons.Filled.Info, contentDescription = "About this campaign")
                     }
-                    IconButton(onClick = { sheet = Sheet.SHARE }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share campaign")
+                    // A preview link isn't for participants (§4.2).
+                    if (!preview) {
+                        IconButton(onClick = { sheet = Sheet.SHARE }) {
+                            Icon(Icons.Filled.Share, contentDescription = "Share campaign")
+                        }
                     }
                 },
             )
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (previewing) {
+                PreviewBanner(
+                    published = phase == PreviewPhase.PUBLISHED_NOW,
+                    onExit = onBack,
+                    onOpenForReal = { onOpenForReal(false) },
+                )
+            }
+            when (phase) {
+                PreviewPhase.SIGN_IN_NEEDED -> {
+                    PreviewCard(Wording.PREVIEW_SIGN_IN_TITLE, Wording.PREVIEW_SIGN_IN_TEXT,
+                        Wording.PREVIEW_SIGN_IN to onSignIn, Wording.CANCEL to onBack)
+                    return@Column
+                }
+                PreviewPhase.NO_ACCESS -> {
+                    val account = Wording.account(state.account?.userId, state.account?.displayName)
+                    PreviewCard(Wording.PREVIEW_NO_ACCESS_TITLE, Wording.previewNoAccessText(account),
+                        Wording.SWITCH_ACCOUNT to onSignIn, Wording.CLOSE to onBack)
+                    return@Column
+                }
+                else -> Unit
+            }
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (shown.isNotEmpty()) {
+                notice?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // Tally and progress are hidden in preview: nothing changes them (§4.2).
+                if (tally.total > 0 && !preview) {
                     Text(
-                        Wording.progress(done.size, shown.size, noun),
+                        Wording.progress(tally.checked, tally.total, noun),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     LinearProgressIndicator(
-                        progress = { done.size.toFloat() / shown.size },
+                        progress = { tally.checked.toFloat() / tally.total },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     val today = checkedLog.today(campaignId)
                     if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
-                } else {
+                } else if (tally.total == 0 || loading || failed) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (loading) CircularProgressIndicator()
                         Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -198,7 +281,7 @@ fun CampaignScreen(
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                     }
-                } else if (shown.isNotEmpty()) {
+                } else if (tally.total > 0) {
                     Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                 }
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -238,6 +321,7 @@ fun CampaignScreen(
             noun = noun,
             signedIn = state.account != null,
             onClose = { closeWelcome() },
+            previewingAs = if (previewing) Wording.account(state.account?.userId, state.account?.displayName) ?: "" else null,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
         null -> Unit
@@ -245,6 +329,35 @@ fun CampaignScreen(
 }
 
 private enum class Sheet { WELCOME, SHARE }
+
+/** Where a preview link stands (design/preview-mode.md §3, §5). */
+private enum class PreviewPhase {
+    /** Reading the campaign to tell a draft from a published one. */
+    OPENING,
+    /** Not signed in with OpenStreetMap: drafts need an organizer. */
+    SIGN_IN_NEEDED,
+    /** Signed in, but the draft read was refused (403 or 404). */
+    NO_ACCESS,
+    ACTIVE,
+    /** A refresh found the campaign published. Preview answers are still never sent. */
+    PUBLISHED_NOW,
+}
+
+/** A draft's read refused (§6: 404 for anyone without organize rights, like an unknown id). */
+private fun refused(error: Exception): Boolean = when ((error as? MapRouletteException)?.kind) {
+    ErrorKind.NOT_FOUND, ErrorKind.PERMISSION, ErrorKind.AUTHENTICATION -> true
+    else -> false
+}
+
+@Composable
+private fun PreviewCard(title: String, text: String, primary: Pair<String, () -> Unit>, secondary: Pair<String, () -> Unit>) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(text)
+        Button(onClick = primary.second, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(primary.first) }
+        TextButton(onClick = secondary.second, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(secondary.first) }
+    }
+}
 
 @Composable
 private fun PlaceList(

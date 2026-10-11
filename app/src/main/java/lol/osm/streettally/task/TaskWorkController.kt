@@ -61,6 +61,18 @@ class ClientTaskOps(private val client: MapRouletteClient) : TaskOps {
     override suspend fun skipTask(id: TaskId) = client.skipTask(id)
 }
 
+/** Preview mode's ops (design/preview-mode.md §2): reads pass through; every write is refused
+ * here, before the SDK, so a preview can't lock, skip or answer even if a screen asks it to. */
+class PreviewTaskOps(private val reads: TaskOps) : TaskOps {
+    override fun choiceOutcomes(task: Task) = reads.choiceOutcomes(task)
+    override suspend fun getTask(id: TaskId) = reads.getTask(id)
+    override suspend fun getChallenge(task: Task) = reads.getChallenge(task)
+    override suspend fun checkChoice(id: TaskId) = reads.checkChoice(id)
+    override suspend fun submitChoice(task: Task, submission: ChoiceSubmission): ChoiceResult =
+        throw MapRouletteException(ErrorKind.PERMISSION)
+    override suspend fun skipTask(id: TaskId): Unit = throw MapRouletteException(ErrorKind.PERMISSION)
+}
+
 sealed interface ChoiceAction {
     /** Question id → option id; questions left out are "Can't tell". */
     data class Answers(val byQuestion: Map<String, String>) : ChoiceAction
@@ -100,6 +112,8 @@ sealed interface TaskScreen {
     data class NotAvailable(val task: Task, val challenge: Challenge, val reason: String) : TaskScreen
     /** Signed out or read-only: the questions without actions. No eligibility check is made. */
     data class Preview(val task: Task, val challenge: Challenge, val work: TaskWork.Choice) : TaskScreen
+    /** Campaign preview mode: what would have been sent. Nothing was. */
+    data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** Ineligible (stale) at open or submit. No actions. */
     data class NoLongerNeeded(val task: Task, val challenge: Challenge) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds. */
@@ -141,15 +155,20 @@ sealed interface TaskScreen {
  * State changes happen on [scope]'s thread (the main thread in the app).
  */
 class TaskWorkController(
-    private val ops: TaskOps,
-    private val writer: Writer?,
+    ops: TaskOps,
+    writer: Writer?,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** What the campaign checks ("stop", "bench"), for participant messages. */
     private val noun: Noun = Noun.PLACE,
     /** Diagnostics without credentials or server text (debug builds only in the app). */
     private val log: (String) -> Unit = {},
+    /** Campaign preview mode (design/preview-mode.md): every question is asked, with no eligibility
+     * check, and nothing is ever sent. There is no writer and the ops refuse writes. */
+    val previewing: Boolean = false,
 ) {
+    private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
+    private val writer: Writer? = if (previewing) null else writer
     private val mutableState = MutableStateFlow<TaskScreen>(TaskScreen.Loading)
     val state: StateFlow<TaskScreen> = mutableState
     private var job: Job? = null
@@ -161,7 +180,8 @@ class TaskWorkController(
     val busy: Boolean
         get() = state.value.let { it is TaskScreen.Submitting || (it is TaskScreen.CheckAgain && it.checking) }
 
-    val canEditOsm: Boolean get() = writer?.canEditOsm == true
+    /** In preview, as if it could: the organizer sees every answer the campaign offers. */
+    val canEditOsm: Boolean get() = previewing || writer?.canEditOsm == true
 
     fun load(id: TaskId) {
         if (busy) return
@@ -183,6 +203,10 @@ class TaskWorkController(
         val work = task.work()
         if (task.mobileSupport() != MobileSupport.IN_PLACE || work !is TaskWork.Choice) {
             return TaskScreen.NotAvailable(task, challenge, TaskText.unavailableReason(task))
+        }
+        if (previewing) {
+            // Every question, every outcome: the draft is tried at a desk, not against current OSM.
+            return TaskScreen.Answering(task, challenge, form(work, ops.choiceOutcomes(task), deleteAllowed = true))
         }
         if (writer == null) return TaskScreen.Preview(task, challenge, work)
         val eligibility = try {
@@ -216,8 +240,10 @@ class TaskWorkController(
 
     /** Whether [action] may be offered on [form]'s task for this writer. */
     fun offers(task: Task, form: ChoiceForm, action: ChoiceAction): Boolean {
-        val w = writer ?: return false
-        if (action.editsOsm && !w.canEditOsm) return false
+        if (!previewing) {
+            val w = writer ?: return false
+            if (action.editsOsm && !w.canEditOsm) return false
+        }
         return when (action) {
             is ChoiceAction.Answers -> action.byQuestion.isNotEmpty() && action.byQuestion.all { (q, o) ->
                 form.work.questions.any { it.id == q && it.options.any { option -> option.id == o } }
@@ -248,6 +274,12 @@ class TaskWorkController(
     }
 
     private fun submit(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
+        if (previewing) {
+            // Nothing is sent, and nothing changed for maps and lists. A skip only moves on.
+            mutableState.value = if (action == ChoiceAction.Skip) TaskScreen.Skipped(task, challenge, uncertain = false)
+            else TaskScreen.PreviewSaved(task, challenge, form, action)
+            return
+        }
         val me = writer?.me ?: return
         changed = true // Before publishing: observers read it while rendering Submitting.
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
