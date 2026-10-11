@@ -15,7 +15,7 @@ class CheckedLogTest {
 
     @Test fun countsTodayPerCampaignAndRemembersDone() {
         val clock = MovableClock(Instant.parse("2026-10-11T10:00:00Z"))
-        val log = CheckedLog(clock)
+        val log = CheckedLog(clock = clock)
         log.record(3, 10)
         log.record(3, 11)
         log.record(3, 11)
@@ -26,5 +26,19 @@ class CheckedLogTest {
         assertEquals(0, log.today(3))
         assertEquals(setOf(10L, 11L), log.done(3))
         assertEquals(0, log.today(99))
+    }
+
+    @Test fun todaysCountOutlivesTheProcessButDoneDoesNot() {
+        val clock = MovableClock(Instant.parse("2026-10-11T10:00:00Z"))
+        val counts = CheckedLog.Counts.inMemory()
+        CheckedLog(counts, clock).apply {
+            record(3, 10)
+            record(3, 11)
+        }
+        val restarted = CheckedLog(counts, clock)
+        assertEquals(2, restarted.today(3))
+        assertEquals(emptySet<Long>(), restarted.done(3))
+        clock.now = Instant.parse("2026-10-12T10:00:00Z")
+        assertEquals(0, restarted.today(3))
     }
 }
