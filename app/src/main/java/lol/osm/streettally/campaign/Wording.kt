@@ -22,7 +22,8 @@ data class Noun(val one: String, val many: String) {
     companion object {
         val PLACE = Noun("place", "places")
 
-        private val known = listOf(
+        /** Key and value of the identity tag; a null value matches any (Woodbine's entrance=main|yes). */
+        private val known = listOf<Triple<String, String?, Noun>>(
             Triple("highway", "bus_stop", Noun("stop", "stops")),
             Triple("public_transport", "platform", Noun("stop", "stops")),
             Triple("railway", "platform", Noun("platform", "platforms")),
@@ -34,10 +35,11 @@ data class Noun(val one: String, val many: String) {
             Triple("amenity", "shelter", Noun("shelter", "shelters")),
             Triple("leisure", "playground", Noun("playground", "playgrounds")),
             Triple("leisure", "park", Noun("park", "parks")),
+            Triple("entrance", null, Noun("entrance", "entrances")),
         )
 
         fun from(match: Map<String, String>): Noun =
-            known.firstOrNull { (key, value, _) -> match[key] == value }?.third ?: PLACE
+            known.firstOrNull { (key, value, _) -> match[key] != null && (value == null || match[key] == value) }?.third ?: PLACE
 
         /** The noun for a campaign: from the first choice task's identity guard. */
         fun from(tasks: List<Task>): Noun {
