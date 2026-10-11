@@ -89,6 +89,7 @@ fun CampaignScreen(
     var showList by rememberSaveable { mutableStateOf(false) }
     var origin by remember { mutableStateOf<LatLon?>(null) }
     var locationNote by remember { mutableStateOf<String?>(null) }
+    var locationPermitted by remember { mutableStateOf(Locator.permitted(context)) }
     val scope = rememberCoroutineScope()
 
     fun locate() {
@@ -102,7 +103,10 @@ fun CampaignScreen(
             }
         }
     }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { locate() }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        locationPermitted = Locator.permitted(context)
+        locate()
+    }
 
     fun askLocation() {
         if (Locator.permitted(context)) locate() else permission.launch(Locator.PERMISSIONS)
@@ -216,6 +220,7 @@ fun CampaignScreen(
                         styleUrl = session.config.mapStyleUrl,
                         places = shown,
                         done = done,
+                        locationPermitted = locationPermitted,
                         onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen }?.let(::open) },
                         modifier = Modifier.fillMaxSize(),
                     )

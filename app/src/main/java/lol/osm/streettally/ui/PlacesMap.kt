@@ -1,9 +1,11 @@
 package lol.osm.streettally.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.RectF
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -12,10 +14,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
@@ -41,18 +47,23 @@ fun PlacesMap(
     styleUrl: String,
     places: List<LocatedTask>,
     done: Set<Long>,
+    locationPermitted: Boolean,
     onPlace: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val holder = remember { PlacesMapHolder(context, styleUrl) }
     holder.onPlace = onPlace
+    LaunchedEffect(locationPermitted) { holder.syncLocation() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> holder.view.onStart()
-                Lifecycle.Event.ON_RESUME -> holder.view.onResume()
+                Lifecycle.Event.ON_RESUME -> {
+                    holder.view.onResume()
+                    holder.syncLocation()
+                }
                 Lifecycle.Event.ON_PAUSE -> holder.view.onPause()
                 Lifecycle.Event.ON_STOP -> holder.view.onStop()
                 else -> Unit
@@ -64,10 +75,13 @@ fun PlacesMap(
             holder.view.onDestroy()
         }
     }
-    AndroidView(factory = { holder.view }, modifier = modifier, update = { holder.show(places, done) })
+    AndroidView(factory = { holder.view }, modifier = modifier, update = {
+        holder.show(places, done)
+        holder.syncLocation()
+    })
 }
 
-private class PlacesMapHolder(context: Context, styleUrl: String) {
+private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     val view: MapView
     var onPlace: (Long) -> Unit = {}
     private var map: MapLibreMap? = null
@@ -94,6 +108,7 @@ private class PlacesMapHolder(context: Context, styleUrl: String) {
                     ),
                 )
                 this.source = source
+                syncLocation()
                 pending?.let { (places, done) -> show(places, done) }
             }
             map.addOnMapClickListener { latLng ->
@@ -107,6 +122,28 @@ private class PlacesMapHolder(context: Context, styleUrl: String) {
                 true
             }
         }
+    }
+
+    @SuppressLint("MissingPermission") // Rechecked before activating or enabling location.
+    fun syncLocation() {
+        val map = map ?: return
+        val style = map.style?.takeIf { it.isFullyLoaded } ?: return
+        val component = map.locationComponent
+        val allowed = Locator.permitted(context)
+        if (!allowed) {
+            if (component.isLocationComponentActivated) component.isLocationComponentEnabled = false
+            return
+        }
+        if (!component.isLocationComponentActivated) {
+            component.activateLocationComponent(
+                LocationComponentActivationOptions.builder(context, style)
+                    .useDefaultLocationEngine(true)
+                    .build(),
+            )
+            component.cameraMode = CameraMode.NONE
+            component.renderMode = RenderMode.NORMAL
+        }
+        if (!component.isLocationComponentEnabled) component.isLocationComponentEnabled = true
     }
 
     fun show(places: List<LocatedTask>, done: Set<Long>) {
