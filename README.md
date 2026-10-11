@@ -24,6 +24,16 @@ credentials) and numbered with the CI run, so a newer test APK installs over the
 the sign-in. A manual run of the CI workflow with `live_writes` also builds a stage APK that sends
 answers to stage (`street-tally-stage-live-writes-apk`); stage edits the real OpenStreetMap.
 
+## Releases
+
+Pilot installs come from GitHub Releases: the `street-tally.apk` asset at
+`https://github.com/mvexel/android-maproulette-choice/releases/latest/download/street-tally.apk`.
+Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`, which builds the `prod` flavor
+(live writes, guests on), signs it with the release key from the repository secrets, and creates a
+draft release with the notes from `.github/release/notes.md` (the tag message's body becomes
+"What's new"). Publishing the draft makes it the latest. Without the key secrets or the
+`MAPROULETTE_PROD_OAUTH_CLIENT_ID` variable the workflow stops before building.
+
 ## Campaign links
 
 `mrchoice://challenge/<id>` opens a campaign. The share screen's QR code points at
@@ -37,6 +47,7 @@ opens the page, not the app, until App Links are set up (an `assetlinks.json` on
 | --- | --- | --- | --- |
 | `dev` | `https://mr-api.osm.lol` | development OSM | yes |
 | `stage` | `https://mr-stage.osm.lol` | openstreetmap.org | only with `-PmaprouletteAllowLiveWrites=true` |
+| `prod` | `https://mr-prod.osm.lol` | openstreetmap.org | only with `-PmaprouletteAllowLiveWrites=true` |
 
 Both flavors share the application id `lol.osm.maproulette.choice` and the OAuth callback
 `lol.osm.maproulette.choice:/oauth2redirect` of the iOS app's public client

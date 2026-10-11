@@ -33,8 +33,9 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
-      - name: Assemble (dev and stage), unit tests, lint
-        run: ./gradlew assembleDevDebug assembleStageDebug testDevDebugUnitTest lintDevDebug -PversionCode=${{ github.run_number }} --console=plain
+      # assembleProdRelease (unsigned here) checks the release build the release workflow signs.
+      - name: Assemble (dev and stage debug, prod release), unit tests, lint
+        run: ./gradlew assembleDevDebug assembleStageDebug assembleProdRelease testDevDebugUnitTest lintDevDebug -PversionCode=${{ github.run_number }} --console=plain
       # PNGs of the report screens from the snapshot tests (ReportSnapshotTest), for design review.
       - name: Upload report screen snapshots
         if: ${{ !cancelled() }}
