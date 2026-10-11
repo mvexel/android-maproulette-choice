@@ -103,13 +103,14 @@ class AppSessionTest {
         assertEquals(setOf("tasks:read", "tasks:write", "osm:tagfix"), live.requestedScopes)
     }
 
-    @Test fun closingTheBrowserSaysNothing() = runTest {
+    // As iOS (Iris, parity row 15): a sign-in that didn't finish says so.
+    @Test fun closingTheBrowserSaysSignInDidntFinish() = runTest {
         val session = AppSession(config(), InMemoryCredentialStore(), Backend(writeScopes))
         session.restore()
         session.signIn { throw IllegalStateException("browser closed") }
         val state = session.state.value
         assertNull(state.account)
-        assertNull(state.message)
+        assertEquals("Sign-in didn't finish. Please try again.", state.message)
         assertFalse(state.busy)
     }
 
@@ -135,10 +136,10 @@ class AppSessionTest {
     }
 
     @Test fun failureMessages() {
-        assertNull(AppSession.failureMessage(SignInFailure.Canceled))
+        assertEquals("Sign-in didn't finish. Please try again.", AppSession.failureMessage(SignInFailure.Canceled))
         assertNull(AppSession.failureMessage(SignInFailure.Superseded))
         assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.TokenExchange))
         assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.ProviderError("server_error")))
-        assertEquals("Sign-in was declined on OpenStreetMap.", AppSession.failureMessage(SignInFailure.Denied))
+        assertEquals("Sign-in was canceled on OpenStreetMap.", AppSession.failureMessage(SignInFailure.Denied))
     }
 }

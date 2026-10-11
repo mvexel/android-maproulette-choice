@@ -17,7 +17,6 @@ import lol.osm.streettally.auth.SessionState
 internal fun AccountSection(
     state: SessionState,
     needsReconsent: Boolean,
-    privateSignIn: Boolean,
     /** Signed out in a build where guests answer first. */
     guestsAvailable: Boolean,
     onSignIn: () -> Unit,
@@ -48,7 +47,7 @@ internal fun AccountSection(
     }
     if (account == null) {
         Text(
-            accountHint(privateSignIn),
+            ACCOUNT_HINT,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

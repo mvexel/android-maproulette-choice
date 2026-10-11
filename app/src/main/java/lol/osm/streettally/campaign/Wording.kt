@@ -80,7 +80,8 @@ object Wording {
             " Choose ${noun.aOne} on the map or in the list."
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
-        "Your location stays on your phone. We use it to find the nearest ${noun.many}."
+        "We use your location to find the nearest ${noun.many}. It stays on your phone, unless you tap " +
+            "“I'm standing at it” to show where ${noun.aOne} has moved."
 
     /** Guests' answers reach OSM only after they finish signing up, under the username they pick then. */
     const val GUEST_ANSWERS_ARE_PUBLIC =

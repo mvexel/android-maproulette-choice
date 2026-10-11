@@ -13,8 +13,7 @@ internal fun accountLine(state: SessionState, guestsAvailable: Boolean = false):
         state.busy -> if (account == null) "Signing in…" else "Signing out…"
         account == null && guestsAvailable -> Wording.noAccountNeeded()
         account == null -> "To save answers you'll sign in with a free OpenStreetMap account."
-        account.displayName != null -> "Signed in as ${account.displayName}."
-        else -> "Signed in."
+        else -> Wording.signedInAs(account.displayName)
     }
 }
 
@@ -26,8 +25,4 @@ internal fun signInLabel(signedIn: Boolean, needsReconsent: Boolean, guestsAvail
     else -> "Sign out"
 }
 
-internal fun accountHint(privateSignIn: Boolean): String = if (privateSignIn) {
-    "Sign-in opens a private browser tab, so you can choose any OpenStreetMap account."
-} else {
-    "Your browser keeps you signed in to OpenStreetMap. To use another account, sign out on openstreetmap.org in your browser first."
-}
+internal const val ACCOUNT_HINT = "You'll sign in on openstreetmap.org. No account yet? It's free to create one there."

@@ -253,7 +253,7 @@ class AppSession(
     }
 
     companion object {
-        const val TRY_AGAIN = "Couldn't sign in. Please try again."
+        const val TRY_AGAIN = "Sign-in didn't finish. Please try again."
         const val SIGNED_OUT_AGAIN = "You were signed out. Please sign in again."
         const val SIGNED_OUT_HERE_ONLY = "Signed out, but this phone couldn't forget the sign-in. Sign out again to be sure."
 
@@ -262,8 +262,10 @@ class AppSession(
 
         /** Plain words for a failed sign-in; null when nothing needs saying (closed the browser). */
         fun failureMessage(failure: SignInFailure): String? = when (failure) {
-            SignInFailure.Canceled, SignInFailure.Superseded -> null
-            SignInFailure.Denied -> "Sign-in was declined on OpenStreetMap."
+            // A newer sign-in replaced this one: that one reports.
+            SignInFailure.Superseded -> null
+            SignInFailure.Canceled -> TRY_AGAIN
+            SignInFailure.Denied -> "Sign-in was canceled on OpenStreetMap."
             SignInFailure.Storage -> "Couldn't keep you signed in on this phone. Please try again."
             SignInFailure.CallbackMismatch, SignInFailure.TokenExchange, SignInFailure.AccountLookup,
             is SignInFailure.ProviderError -> TRY_AGAIN

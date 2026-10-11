@@ -104,7 +104,6 @@ fun CampaignScreen(
     var reload by remember { mutableStateOf(0) }
     var showList by rememberSaveable { mutableStateOf(false) }
     var origin by remember { mutableStateOf<LatLon?>(null) }
-    var locationNote by remember { mutableStateOf<String?>(null) }
     var locationPermitted by remember { mutableStateOf(Locator.permitted(context)) }
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf(if (preview) PreviewPhase.OPENING else null) }
@@ -112,15 +111,10 @@ fun CampaignScreen(
     var previewWelcomeSeen by remember { mutableStateOf(false) }
     val previewing = phase == PreviewPhase.ACTIVE || phase == PreviewPhase.PUBLISHED_NOW
 
+    // Without a location, the line above Map/List says so (Iris, parity row 12); the list has no notes.
     fun locate() {
-        locationNote = "Finding your location…"
         scope.launch {
-            locationNote = when (val result = Locator.locate(context)) {
-                is LocateResult.Found -> { origin = result.position; "Nearest first." }
-                LocateResult.Denied -> "Location is off, so the list isn't sorted by distance."
-                LocateResult.Unavailable -> "Your location isn't available right now, so the list isn't sorted by distance."
-                LocateResult.TimedOut -> "No location yet, so the list isn't sorted by distance."
-            }
+            (Locator.locate(context) as? LocateResult.Found)?.let { origin = it.position }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -333,7 +327,7 @@ fun CampaignScreen(
                         onRefresh = { reload++ },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        PlaceList(open, look, checked, tally.pending, origin, locationNote, noun) { open(it) }
+                        PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
                     }
                 } else {
                     PlacesMap(
@@ -412,7 +406,6 @@ private fun PlaceList(
     checked: List<LocatedTask>,
     pending: Set<Long>,
     origin: LatLon?,
-    locationNote: String?,
     noun: lol.osm.streettally.campaign.Noun,
     onOpen: (LocatedTask) -> Unit,
 ) {
@@ -421,14 +414,6 @@ private fun PlaceList(
         items(open, key = { it.id }) { task ->
             PlaceRow(task, origin, noun, done = false, onClick = { onOpen(task) })
             HorizontalDivider()
-        }
-        locationNote?.let {
-            item {
-                Text(
-                    it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
         }
         if (look.isNotEmpty()) item { SectionHeader(Wording.NEEDS_LOOK) }
         items(look, key = { it.id }) { task ->

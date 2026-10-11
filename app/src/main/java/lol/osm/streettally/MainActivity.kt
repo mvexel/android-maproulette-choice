@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (savedInstanceState == null) linked = campaignFrom(intent)
         val app = application as StreetTallyApp
-        val privateSignIn = BrowserSignIn.privateTabsSupported(this)
         val authenticate: suspend (String) -> String = { url -> BrowserSignIn.authenticate(this, url) }
         setContent {
             StreetTallyTheme {
@@ -77,7 +76,6 @@ class MainActivity : ComponentActivity() {
                     id == null -> PickerScreen(
                         session = app.session,
                         appScope = app.scope,
-                        privateSignIn = privateSignIn,
                         authenticate = authenticate,
                         onCampaign = {
                             previewing = false

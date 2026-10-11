@@ -23,7 +23,7 @@ class AccountTextTest {
             accountLine(signedOut, guestsAvailable = true),
         )
         val named = signedOut.copy(account = MobileAccount(1, setOf("tasks:read"), 1, "rosa_slc"))
-        assertEquals("Signed in as rosa_slc.", accountLine(named))
-        assertEquals("Signed in.", accountLine(named.copy(account = named.account!!.copy(displayName = null))))
+        assertEquals("You're signed in as rosa_slc.", accountLine(named))
+        assertEquals("You're signed in with OpenStreetMap.", accountLine(named.copy(account = named.account!!.copy(displayName = null))))
     }
 }
