@@ -216,49 +216,52 @@ object Wording {
         return "$who$onMap New answers go straight on the map from now on."
     }
 
-    /** "I already use OpenStreetMap" with saved answers (UX §1.3, §3.4–3.5): the claim was accepted. */
+    /** Phone claim lines (B5, Iris's list in copy-fixes-2026-10-11.md): the ones about the claim
+     * itself start by naming the account, since answers can turn out to be linked to another one. */
+    fun signedInAs(displayName: String?): String =
+        displayName?.let { "You're signed in as $it." } ?: "You're signed in with OpenStreetMap."
+
+    /** "I already use OpenStreetMap" with saved answers: the claim was accepted. */
     fun claimStarted(claim: GuestClaim): String {
-        val who = "You're signed in as ${claim.account.displayName}."
         val n = claim.pendingCount
-        val saved = if (n == 1) "your saved answer" else "your $n saved answers"
-        return when {
-            n == 0 -> "$who New answers go straight on the map from now on."
-            claim.state == ClaimState.WAITING -> "$who ${saved.replaceFirstChar { it.uppercase() }} " +
-                "${if (n == 1) "is" else "are"} safe. ${if (n == 1) "It goes" else "They go"} on the map automatically " +
-                "as soon as we can. Nothing else to do."
-            else -> "$who Putting $saved on the map…"
+        val rest = when {
+            n == 0 -> "New answers go straight on the map from now on."
+            claim.state == ClaimState.WAITING ->
+                if (n == 1) "Your saved answer is now linked to your account. It'll go on the map later."
+                else "Your $n saved answers are now linked to your account. They'll go on the map later."
+            n == 1 -> "Putting your saved answer on the map…"
+            else -> "Putting your $n saved answers on the map…"
         }
+        return "${signedInAs(claim.account.displayName)} $rest"
     }
 
-    /** The publish job's progress, then its result (UX §3.4–3.5). */
+    /** The publish job's progress, then its result. Counts come from the job, never from the claim. */
     fun claimProgress(status: ClaimStatus): String {
         val onMap = status.published
         val notAdded = status.skipped + status.superseded
-        fun answers(n: Int) = if (n == 1) "1 answer" else "$n answers"
         return when (status.state) {
-            ClaimState.QUEUED, ClaimState.RUNNING ->
-                "Putting your answers on the map… $onMap of ${status.total}"
-            ClaimState.WAITING ->
-                "Your saved answers are safe. They go on the map automatically as soon as we can. Nothing else to do."
-            ClaimState.DONE, ClaimState.FAILED -> buildString {
-                append(if (status.failed > 0) "$onMap of ${status.total} are on the map." else "✓ ${answers(onMap)} ${if (onMap == 1) "is" else "are"} on the map.")
-                if (notAdded > 0) {
-                    append(
-                        if (notAdded == 1) " 1 wasn't added, because someone updated it after you checked. Nothing to do; it's up to date."
-                        else " $notAdded weren't added, because someone updated them after you checked. Nothing to do; they're up to date.",
-                    )
+            ClaimState.QUEUED, ClaimState.RUNNING -> "Putting your answers on the map… $onMap of ${status.total}"
+            ClaimState.WAITING -> "Your saved answers are now linked to your account. They'll go on the map later."
+            ClaimState.DONE, ClaimState.FAILED -> when {
+                status.failed > 0 -> "$onMap of ${status.total} are on the map. The rest are still saved."
+                else -> buildString {
+                    append(if (onMap == 1) "✓ 1 answer is on the map." else "✓ $onMap answers are on the map.")
+                    if (notAdded == 1) append(" 1 wasn't added, because someone changed that place on the map after you checked.")
+                    if (notAdded > 1) append(" $notAdded weren't added, because someone changed those places on the map after you checked.")
                 }
-                if (status.failed > 0) append(" Something went wrong with the rest. They stay saved, and nothing will be added twice.")
             }
         }
     }
 
-    /** OpenStreetMap needs a fresh sign-in before the answers can be published (UX §3.5). */
-    const val CLAIM_SIGN_IN_AGAIN =
-        "Your saved answers are safe. OpenStreetMap needs you to sign in again to put them on the map."
-    /** The claim didn't go through (offline, or the server was busy); it's tried again on the next launch. */
-    const val CLAIM_LATER =
-        "You're signed in. Your saved answers are safe, and we'll put them on the map the next time you open Street Tally."
+    /** The guest is gone: expired, deleted, or claimed by another account. */
+    fun claimGone(displayName: String?): String = "${signedInAs(displayName)} We couldn't find your saved answers. " +
+        "They may have expired, or they're linked to a different OpenStreetMap account."
+    /** OpenStreetMap needs a fresh sign-in before the answers can be published. */
+    fun claimSignInAgain(displayName: String?): String =
+        "${signedInAs(displayName)} Sign in again so we can put your saved answers on the map."
+    /** The claim didn't go through (offline, or the server was busy); tried again on the next launch. */
+    fun claimLater(displayName: String?): String =
+        "${signedInAs(displayName)} Your answers are still saved. We'll try again next time you open the app."
 
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =

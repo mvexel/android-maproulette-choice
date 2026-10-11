@@ -31,7 +31,11 @@ internal fun AccountSection(
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
     state.message?.let {
-        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        Text(
+            it,
+            color = if (state.messageCalm) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
     }
     val enabled = state.restored && !state.busy
     when {

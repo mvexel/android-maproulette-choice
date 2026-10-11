@@ -95,13 +95,15 @@ class GuestClaimTest {
         assertEquals(1, backend.claimPosts)
         assertEquals(2, backend.calls.count { it == "GET /api/v2/mobile-claim/9" })
         assertEquals("✓ 3 answers are on the map.", state.message)
+        assertTrue("good news isn't shown as an error", state.messageCalm)
     }
 
     @Test fun theFirstNoteSaysTheAnswersAreGoingOnTheMap() {
         val claim = org.maproulette.sdk.GuestClaim(9, org.maproulette.sdk.ClaimState.QUEUED, 12, org.maproulette.sdk.ClaimedAccount("rosa_slc", 123), true)
         assertEquals("You're signed in as rosa_slc. Putting your 12 saved answers on the map…", Wording.claimStarted(claim))
+        assertEquals("You're signed in as rosa_slc. Putting your saved answer on the map…", Wording.claimStarted(claim.copy(pendingCount = 1)))
         assertEquals(
-            "You're signed in as rosa_slc. Your 12 saved answers are safe. They go on the map automatically as soon as we can. Nothing else to do.",
+            "You're signed in as rosa_slc. Your 12 saved answers are now linked to your account. They'll go on the map later.",
             Wording.claimStarted(claim.copy(state = org.maproulette.sdk.ClaimState.WAITING)),
         )
         assertEquals("You're signed in as rosa_slc. New answers go straight on the map from now on.", Wording.claimStarted(claim.copy(pendingCount = 0)))
@@ -111,12 +113,16 @@ class GuestClaimTest {
         fun status(state: org.maproulette.sdk.ClaimState, published: Int, skipped: Int, failed: Int) =
             org.maproulette.sdk.ClaimStatus(9, state, 14, published, skipped, 0, failed, emptyList())
         assertEquals(
-            "✓ 12 answers are on the map. 2 weren't added, because someone updated them after you checked. Nothing to do; they're up to date.",
+            "✓ 12 answers are on the map. 2 weren't added, because someone changed those places on the map after you checked.",
             Wording.claimProgress(status(org.maproulette.sdk.ClaimState.DONE, 12, 2, 0)),
         )
         assertEquals(
-            "8 of 14 are on the map. Something went wrong with the rest. They stay saved, and nothing will be added twice.",
+            "8 of 14 are on the map. The rest are still saved.",
             Wording.claimProgress(status(org.maproulette.sdk.ClaimState.FAILED, 8, 0, 6)),
+        )
+        assertEquals(
+            "✓ 1 answer is on the map. 1 wasn't added, because someone changed that place on the map after you checked.",
+            Wording.claimProgress(status(org.maproulette.sdk.ClaimState.DONE, 1, 1, 0)),
         )
         assertEquals("Putting your answers on the map… 6 of 14", Wording.claimProgress(status(org.maproulette.sdk.ClaimState.RUNNING, 6, 0, 0)))
     }
@@ -125,16 +131,19 @@ class GuestClaimTest {
         val backend = Backend(listOf(claim(state = "waiting")))
         val session = guest(backend)
         session.signIn(::approve)
-        assertTrue(session.state.value.message!!.contains("as soon as we can"))
+        assertTrue(session.state.value.message!!.endsWith("They'll go on the map later."))
         assertTrue(backend.calls.none { it.startsWith("GET /api/v2/mobile-claim/") })
     }
 
-    @Test fun aGuestThatCanNoLongerBeClaimedIsDroppedQuietly() = runTest {
+    @Test fun aGuestThatCanNoLongerBeClaimedIsDroppedWithANote() = runTest {
         val backend = Backend(listOf(HttpResponse(404, body = """{"error":"not_found"}""")))
         val session = guest(backend)
         session.signIn(::approve)
         assertFalse(session.state.value.guest)
-        assertNull(session.state.value.message)
+        assertEquals(
+            "You're signed in as rosa_slc. We couldn't find your saved answers. They may have expired, or they're linked to a different OpenStreetMap account.",
+            session.state.value.message,
+        )
         assertNotNullAccount(session)
     }
 
@@ -143,7 +152,7 @@ class GuestClaimTest {
         val backend = Backend(listOf(HttpResponse(503)), listOf(progress("done", 3)))
         val session = guest(backend, store)
         session.signIn(::approve)
-        assertEquals(Wording.CLAIM_LATER, session.state.value.message)
+        assertEquals("You're signed in as rosa_slc. Your answers are still saved. We'll try again next time you open the app.", session.state.value.message)
         assertEquals(1, backend.claimPosts)
 
         // Next launch: signed in, guest still kept; StreetTallyApp claims again.
@@ -158,7 +167,8 @@ class GuestClaimTest {
         val backend = Backend(listOf(HttpResponse(401, body = """{"error":"osm_reauth_required"}""")))
         val session = guest(backend)
         session.signIn(::approve)
-        assertEquals(Wording.CLAIM_SIGN_IN_AGAIN, session.state.value.message)
+        assertEquals("You're signed in as rosa_slc. Sign in again so we can put your saved answers on the map.", session.state.value.message)
+        assertFalse(session.state.value.messageCalm)
     }
 
     @Test fun signingInWithoutAGuestClaimsNothing() = runTest {

@@ -37,6 +37,8 @@ data class SessionState(
     val busy: Boolean = false,
     /** A one-off note about the last sign-in or sign-out, or null. */
     val message: String? = null,
+    /** The note is good news or progress (a claim), not a problem: shown without the error color. */
+    val messageCalm: Boolean = false,
     /** The backend refused guests in this launch, so signing in comes first again. */
     val guestsRefused: Boolean = false,
 )
@@ -108,12 +110,12 @@ class AppSession(
     /** Reads the saved sign-in. Call once at startup. */
     suspend fun restore() {
         val result = signIn.restore()
+        val claimed = (result as? RestoreResult.Guest)?.let { upgradeIfClaimed() }
         val message = when (result) {
             RestoreResult.RefreshInterrupted, RestoreResult.Unreadable -> SIGNED_OUT_AGAIN
-            is RestoreResult.Guest -> upgradeIfClaimed()
-            else -> null
+            else -> claimed
         }
-        publish(message, restored = true)
+        publish(message, restored = true, calm = claimed != null)
     }
 
     /** A guest whose answers were claimed on the web becomes that account (UX §1.5). Checked on
@@ -170,19 +172,22 @@ class AppSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: MapRouletteException) {
+            val name = account.displayName
             when {
-                // Expired, deleted or claimed elsewhere: the guest is gone, nothing to say.
-                e.kind == ErrorKind.NOT_FOUND && e.reason == "not_found" || e.reason == "guest_claimed" -> publish(state.value.message)
-                e.reason == "osm_reauth_required" -> publish(Wording.CLAIM_SIGN_IN_AGAIN)
-                else -> publish(Wording.CLAIM_LATER)
+                // Expired, deleted or claimed by another account: the SDK dropped the guest.
+                e.kind == ErrorKind.NOT_FOUND && e.reason == "not_found" || e.reason == "guest_claimed" ->
+                    publish(Wording.claimGone(name), calm = true)
+                // The one the participant has to act on.
+                e.reason == "osm_reauth_required" -> publish(Wording.claimSignInAgain(name))
+                else -> publish(Wording.claimLater(name), calm = true)
             }
             return
         } catch (_: Exception) {
-            publish(Wording.CLAIM_LATER)
+            publish(Wording.claimLater(account.displayName), calm = true)
             return
         }
         val generation = state.value.generation
-        publish(Wording.claimStarted(claim))
+        publish(Wording.claimStarted(claim), calm = true)
         if (claim.pendingCount == 0 || claim.state == ClaimState.WAITING) return
         repeat(maxPolls) {
             delay(pollMillis)
@@ -190,7 +195,7 @@ class AppSession(
             val status = quietly { client().getClaimStatus(claim.claimId) } ?: return@repeat
             val note = Wording.claimProgress(status)
             if (state.value.generation != generation) return
-            mutableState.update { it.copy(message = note) }
+            mutableState.update { it.copy(message = note, messageCalm = status.failed == 0) }
             if (status.state in setOf(ClaimState.DONE, ClaimState.FAILED, ClaimState.WAITING)) return
         }
     }
@@ -231,7 +236,7 @@ class AppSession(
      * [SessionState.generation] changes. */
     fun client(): MapRouletteClient = signIn.client()
 
-    private fun publish(message: String?, restored: Boolean = state.value.restored) {
+    private fun publish(message: String?, restored: Boolean = state.value.restored, calm: Boolean = false) {
         val account = signIn.account
         val guest = account == null && signIn.guest != null
         if (!guest) mutableGuest.value = GuestInfo()
@@ -242,6 +247,7 @@ class AppSession(
             generation = signIn.generation,
             busy = false,
             message = message,
+            messageCalm = calm,
             guestsRefused = guestsRefused,
         )
     }
