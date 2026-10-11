@@ -29,6 +29,7 @@ class StreetTallyApp : Application() {
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
             OkHttpTransport(),
             PendingSaveStore(KeystoreCredentialStore(this, "pending|${config.baseUrl}|${config.oauthClientId}")),
+            KeystoreCredentialStore(this, "guest-access-failure|${config.baseUrl}|${config.oauthClientId}"),
         )
         scope.launch { session.restore() }
     }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withLock
 import lol.osm.streettally.task.Writer
 import lol.osm.streettally.task.PendingSaveStore
 import org.maproulette.sdk.InMemoryCredentialStore
+import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.MobileGuest
 import lol.osm.streettally.AppConfig
 import org.maproulette.sdk.CredentialStore
@@ -42,15 +43,70 @@ class AppSession(
     store: CredentialStore,
     transport: Transport,
     val pendingSaves: PendingSaveStore = PendingSaveStore(InMemoryCredentialStore()),
+    private val guestAccessFailureStore: CredentialStore = InMemoryCredentialStore(),
 ) {
     private val signIn = MobileSignIn(
         MobileSignInConfiguration(config.environment(), config.oauthClientId, config.redirectUri),
         store, transport,
     )
     private val guestMutex = Mutex()
+    private val followUpMutex = Mutex()
     private var guestRestoreFailed = false
     private val mutableState = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = mutableState
+    private val mutableFollowUp = MutableStateFlow(GuestFollowUpState())
+    val followUp: StateFlow<GuestFollowUpState> = mutableFollowUp
+
+    /** A failed read keeps the last confirmed status; it never proves expiry or deletion. */
+    suspend fun refreshGuestStatus() = followUpMutex.withLock {
+        val snapshot = state.value
+        if (snapshot.guest == null || snapshot.account != null) return@withLock
+        val client = client()
+        mutableFollowUp.update { it.copy(refreshing = true, error = null) }
+        try {
+            val status = client.getGuestStatus()
+            check(status.guestId == snapshot.guest.guestId)
+            if (sameGuest(snapshot)) {
+                mutableFollowUp.update { it.copy(status = status, refreshing = false, error = null) }
+            }
+        } catch (e: CancellationException) {
+            if (sameGuest(snapshot)) mutableFollowUp.update { it.copy(refreshing = false) }
+            throw e
+        } catch (_: Exception) {
+            preserveLostGuestAccess(snapshot)
+            if (sameGuest(snapshot)) mutableFollowUp.update {
+                it.copy(refreshing = false, error = "Couldn't check your saved answers right now. Try again later. This doesn't mean they were removed.")
+            }
+        }
+    }
+
+    suspend fun sendFinishLink(email: String) = followUpMutex.withLock {
+        val snapshot = state.value
+        check(config.guestWritesAllowed && snapshot.guest != null && snapshot.account == null)
+        val status = try { client().setGuestEmail(email) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { preserveLostGuestAccess(snapshot); throw e }
+        check(status.guestId == snapshot.guest?.guestId)
+        if (sameGuest(snapshot)) {
+            mutableFollowUp.update { it.copy(status = status, lastLinkEmail = email.trim(), error = null) }
+        } else throw CancellationException("guest changed")
+    }
+
+    private suspend fun preserveLostGuestAccess(snapshot: SessionState) {
+        // SDK drops a refused token's credential. Never silently start a new guest and imply
+        // access to earlier confirmed saves has been recovered.
+        if (state.value.generation == snapshot.generation && signIn.guest == null && signIn.account == null) {
+            guestRestoreFailed = true
+            withContext(NonCancellable) {
+                runCatching { guestAccessFailureStore.write("lost") }
+                publish(SAVED_ACCESS_UNAVAILABLE)
+            }
+        }
+    }
+
+    private fun sameGuest(snapshot: SessionState) = state.value.generation == snapshot.generation &&
+        state.value.guest == snapshot.guest && state.value.account == null
+
 
     /** Scopes this build asks for: answering needs `tasks:write` and `osm:tagfix`. */
     val requestedScopes: Set<String> get() = MobileSignInConfiguration.scopes(config.writesAllowed)
@@ -62,11 +118,12 @@ class AppSession(
     /** Reads the saved sign-in. Call once at startup. */
     suspend fun restore() {
         val result = signIn.restore()
-        guestRestoreFailed = result == RestoreResult.Unreadable
+        guestRestoreFailed = result == RestoreResult.Unreadable ||
+            runCatching { guestAccessFailureStore.read() != null }.getOrDefault(true)
         val message = when (result) {
             RestoreResult.Unreadable -> SAVED_ACCESS_UNAVAILABLE
             RestoreResult.RefreshInterrupted -> SIGNED_OUT_AGAIN
-            else -> null
+            else -> if (guestRestoreFailed && signIn.account == null) SAVED_ACCESS_UNAVAILABLE else null
         }
         publish(message, restored = true)
     }
@@ -132,6 +189,8 @@ class AppSession(
 
     private fun publish(message: String?, restored: Boolean = state.value.restored) {
         val account = signIn.account
+        mutableFollowUp.update { it.copy(refreshing = false) }
+        if (signIn.guest?.guestId != state.value.guest?.guestId) mutableFollowUp.value = GuestFollowUpState()
         mutableState.value = SessionState(
             restored = restored,
             account = account,
@@ -161,3 +220,11 @@ class AppSession(
         }
     }
 }
+
+/** Address stays in memory only; server status deliberately does not disclose it. */
+data class GuestFollowUpState(
+    val status: GuestStatus? = null,
+    val lastLinkEmail: String? = null,
+    val refreshing: Boolean = false,
+    val error: String? = null,
+)

@@ -75,6 +75,7 @@ import org.maproulette.sdk.TaskWork
 fun PlaceScreen(
     session: AppSession,
     checked: CheckedLog,
+    prefs: lol.osm.streettally.campaign.CampaignPrefs,
     campaignId: Long,
     firstTaskId: Long,
     /** The campaign's places, for "Next nearest". */
@@ -96,6 +97,7 @@ fun PlaceScreen(
     var step by remember { mutableIntStateOf(0) }
     var notSure by remember { mutableStateOf(emptySet<String>()) }
     var counted by remember { mutableStateOf(false) }
+    var showFinishLater by remember { mutableStateOf(false) }
     var showProblems by remember { mutableStateOf(false) }
 
     // Guest registration changes generation. Bind only after restore/registration finishes.
@@ -120,6 +122,7 @@ fun PlaceScreen(
         }
         controller.load(TaskId(taskId))
     }
+    if (showFinishLater) FinishLaterDialog(session, noun) { showFinishLater = false }
     val c = controller
     val screen by c.state.collectAsState()
     // Count a place this person saved (not skipped, not someone else's result) once.
@@ -128,6 +131,13 @@ fun PlaceScreen(
         if (done != null && !done.byOther && !counted) {
             counted = true
             checked.record(campaignId, done.task.id.value)
+            if (done.savedForLater) {
+                if (!prefs.finishLaterShown) {
+                    prefs.finishLaterShown = true
+                    showFinishLater = true
+                }
+                session.refreshGuestStatus()
+            }
         }
     }
 
@@ -174,7 +184,7 @@ fun PlaceScreen(
 
             val nextButtons: @Composable (Boolean) -> Unit = { prominent ->
                 if (next != null) {
-                    BigButton(Wording.next(noun, Places.directionText(here, next.position)), prominent) { open(next) }
+                    BigButton(Wording.next(noun, Places.directionText(here, next.position), here != null), prominent) { open(next) }
                 } else {
                     Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -256,7 +266,10 @@ fun PlaceScreen(
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                         )
                     }
-                    if (s.savedForLater) Text(Wording.SAVED_FOR_LATER)
+                    if (s.savedForLater) {
+                        Text(Wording.SAVED_FOR_LATER)
+                        TextButton(onClick = { showFinishLater = true }) { Text("Finish on a computer") }
+                    }
                     nextButtons(true)
                 }
                 is TaskScreen.Skipped -> {

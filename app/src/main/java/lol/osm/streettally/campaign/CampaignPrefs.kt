@@ -13,6 +13,10 @@ class CampaignPrefs(context: Context) {
             prefs.edit().apply { if (value == null) remove(LAST) else putLong(LAST, value) }.apply()
         }
 
+    var finishLaterShown: Boolean
+        get() = prefs.getBoolean("finishLaterShown", false)
+        set(value) { prefs.edit().putBoolean("finishLaterShown", value).apply() }
+
     fun hasSeenWelcome(campaign: Long): Boolean = prefs.getBoolean("$WELCOME$campaign", false)
 
     fun markWelcomeSeen(campaign: Long) {

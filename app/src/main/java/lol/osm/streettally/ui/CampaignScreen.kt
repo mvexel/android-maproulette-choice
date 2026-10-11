@@ -81,6 +81,8 @@ fun CampaignScreen(
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
+    val followUp by session.followUp.collectAsState()
+    var showFinishLater by remember { mutableStateOf(false) }
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
     var status by remember { mutableStateOf("Loading…") }
     var failed by remember { mutableStateOf(false) }
@@ -93,11 +95,12 @@ fun CampaignScreen(
     val scope = rememberCoroutineScope()
 
     fun locate() {
-        locationNote = "Finding your location…"
+        origin = null
+        locationNote = "Your location isn't available yet. Choose a place on the map or in the list."
         scope.launch {
             locationNote = when (val result = Locator.locate(context)) {
                 is LocateResult.Found -> { origin = result.position; "Nearest first." }
-                LocateResult.Denied -> "Location is off, so the list isn't sorted by distance."
+                LocateResult.Denied -> "Location is off. Choose a place on the map or in the list."
                 LocateResult.Unavailable -> "Your location isn't available right now, so the list isn't sorted by distance."
                 LocateResult.TimedOut -> "No location yet, so the list isn't sorted by distance."
             }
@@ -127,6 +130,7 @@ fun CampaignScreen(
         if (!state.restored) return@LaunchedEffect
         loading = true
         failed = false
+        session.refreshGuestStatus()
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
             places = loaded
@@ -174,6 +178,23 @@ fun CampaignScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                state.message?.takeIf { it == AppSession.SAVED_ACCESS_UNAVAILABLE }?.let { Text(it) }
+                if (state.guest != null && state.account == null) {
+                    val saved = followUp.status
+                    if (saved != null) {
+                        when (saved.state) {
+                            org.maproulette.sdk.GuestState.EXPIRED -> Text(Wording.SAVED_EXPIRED)
+                            org.maproulette.sdk.GuestState.CLAIMED -> Text("Your saved answers have been claimed. Open your finish link on a computer to check their status.")
+                            org.maproulette.sdk.GuestState.ACTIVE -> if (saved.pendingCount > 0) {
+                                Text(Wording.savedNotOnMap(saved.pendingCount, noun, saved.expiresAt))
+                                TextButton(onClick = { showFinishLater = true }) {
+                                    Text(if (saved.email == org.maproulette.sdk.GuestEmailState.NONE) "Send me the link" else "Resend the link")
+                                }
+                            }
+                        }
+                    }
+                    followUp.error?.let { Text(it); TextButton(onClick = { scope.launch { session.refreshGuestStatus() } }) { Text("Check again") } }
+                }
                 if (shown.isNotEmpty()) {
                     Text(
                         Wording.progress(done.size, shown.size, noun),
@@ -195,8 +216,8 @@ fun CampaignScreen(
                 }
                 val nearest = open.firstOrNull()
                 if (nearest != null) {
-                    Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
+                    Button(onClick = { if (origin == null) showList = true else open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position), origin != null))
                     }
                 } else if (shown.isNotEmpty()) {
                     Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
@@ -211,6 +232,9 @@ fun CampaignScreen(
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                     ) { Text("List") }
                 }
+            }
+            if (origin == null) locationNote?.let {
+                Text(it.replace("place", noun.one), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (showList) {
@@ -228,6 +252,7 @@ fun CampaignScreen(
             }
         }
     }
+    if (showFinishLater) FinishLaterDialog(session, noun) { showFinishLater = false }
     val name = current?.challenge?.name ?: "Campaign"
     when (sheet) {
         Sheet.WELCOME -> WelcomeDialog(

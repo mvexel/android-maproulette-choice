@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                         PlaceScreen(
                             session = app.session,
                             checked = app.checked,
+                            prefs = app.prefs,
                             campaignId = id,
                             firstTaskId = open.taskId,
                             candidates = open.candidates,

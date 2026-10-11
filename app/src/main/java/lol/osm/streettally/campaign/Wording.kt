@@ -46,6 +46,29 @@ data class Noun(val one: String, val many: String) {
 /** Participant-facing copy, as in the iOS app's `Wording`. */
 object Wording {
     fun guestStart(noun: Noun) = "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
+    const val PUT_ON_MAP_INTRO = "To put them on the map, finish on a computer. We'll email you a link."
+    const val EMAIL_USE = "We only email you about these answers, and delete your address once they're on the map or removed."
+    const val EXISTING_ACCOUNT_HANDOFF = "Already have an OpenStreetMap account? Open the finish link on a computer and sign in there to put your saved answers on the map."
+    fun day(date: java.time.Instant): String = java.time.format.DateTimeFormatter.ofPattern("MMM d")
+        .withZone(java.time.ZoneId.systemDefault()).format(date)
+    fun linkSent(email: String, until: java.time.Instant?) = "Sent to $email. Check your email later." +
+        (until?.let { " The link works until ${day(it)}." } ?: "")
+    fun savedNotOnMap(count: Int, noun: Noun, until: java.time.Instant) =
+        "${noun.count(count)} saved, not on the map yet. Finish on a computer by ${day(until)}."
+    const val SAVED_EXPIRED = "Your saved answers weren't put on the map, so we removed them. They still count in the campaign's totals. Thanks for checking."
+    fun linkFailed(error: Throwable, noun: Noun): String {
+        if (error is IllegalArgumentException) return "That doesn't look like an email address."
+        val failure = error as? org.maproulette.sdk.MapRouletteException
+        return when {
+            failure?.reason == "nothing_saved" -> "Answer a ${noun.one} first, then we can send you the link."
+            failure?.reason == "guest_claimed" -> "These saved answers have been claimed. Open your finish link on a computer to check their status."
+            failure?.reason == "guest_expired" -> "This phone's saved-answer access has expired. Open your finish link on a computer to check their status."
+            failure?.status == 400 && failure.reason == "invalid_request" -> "That doesn't look like an email address."
+            failure?.kind == org.maproulette.sdk.ErrorKind.RATE_LIMIT -> "We've sent a few links already. Try again tomorrow."
+            failure?.kind == org.maproulette.sdk.ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
+            else -> "Couldn't send the link right now. Try again later. Your saved answers haven't been undone."
+        }
+    }
     const val SAVED_FOR_LATER = "Saved on our server. They go on the map when you finish on a computer."
 
     const val NEEDS_ACCOUNT = "To save answers you'll sign in with a free OpenStreetMap account."
@@ -60,7 +83,7 @@ object Wording {
         return noun.capitalized
     }
 
-    fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
+    fun nearest(noun: Noun, distance: String?, hasOrigin: Boolean = true): String = if (!hasOrigin) "Choose a ${noun.one}" else "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun progress(done: Int, total: Int, noun: Noun): String = "The tally: $done of ${noun.count(total)} checked"
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
@@ -90,7 +113,7 @@ object Wording {
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =
         "Someone else checked this ${noun.one} first, so your answers weren't saved."
-    fun next(noun: Noun, distance: String?): String = "Next nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
+    fun next(noun: Noun, distance: String?, hasOrigin: Boolean = true): String = if (!hasOrigin) "Choose another ${noun.one}" else "Next nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun lastOne(noun: Noun): String = "That was the last ${noun.one} to check. Thank you!"
     fun backToAll(noun: Noun): String = "Back to all ${noun.many}"
 }
