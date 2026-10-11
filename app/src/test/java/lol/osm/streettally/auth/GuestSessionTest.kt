@@ -57,7 +57,8 @@ class GuestSessionTest {
         next.restore()
         assertTrue(next.state.value.guest)
         assertEquals(Writer.GUEST, next.writer())
-        assertEquals(1, backend.paths.size)
+        // Registered once; the next launch only reads the guest's status.
+        assertEquals(1, backend.paths.count { it == "/oauth/mobile/guest" })
     }
 
     @Test fun guestsOffMeansSignInFirst() = runTest {

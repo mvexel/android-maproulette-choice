@@ -93,6 +93,7 @@ fun CampaignScreen(
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
+    val guestInfo by session.guest.collectAsState()
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
     // Open places a guest's saved answer holds: counted as checked, not shown or offered.
     var held by remember { mutableStateOf(emptySet<Long>()) }
@@ -154,6 +155,7 @@ fun CampaignScreen(
         }
         loading = true
         failed = false
+        if (!preview) launch { session.refreshGuestStatus() }
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
             if (preview) {
@@ -269,6 +271,10 @@ fun CampaignScreen(
                     )
                     val today = checkedLog.today(campaignId)
                     if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
+                    val saved = guestInfo.status
+                    if (state.guest && saved != null) {
+                        GuestSavedSection(saved, noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
+                    }
                 } else if (tally.total == 0 || loading || failed) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (loading) CircularProgressIndicator()
@@ -325,11 +331,16 @@ fun CampaignScreen(
             guest = !previewing && session.canAnswerAsGuest,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
+        Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = onSignIn) { sheet = null }
+        Sheet.DAY_SUMMARY -> DaySummarySheet(
+            session, checkedToday = checkedLog.today(campaignId), done = tally.checked, total = tally.total, noun = noun,
+            onSignIn = onSignIn,
+        ) { sheet = null }
         null -> Unit
     }
 }
 
-private enum class Sheet { WELCOME, SHARE }
+private enum class Sheet { WELCOME, SHARE, PUT_ON_MAP, DAY_SUMMARY }
 
 /** Where a preview link stands (design/preview-mode.md §3, §5). */
 private enum class PreviewPhase {

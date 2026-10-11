@@ -10,7 +10,11 @@ import lol.osm.streettally.task.Writer
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteException
 import lol.osm.streettally.AppConfig
+import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.CredentialStore
+import org.maproulette.sdk.GuestState
+import org.maproulette.sdk.GuestStatus
+import org.maproulette.sdk.GuestUpgrade
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.MobileAccount
 import org.maproulette.sdk.MobileSignIn
@@ -33,6 +37,10 @@ data class SessionState(
     val message: String? = null,
 )
 
+/** A guest's saved answers as last read ([status]; null when not a guest or not read yet), and the
+ * address the finish link went to in this launch ([lastLinkEmail], kept in memory only). */
+data class GuestInfo(val status: GuestStatus? = null, val lastLinkEmail: String? = null)
+
 /** The app's sign-in, on top of the SDK's [MobileSignIn]. Android-free: the browser step and the
  * credential store are passed in. One per process (see StreetTallyApp). */
 class AppSession(
@@ -49,6 +57,9 @@ class AppSession(
     /** The backend refused guests (for example turned off there); this launch falls back to signing in. */
     private var guestsRefused = false
     private val guestStart = Mutex()
+    private val mutableGuest = MutableStateFlow(GuestInfo())
+    /** The guest's saved answers and the last link address; empty unless [SessionState.guest]. */
+    val guest: StateFlow<GuestInfo> = mutableGuest
 
     /** Signed out in a build that lets participants answer first, unless the backend refused guests. */
     val canAnswerAsGuest: Boolean
@@ -95,9 +106,59 @@ class AppSession(
         val result = signIn.restore()
         val message = when (result) {
             RestoreResult.RefreshInterrupted, RestoreResult.Unreadable -> SIGNED_OUT_AGAIN
+            is RestoreResult.Guest -> upgradeIfClaimed()
             else -> null
         }
         publish(message, restored = true)
+    }
+
+    /** A guest whose answers were claimed on the web becomes that account (UX §1.5). Checked on
+     * launch. Once claimed the guest token is refused, so a failed status read still tries. Returns
+     * the note to show, or null when still a guest. */
+    private suspend fun upgradeIfClaimed(): String? {
+        val status = quietly { signIn.client().getGuestStatus() }
+        if (status != null && status.state != GuestState.CLAIMED) {
+            mutableGuest.value = GuestInfo(status)
+            return null
+        }
+        if (quietly { signIn.upgradeGuest() } !is GuestUpgrade.SignedIn) return null
+        mutableGuest.value = GuestInfo()
+        return Wording.claimedMessage(status)
+    }
+
+    /** Re-reads the guest's status (saved count, email state, deadline). Failures keep the last one. */
+    suspend fun refreshGuestStatus() {
+        if (!state.value.guest) {
+            mutableGuest.value = GuestInfo()
+            return
+        }
+        val status = quietly { client().getGuestStatus() } ?: return
+        if (state.value.guest) mutableGuest.update { it.copy(status = status) }
+    }
+
+    /** Sends the "finish on a computer" link to [email] (again, to correct it). Throws for the
+     * card to show a plain message ([Wording.linkFailed]). */
+    suspend fun sendFinishLink(email: String) {
+        val status = client().setGuestEmail(email)
+        if (state.value.guest) mutableGuest.value = GuestInfo(status, email.trim())
+    }
+
+    /** Deletes the guest's email and saved answers on the server, then forgets the guest here.
+     * Answers already on the map stay. Throws when the server call fails. */
+    suspend fun deleteGuestData() {
+        if (!state.value.guest) return
+        client().deleteGuest()
+        quietly { signIn.forgetGuest() }
+        mutableGuest.value = GuestInfo()
+        publish(null)
+    }
+
+    private inline fun <T> quietly(block: () -> T): T? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     /** Runs browser sign-in. [authenticate] opens the URL and returns the callback URL; throwing
@@ -129,10 +190,12 @@ class AppSession(
 
     private fun publish(message: String?, restored: Boolean = state.value.restored) {
         val account = signIn.account
+        val guest = account == null && signIn.guest != null
+        if (!guest) mutableGuest.value = GuestInfo()
         mutableState.value = SessionState(
             restored = restored,
             account = account,
-            guest = account == null && signIn.guest != null,
+            guest = guest,
             generation = signIn.generation,
             busy = false,
             message = message,

@@ -1,5 +1,12 @@
 package lol.osm.streettally.campaign
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.GuestStatus
+import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskWork
 import org.maproulette.sdk.templateProperties
@@ -127,6 +134,75 @@ object Wording {
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
     fun noAccountNeeded(noun: Noun = Noun.PLACE): String =
         "No account needed to start. Answer a few ${noun.many} first, and we'll help you put them on the map afterwards."
+
+    // Finishing later (deferred sign-up §1.3–§1.6), with Iris's fixes (design/copy-fixes-2026-10-11.md).
+    const val PUT_ON_MAP_TITLE = "Your answers are saved"
+    const val PUT_ON_MAP_INTRO = "To put them on the map, finish on a computer. We can email you a link."
+    const val EMAIL_USE = "We only email you about these answers, and delete your address once they're on the map or removed."
+    /** Only after a successful send: a stored address doesn't prove an email went out. */
+    fun linkSent(email: String, until: Instant?, zone: ZoneId = ZoneId.systemDefault()): String =
+        "Sent to $email. Check your email later." + (until?.let { " The link works until ${day(it, zone)}." } ?: "")
+    /** "Nov 30": the one date format for guest deadlines. A non-breaking space keeps month and day
+     * on one line. */
+    fun day(date: Instant, zone: ZoneId = ZoneId.systemDefault()): String =
+        DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()).format(date.atZone(zone)).replace(' ', '\u00A0')
+    const val ENTER_EMAIL_AGAIN = "Enter your email again and we'll send a new link."
+    const val SEND_ME_THE_LINK = "Send me the link"
+    const val RESEND_THE_LINK = "Resend the link"
+    const val I_ALREADY_USE_OSM = "I already use OpenStreetMap"
+    /** Phone sign-in doesn't claim saved answers yet (Iris fix 5). */
+    const val SIGN_IN_PUTS_ON_MAP =
+        "Sign in now and your next answers go straight on the map. The ones you already saved stay saved until you finish on a computer."
+    /** Only a bad address is the participant's to fix (shown in the error color); the rest are calm. */
+    fun isInputError(error: Throwable): Boolean =
+        error is IllegalArgumentException || (error as? MapRouletteException)?.status.let { it == 400 || it == 422 }
+    /** The backend sends the link only once the guest has a saved answer (409 `nothing_saved`). */
+    fun isNothingSaved(error: Throwable): Boolean =
+        error is MapRouletteException && error.kind == ErrorKind.CONFLICT && error.reason == "nothing_saved"
+    fun linkFailed(error: Throwable, noun: Noun = Noun.PLACE): String {
+        if (isNothingSaved(error)) return "Answer a ${noun.one} first, then we can send you the link."
+        if (isInputError(error)) return "That doesn't look like an email address."
+        val e = error as? MapRouletteException
+        return when {
+            e?.kind == ErrorKind.RATE_LIMIT -> "We've sent a few links already. Try again tomorrow."
+            e?.kind == ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
+            e?.kind == ErrorKind.CONFLICT && e.reason == "guest_claimed" ->
+                "These answers are already linked to an OpenStreetMap account. Sign in with it to see them."
+            else -> "Couldn't send the link right now. Try again later."
+        }
+    }
+    fun savedNotOnMap(count: Int, noun: Noun, until: Instant?, zone: ZoneId = ZoneId.systemDefault()): String =
+        "${noun.count(count)} saved, not on the map yet." + (until?.let { " Finish on a computer by ${day(it, zone)}." } ?: "")
+    const val DAY_SUMMARY_TITLE = "Nice work today."
+    /** "You checked 14 stops. The tally: 212 of 410." */
+    fun daySummary(checked: Int, done: Int, total: Int, noun: Noun): String =
+        "You checked ${noun.count(checked)}. The tally: $done of $total."
+    fun daySummarySaved(until: Instant?, zone: ZoneId = ZoneId.systemDefault()): String =
+        (until?.let { "They're saved until ${day(it, zone)}." } ?: "They're saved for now.") +
+            " If we emailed you a link, open it on a computer to put them on the map."
+    const val DONE_FOR_TODAY = "I'm done for today"
+    /** In the last 3 days before the saved answers are removed (§1.6). */
+    fun savedClosing(count: Int, noun: Noun, on: Instant, zone: ZoneId = ZoneId.systemDefault()): String =
+        "$count saved ${if (count == 1) noun.one else noun.many} will be removed on ${day(on, zone)} unless you finish on a computer."
+    /** After the deadline: calm, no error tone (§1.6). */
+    const val SAVED_EXPIRED =
+        "Your saved answers weren't put on the map, so we removed them. They still count in the campaign's totals. Thanks for checking."
+    const val DELETE_MY_DATA = "Delete my data"
+    const val DELETE_MY_DATA_EXPLAINED =
+        "Removes your email and any saved answers that aren't on the map yet. Answers already on the map stay there, because they belong to OpenStreetMap now."
+    const val DELETE_MY_DATA_DONE = "Done. Your email and saved answers are deleted."
+    const val DELETE_MY_DATA_FAILED = "Couldn't delete right now. Check your connection and try again."
+    /** A guest whose answers were claimed on the web, now signed in (§1.5). */
+    fun claimedMessage(status: GuestStatus?): String {
+        val who = status?.claimedAs?.let { "You're signed in as ${it.displayName}." } ?: "You're signed in with OpenStreetMap."
+        val count = status?.publishedCount ?: 0
+        val onMap = when (count) {
+            0 -> ""
+            1 -> " Your answer is on the map."
+            else -> " Your $count answers are on the map."
+        }
+        return "$who$onMap New answers go straight on the map from now on."
+    }
 
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =

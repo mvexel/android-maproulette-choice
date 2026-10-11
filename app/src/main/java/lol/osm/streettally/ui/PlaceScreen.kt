@@ -94,11 +94,14 @@ fun PlaceScreen(
     /** Campaign preview (design/preview-mode.md): places "saved" in this visit; null when not previewing. */
     previewSaved: MutableSet<Long>? = null,
     onExitPreview: () -> Unit = {},
+    /** True the first time a guest's answer is saved on this phone: opens the "put them on the map" card once. */
+    firstSavedForLater: () -> Boolean = { false },
 ) {
     val previewing = previewSaved != null
     val state by session.state.collectAsState()
     val scope = rememberCoroutineScope()
     var taskId by remember { mutableStateOf(firstTaskId) }
+    var showPutOnMap by remember { mutableStateOf(false) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
     var controller by remember { mutableStateOf(newController(session, scope, noun, previewing)) }
@@ -162,8 +165,11 @@ fun PlaceScreen(
         if (done != null && !done.byOther && !counted) {
             counted = true
             checked.record(campaignId, done.task.id.value)
+            // Once, after the first saved answer; later from the campaign's banner.
+            if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
         }
     }
+    if (showPutOnMap) PutOnMapSheet(session, noun, onSignIn = onSignIn) { showPutOnMap = false }
 
     val here: LatLon? = loadedTask(screen)?.let { Places.position(it) }
         ?: candidates.firstOrNull { it.id == taskId }?.position
