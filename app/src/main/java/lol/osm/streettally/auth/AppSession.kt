@@ -41,7 +41,18 @@ data class SessionState(
     val messageCalm: Boolean = false,
     /** The backend refused guests in this launch, so signing in comes first again. */
     val guestsRefused: Boolean = false,
+    /** Why guests are unavailable, for the debug footer ([guestDiagnostic]). */
+    val guestRefusal: ErrorKind? = null,
 )
+
+/** One line for debug builds saying whether this phone can answer as a guest, and if not, why. */
+fun guestDiagnostic(guests: Boolean, writesAllowed: Boolean, refusal: ErrorKind?): String = when {
+    !guests -> "guests: off in this build"
+    !writesAllowed -> "guests: writes off for this backend"
+    refusal == ErrorKind.NOT_FOUND -> "guests: refused by backend (404)"
+    refusal != null -> "guests: refused (401/403, client scope?)"
+    else -> "guests: ready"
+}
 
 /** A guest's saved answers as last read ([status]; null when not a guest or not read yet), and the
  * address the finish link went to in this launch ([lastLinkEmail], kept in memory only). */
@@ -61,7 +72,8 @@ class AppSession(
     private val mutableState = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = mutableState
     /** The backend refused guests (for example turned off there); this launch falls back to signing in. */
-    private var guestsRefused = false
+    private var guestRefusal: ErrorKind? = null
+    private val guestsRefused get() = guestRefusal != null
     private val guestStart = Mutex()
     private val mutableGuest = MutableStateFlow(GuestInfo())
     /** The guest's saved answers and the last link address; empty unless [SessionState.guest]. */
@@ -82,7 +94,7 @@ class AppSession(
             throw e
         } catch (e: MapRouletteException) {
             // Guests are off on this backend, or this client may not use them: sign in instead.
-            if (e.kind == ErrorKind.NOT_FOUND || e.kind == ErrorKind.AUTHENTICATION) guestsRefused = true
+            if (e.kind in REFUSALS) guestRefusal = e.kind
         } catch (_: Exception) {
             // Storage failed or the request didn't finish; the next place tries again.
         }
@@ -249,10 +261,13 @@ class AppSession(
             message = message,
             messageCalm = calm,
             guestsRefused = guestsRefused,
+            guestRefusal = guestRefusal,
         )
     }
 
     companion object {
+        /** Errors from registering a guest that mean guests are off (404) or this client may not use them (401, 403). */
+        private val REFUSALS = setOf(ErrorKind.NOT_FOUND, ErrorKind.AUTHENTICATION, ErrorKind.PERMISSION)
         const val TRY_AGAIN = "Sign-in didn't finish. Please try again."
         const val SIGNED_OUT_AGAIN = "You were signed out. Please sign in again."
         const val SIGNED_OUT_HERE_ONLY = "Signed out, but this phone couldn't forget the sign-in. Sign out again to be sure."

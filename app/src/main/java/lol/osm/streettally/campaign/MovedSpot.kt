@@ -35,9 +35,13 @@ object MovedSpot {
         spot.lon + eastM / (METERS_PER_DEGREE * cos(spot.lat * PI / 180)),
     )
 
-    /** TalkBack's value for the new spot: "About 30 m northeast of where the map has it". */
-    fun describe(mapped: LatLon, spot: LatLon): String =
-        "About ${roundedMeters(Places.meters(mapped, spot))} m ${Places.compass(Places.bearing(mapped, spot))} of where the map has it"
+    /** TalkBack's value for the new spot: "About 30 m northeast of where the map has it", or "Where
+     * the map has it" when it's under [TOO_CLOSE_M] away. */
+    fun describe(mapped: LatLon, spot: LatLon): String {
+        val meters = Places.meters(mapped, spot)
+        if (meters < TOO_CLOSE_M) return "Where the map has it"
+        return "About ${roundedMeters(meters)} m ${Places.compass(Places.bearing(mapped, spot))} of where the map has it"
+    }
 
     private const val METERS_PER_DEGREE = 111_320.0
 
