@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import lol.osm.streettally.campaign.Noun
+import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.Challenge
 import org.maproulette.sdk.ChoiceEligibility
 import org.maproulette.sdk.ChoiceOutcome
@@ -22,6 +23,7 @@ import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.MobileSupport
+import org.maproulette.sdk.MovedLocation
 import org.maproulette.sdk.ResolutionCheck
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
@@ -62,13 +64,20 @@ class ClientTaskOps(private val client: MapRouletteClient) : TaskOps {
 sealed interface ChoiceAction {
     /** Question id → option id; questions left out are "Can't tell". */
     data class Answers(val byQuestion: Map<String, String>) : ChoiceAction
+    /** A campaign outcome, Too hard, or the built-in "It's not here" ([ChoiceOutcome.NOT_HERE]). */
     data class Outcome(val outcome: ChoiceOutcome) : ChoiceAction
+    /** The built-in "It's moved", with the spot the participant picked. */
+    data class Moved(val location: MovedLocation) : ChoiceAction
     data object Skip : ChoiceAction
 }
 
 /** Whether [action] edits OpenStreetMap (needs `osm:tagfix`). */
 val ChoiceAction.editsOsm: Boolean
     get() = this is ChoiceAction.Answers || (this is ChoiceAction.Outcome && outcome.deletesElement)
+
+/** "It's not here" or "It's moved" (design/not-here-moved.md): a report for the organizer. */
+val ChoiceAction.isReport: Boolean
+    get() = this is ChoiceAction.Moved || (this is ChoiceAction.Outcome && outcome == ChoiceOutcome.NOT_HERE)
 
 /** [me] is the signed-in MapRoulette user id; [canEditOsm]: the grant includes `osm:tagfix`. */
 data class Writer(val me: Long, val canEditOsm: Boolean)
@@ -213,7 +222,8 @@ class TaskWorkController(
             is ChoiceAction.Answers -> action.byQuestion.isNotEmpty() && action.byQuestion.all { (q, o) ->
                 form.work.questions.any { it.id == q && it.options.any { option -> option.id == o } }
             }
-            is ChoiceAction.Outcome -> action.outcome in form.outcomes
+            is ChoiceAction.Outcome -> action.outcome == ChoiceOutcome.NOT_HERE || action.outcome in form.outcomes
+            is ChoiceAction.Moved -> true
             ChoiceAction.Skip -> task.canSkip()
         }
     }
@@ -290,6 +300,7 @@ class TaskWorkController(
         Result.success(when (action) {
             is ChoiceAction.Answers -> ops.submitChoice(task, ChoiceSubmission.Answers(action.byQuestion))
             is ChoiceAction.Outcome -> ops.submitChoice(task, ChoiceSubmission.Outcome(action.outcome))
+            is ChoiceAction.Moved -> ops.submitChoice(task, ChoiceSubmission.Moved(action.location))
             ChoiceAction.Skip -> {
                 ops.skipTask(task.id)
                 null
@@ -340,6 +351,7 @@ class TaskWorkController(
             WriteProblem.OutcomeUnknown -> if (action == ChoiceAction.Skip) TaskScreen.Skipped(task, challenge, uncertain = true)
                 else checkAgain("The connection failed before MapRoulette confirmed the result. It was not sent again.", TaskScreen.Pending.UNKNOWN)
             is ChoiceProblem.InvalidSubmission -> answering("Your answers weren't accepted. Nothing was saved. Try again, or skip this ${noun.one}.")
+            ChoiceProblem.MovedTooFar -> answering(Wording.movedTooFar(noun))
             ChoiceProblem.UnsupportedTask -> TaskScreen.NotAvailable(task, challenge,
                 "MapRoulette cannot process this task's questions. Complete it on the MapRoulette website.")
             is WriteProblem.LockedByOtherUser -> TaskScreen.TakenByOther(task, challenge)
@@ -389,6 +401,7 @@ class TaskWorkController(
         val target = when (val action = pending.action) {
             is ChoiceAction.Answers -> TaskResolution.FIXED
             is ChoiceAction.Outcome -> action.outcome.resolution
+            is ChoiceAction.Moved -> TaskResolution.TOO_HARD
             ChoiceAction.Skip -> { // Not reached: an uncertain skip goes straight to Skipped.
                 mutableState.value = TaskScreen.Skipped(fresh, pending.challenge, uncertain = true)
                 return

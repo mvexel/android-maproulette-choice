@@ -72,8 +72,40 @@ object Wording {
     const val SOMETHING_WRONG = "Something's wrong here"
     const val DONE = "Done"
     fun cantCheck(noun: Noun): String = "I can't check this ${noun.one}"
-    fun problemsMessage(noun: Noun): String =
-        "Skip leaves it for someone else. “${cantCheck(noun)}” tells the organizer it needs another look."
+
+    // "Something's wrong here" (design/not-here-moved.md §2, §7), as in the iOS app.
+    const val SKIP_EXPLAINED = "Leave it for someone else."
+    const val CANT_CHECK_EXPLAINED = "You're near it but can't see or reach it."
+    const val NOT_HERE = "It's not here"
+    fun notHereExplained(noun: Noun): String = "You're at the spot and there's no ${noun.one}."
+    const val MOVED = "It's moved"
+    const val MOVED_EXPLAINED = "You can see it somewhere else nearby. You'll show where."
+    const val PROBLEMS_MESSAGE = "Nothing here changes OpenStreetMap. The organizer checks every report."
+
+    fun movedTitle(noun: Noun): String = "Where is the ${noun.one} now?"
+    const val MOVED_HELP = "Tap the map where it is, or stand next to it and use your location."
+    const val STANDING_AT_IT = "I'm standing at it"
+    const val WAITING_FOR_FIX = "Waiting for a better location. Or tap the map."
+    const val ON_THE_MAP = "On the map"
+    const val SAVE_THIS_SPOT = "Save this spot"
+    fun movedDistance(meters: Double): String = "About ${MovedSpot.roundedMeters(meters)} m from where the map has it."
+    const val MOVED_TOO_CLOSE =
+        "That's where the map already has it. If it's there, go back and answer the questions instead."
+    fun movedFar(meters: Double, noun: Noun): String =
+        "That's ${MovedSpot.roundedMeters(meters)} m away. If it's a different ${noun.one}, use “$NOT_HERE” instead."
+    fun movedTooFar(noun: Noun): String = "That's too far to be the same ${noun.one}."
+    const val SPOT_ONLY = "Only the spot you pick is saved, not your own location."
+    fun spotIsHere(noun: Noun): String = "Your current location is saved as the ${noun.one}'s new spot."
+
+    const val CHECK_REPORT = "Check your report"
+    const val REPORTING = "You're reporting:"
+    fun reportNotHere(noun: Noun): String = "The ${noun.one} isn't here."
+    fun reportMoved(meters: Double, noun: Noun): String =
+        "The ${noun.one} has moved, about ${MovedSpot.roundedMeters(meters)} m from where the map has it."
+    const val REPORT_NOT_HERE_NOTE = "Nothing changes on OpenStreetMap. The organizer will check it."
+    const val REPORT_MOVED_NOTE = "Nothing changes on OpenStreetMap. The organizer will move it on the map."
+    const val REPORTED_NOT_HERE = "Thanks, reported. The organizer will check it."
+    const val REPORTED_MOVED = "Thanks, reported. The organizer will move it on the map."
     fun skip(noun: Noun): String = "Skip this ${noun.one}"
     fun alreadyChecked(noun: Noun): String = "Someone already checked this ${noun.one}. Thanks anyway!"
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."

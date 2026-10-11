@@ -27,6 +27,7 @@ import org.maproulette.sdk.ChoiceSubmission
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.MapRouletteException
+import org.maproulette.sdk.MovedLocation
 import org.maproulette.sdk.ProjectId
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
@@ -540,5 +541,39 @@ class TaskWorkControllerTest {
         assertTrue(idle)
         assertTrue("late result is discarded", c.state.value is TaskScreen.Submitting)
         assertEquals(listOf("get", "challenge", "check", "submit"), ops.calls)
+    }
+
+    @Test
+    fun notHereAndMovedAreReportsThatNeverNeedOsmEdits() = runTest {
+        val spot = MovedLocation(40.7601, -111.8912, MovedLocation.Source.TAP)
+        for (action in listOf(ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE), ChoiceAction.Moved(spot))) {
+            val ops = FakeOps().thenRead({ task() }, { task(status = 6, completedBy = ME) })
+            ops.submit = { ChoiceResult(TaskStatus(6), null) }
+            // A sign-in without osm:tagfix can still report.
+            val c = controller(ops, writer = Writer(ME, canEditOsm = false))
+            assertTrue(action.isReport)
+            assertFalse(action.editsOsm)
+            assertTrue(c.offers(c.answering.task, c.answering.form, action))
+            c.perform(action)
+            advanceUntilIdle()
+            val done = c.state.value as TaskScreen.Done
+            assertEquals(action, done.action)
+            val expected = when (action) {
+                is ChoiceAction.Moved -> ChoiceSubmission.Moved(spot)
+                else -> ChoiceSubmission.Outcome(ChoiceOutcome.NOT_HERE)
+            }
+            assertEquals(listOf(expected), ops.submissions)
+        }
+        assertFalse(ChoiceAction.Outcome(ChoiceOutcome(ChoiceOutcome.TOO_HARD_ID, "Too hard", null, TaskResolution.TOO_HARD, false)).isReport)
+    }
+
+    @Test
+    fun movedTooFarKeepsTheFormWithTheReason() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.submit = { throw failure(ErrorKind.HTTP, ChoiceProblem.MovedTooFar) }
+        val c = controller(ops)
+        c.perform(ChoiceAction.Moved(MovedLocation(40.8, -111.8, MovedLocation.Source.TAP)))
+        advanceUntilIdle()
+        assertEquals("That's too far to be the same place.", c.answering.notice)
     }
 }
