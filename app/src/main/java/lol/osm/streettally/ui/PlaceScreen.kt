@@ -170,7 +170,9 @@ fun PlaceScreen(
             if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
         }
     }
-    if (showPutOnMap) PutOnMapSheet(session, noun, onSignIn = onSignIn) { showPutOnMap = false }
+    // Signed in from the sheet here: the sign-in and claim notes show on this screen too.
+    var accountNote by remember { mutableStateOf(false) }
+    if (showPutOnMap) PutOnMapSheet(session, noun, onSignIn = { accountNote = true; onSignIn() }) { showPutOnMap = false }
 
     val here: LatLon? = loadedTask(screen)?.let { Places.position(it) }
         ?: candidates.firstOrNull { it.id == taskId }?.position
@@ -215,6 +217,7 @@ fun PlaceScreen(
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                 }
                 if (screen !is TaskScreen.Loading) switchNotice?.let { Banner(it) }
+                if (accountNote) AccountNote(state)
 
                 val nextButtons: @Composable (Boolean) -> Unit = { prominent ->
                     NextButtons(

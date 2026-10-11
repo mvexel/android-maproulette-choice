@@ -129,6 +129,9 @@ fun CampaignScreen(
     // campaign has loaded, so it never shows (and gets marked seen) without its description.
     val welcomeDue = remember { !preview && !prefs.hasSeenWelcome(campaignId) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    // Signed in from a sheet here: the sign-in and claim notes show on this screen too.
+    var accountNote by remember { mutableStateOf(false) }
+    val signInHere = { accountNote = true; onSignIn() }
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
@@ -267,6 +270,7 @@ fun CampaignScreen(
                 notice?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (accountNote) AccountNote(state)
                 // Tally and progress are hidden in preview: nothing changes them (§4.2).
                 if (tally.total > 0 && !preview) {
                     Text(
@@ -358,10 +362,10 @@ fun CampaignScreen(
             guest = !previewing && session.canAnswerAsGuest,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
-        Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = onSignIn) { sheet = null }
+        Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = signInHere) { sheet = null }
         Sheet.DAY_SUMMARY -> DaySummarySheet(
             session, checkedToday = checkedLog.today(campaignId), done = tally.checked, total = tally.total, noun = noun,
-            onSignIn = onSignIn,
+            onSignIn = signInHere,
         ) { sheet = null }
         null -> Unit
     }
