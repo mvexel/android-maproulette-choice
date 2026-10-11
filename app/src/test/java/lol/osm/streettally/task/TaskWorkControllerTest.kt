@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,6 +58,9 @@ internal val BENCH: JsonObject = Json.parseToJsonElement("""
        "options":[{"id":"wood","label":"Wood","setTags":{"material":"wood"}},{"id":"metal","label":"Metal","setTags":{"material":"metal"}}]}],
      "outcomes":[{"id":"not-a-bench","label":"Not a bench","status":2},{"id":"gone","label":"Bench is gone","delete":true}]}
 """).jsonObject
+
+/** [BENCH] in the mode the server keeps guest answers for. */
+internal val GUEST_BENCH = JsonObject(BENCH + ("liveMissingQuestions" to JsonPrimitive(true)))
 
 /** The outcomes a client with this deletion setting offers. */
 internal fun outcomes(task: Task, deletion: Boolean = false): List<ChoiceOutcome> =
@@ -621,7 +625,7 @@ class TaskWorkControllerTest {
 
     @Test
     fun guestSavesForLaterWithoutLockingOrEditingOsm() = runTest {
-        val ops = FakeOps().thenRead({ task() })
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         val c = controller(ops, writer = Writer.GUEST)
         val answers = ChoiceAction.Answers(mapOf("backrest" to "yes"))
         assertTrue(c.offers(c.answering.task, c.answering.form, answers))
@@ -637,7 +641,7 @@ class TaskWorkControllerTest {
 
     @Test
     fun guestSkipOnlyMovesOn() = runTest {
-        val ops = FakeOps().thenRead({ task() })
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         val c = controller(ops, writer = Writer.GUEST)
         val loaded = c.answering.task
         c.perform(ChoiceAction.Skip)
@@ -650,7 +654,7 @@ class TaskWorkControllerTest {
     fun guestReportsAreSavedForLater() = runTest {
         val spot = MovedLocation(40.7609, -111.891, MovedLocation.Source.HERE)
         for (action in listOf(ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE), ChoiceAction.Moved(spot))) {
-            val ops = FakeOps().thenRead({ task() })
+            val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
             val c = controller(ops, writer = Writer.GUEST)
             assertTrue(c.offers(c.answering.task, c.answering.form, action))
             c.perform(action)
@@ -670,7 +674,7 @@ class TaskWorkControllerTest {
             MapRouletteException(ErrorKind.AUTHENTICATION, 401) to "Couldn't save your answers. Try again in a moment.",
         )
         for ((error, notice) in cases) {
-            val ops = FakeOps().thenRead({ task() })
+            val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
             ops.pending = { throw error }
             val c = controller(ops, writer = Writer.GUEST)
             c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
@@ -681,11 +685,32 @@ class TaskWorkControllerTest {
 
     @Test
     fun guestOnAnUnpublishedCampaignIsNotAvailable() = runTest {
-        val ops = FakeOps().thenRead({ task() })
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         ops.pending = { throw MapRouletteException(ErrorKind.PERMISSION, 403, reason = "challenge_not_published") }
         val c = controller(ops, writer = Writer.GUEST)
         c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
         advanceUntilIdle()
         assertEquals("This campaign isn't open for answers yet.", (c.state.value as TaskScreen.NotAvailable).reason)
+    }
+
+    @Test
+    fun guestIsAskedToSignInBeforeQuestionsTheServerWontKeep() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        val c = controller(ops, writer = Writer.GUEST)
+        assertEquals(TaskScreen.GuestSignIn(task(), CHALLENGE), c.state.value)
+        assertEquals(listOf("get", "challenge"), ops.calls)
+        // Signed in, the same task is answered as before.
+        val signedIn = controller(FakeOps().thenRead({ task() }))
+        assertTrue(signedIn.state.value is TaskScreen.Answering)
+    }
+
+    @Test
+    fun guestRefusedAsUnsupportedIsAskedToSignIn() = runTest {
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.pending = { throw MapRouletteException(ErrorKind.HTTP, 422, problem = ChoiceProblem.UnsupportedTask, reason = "unsupported_task") }
+        val c = controller(ops, writer = Writer.GUEST)
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertTrue(c.state.value is TaskScreen.GuestSignIn)
     }
 }

@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.Challenge
@@ -130,6 +132,11 @@ data class ChoiceForm(
     val notDeletable: Set<String> = emptySet(),
 )
 
+/** The server keeps a guest's answers only for payloads with `liveMissingQuestions: true`
+ * (backend MobileChoicePendingService); other choice tasks need a signed-in account. */
+fun Task.takesGuestAnswers(): Boolean =
+    (cooperativeWork?.get("liveMissingQuestions") as? JsonPrimitive)?.booleanOrNull == true
+
 /** Screen states (docs/design/task-completion.md §11, docs/design/mobile-choice-challenges.md §7 app rules). */
 sealed interface TaskScreen {
     data object Loading : TaskScreen
@@ -171,6 +178,8 @@ sealed interface TaskScreen {
     enum class Pending { UNKNOWN, SUBMISSION_PENDING, STATUS_PENDING }
     /** OSM re-consent or a missing scope. Nothing was changed. */
     data class SignInRequired(val task: Task, val challenge: Challenge, val reason: String) : TaskScreen
+    /** A guest on a task the server won't keep guest answers for: sign in to answer, or move on. */
+    data class GuestSignIn(val task: Task, val challenge: Challenge) : TaskScreen
     /** A delete was refused (the node is in a way or relation); the same outcome may be sent without deletion. */
     data class ElementInUse(val task: Task, val challenge: Challenge, val form: ChoiceForm, val outcome: ChoiceOutcome) : TaskScreen
 }
@@ -237,6 +246,8 @@ class TaskWorkController(
             return TaskScreen.Answering(task, challenge, form(work, ops.choiceOutcomes(task), deleteAllowed = true))
         }
         if (writer == null) return TaskScreen.Preview(task, challenge, work)
+        // Asked before the questions, not after the guest has answered them.
+        if (writer.guest && !task.takesGuestAnswers()) return TaskScreen.GuestSignIn(task, challenge)
         val eligibility = try {
             ops.checkChoice(task.id)
         } catch (e: CancellationException) {
@@ -407,6 +418,7 @@ class TaskWorkController(
         fun answering(notice: String) = TaskScreen.Answering(task, challenge, form, notice)
         if (error !is MapRouletteException) return answering("Couldn't save your answers. Try again.")
         if (error.reason == "task_completed") return notAccepted(task, challenge)
+        if (error.problem == ChoiceProblem.UnsupportedTask) return TaskScreen.GuestSignIn(task, challenge)
         if (error.kind == ErrorKind.RATE_LIMIT && error.reason == "pending_limit") return answering(Wording.pendingLimit(noun))
         if (error.kind == ErrorKind.PERMISSION && error.reason == "challenge_not_published") {
             return TaskScreen.NotAvailable(task, challenge, "This campaign isn't open for answers yet.")
