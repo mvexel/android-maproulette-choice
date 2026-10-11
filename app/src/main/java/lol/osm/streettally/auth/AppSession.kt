@@ -41,7 +41,7 @@ data class SessionState(
 class AppSession(
     val config: AppConfig,
     store: CredentialStore,
-    transport: Transport,
+    private val transport: Transport,
     val pendingSaves: PendingSaveStore = PendingSaveStore(InMemoryCredentialStore()),
     private val guestAccessFailureStore: CredentialStore = InMemoryCredentialStore(),
 ) {
@@ -52,6 +52,8 @@ class AppSession(
     private val guestMutex = Mutex()
     private val followUpMutex = Mutex()
     private var guestRestoreFailed = false
+    private var guestEstablished = false
+    private var durableGuestId: String? = null
     private val mutableState = MutableStateFlow(SessionState())
     val state: StateFlow<SessionState> = mutableState
     private val mutableFollowUp = MutableStateFlow(GuestFollowUpState())
@@ -118,8 +120,12 @@ class AppSession(
     /** Reads the saved sign-in. Call once at startup. */
     suspend fun restore() {
         val result = signIn.restore()
-        guestRestoreFailed = result == RestoreResult.Unreadable ||
-            runCatching { guestAccessFailureStore.read() != null }.getOrDefault(true)
+        guestEstablished = runCatching { guestAccessFailureStore.read() != null }.getOrDefault(true)
+        guestRestoreFailed = result == RestoreResult.Unreadable || (guestEstablished && signIn.guest == null)
+        if (signIn.guest != null) {
+            try { withContext(NonCancellable) { rememberEstablishedGuest() } }
+            catch (_: Exception) { guestRestoreFailed = true }
+        }
         val message = when (result) {
             RestoreResult.Unreadable -> SAVED_ACCESS_UNAVAILABLE
             RestoreResult.RefreshInterrupted -> SIGNED_OUT_AGAIN
@@ -130,8 +136,16 @@ class AppSession(
 
     /** Serialized because SDK registration deliberately runs outside its own credential lock. */
     suspend fun ensureGuest() = guestMutex.withLock {
-        if (!state.value.restored || !config.guestWritesAllowed || signIn.account != null || signIn.guest != null) return@withLock
-        if (guestRestoreFailed || runCatching { pendingSaves.read() != null }.getOrDefault(true)) {
+        if (!state.value.restored || !config.guestWritesAllowed || signIn.account != null) return@withLock
+        if (signIn.guest != null) {
+            if (durableGuestId != signIn.guest?.guestId) {
+                try {
+                    withContext(NonCancellable) { rememberEstablishedGuest(); publish(null) }
+                } catch (_: Exception) { publish(SAVED_ACCESS_UNAVAILABLE) }
+            }
+            return@withLock
+        }
+        if (guestRestoreFailed || guestEstablished || runCatching { pendingSaves.read() != null }.getOrDefault(true)) {
             publish(SAVED_ACCESS_UNAVAILABLE)
             return@withLock
         }
@@ -141,6 +155,7 @@ class AppSession(
             // the opening screen leaves; SDK assigns guest before its store write completes.
             withContext(NonCancellable) {
                 signIn.startGuest()
+                rememberEstablishedGuest()
                 publish(null)
             }
         } catch (e: CancellationException) {
@@ -152,11 +167,23 @@ class AppSession(
         }
     }
 
+    /** Persist before exposing credentials to any guest operation. SDK can erase the credential
+     * during pending writes, reads or cancellation; this evidence survives every such path.
+     * Existing encrypted slot/key is retained so prior lost-access markers still block replacement. */
+    private suspend fun rememberEstablishedGuest() {
+        val guest = checkNotNull(signIn.guest)
+        guestEstablished = true
+        guestAccessFailureStore.write("established:${guest.guestId}")
+        durableGuestId = guest.guestId
+        guestRestoreFailed = false
+    }
+
     /** Account precedence is explicit; a guest never gets an OSM writer. */
     fun writer(): Writer? {
         val account = state.value.account
         if (account != null) return if (config.writesAllowed && account.canWriteTasks) Writer(account.userId, account.canEditOsm) else null
         val guest = state.value.guest ?: return null
+        if (guest.guestId != durableGuestId || signIn.guest != guest) return null
         return if (config.guestWritesAllowed) Writer(0, false, "${config.baseUrl}|${config.oauthClientId}|${guest.guestId}") else null
     }
 
@@ -185,7 +212,12 @@ class AppSession(
 
     /** A client for the current account (or anonymous reads when signed out). Make a new one when
      * [SessionState.generation] changes. */
-    fun client(): MapRouletteClient = signIn.client()
+    fun client(): MapRouletteClient =
+        if (signIn.account == null && signIn.guest?.guestId != durableGuestId) {
+            // During registration/marker persistence, even campaign reads must not use the
+            // SDK's in-memory guest credential before durable evidence exists.
+            MapRouletteClient(config.environment(), transport)
+        } else signIn.client()
 
     private fun publish(message: String?, restored: Boolean = state.value.restored) {
         val account = signIn.account
@@ -194,7 +226,7 @@ class AppSession(
         mutableState.value = SessionState(
             restored = restored,
             account = account,
-            guest = signIn.guest,
+            guest = signIn.guest?.takeIf { it.guestId == durableGuestId },
             generation = signIn.generation,
             busy = false,
             message = message,

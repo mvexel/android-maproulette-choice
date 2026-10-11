@@ -9,7 +9,9 @@ import lol.osm.streettally.AppConfig
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.task.PendingSaveIntent
-import lol.osm.streettally.task.PendingSaveStore
+import lol.osm.streettally.task.*
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import org.junit.Assert.*
 import org.junit.Test
 import org.maproulette.sdk.*
@@ -171,6 +173,130 @@ class GuestFollowUpTest {
         assertEquals(1, registrations)
         assertNull(reopened.writer())
         assertEquals(AppSession.SAVED_ACCESS_UNAVAILABLE, reopened.state.value.message)
+    }
+
+    @Test fun priorConfirmedSaveThenPendingTokenRefusalCannotReplaceGuestOnRelaunch() = refusedPending(false)
+    @Test fun cancelledPendingDuringTokenRefusalCannotReplaceGuestOnRelaunch() = refusedPending(true)
+
+    private fun refusedPending(cancel: Boolean) = runTest {
+        val disk = InMemoryCredentialStore()
+        val evidence = InMemoryCredentialStore()
+        val pending = PendingSaveStore(InMemoryCredentialStore())
+        var registrations = 0
+        var refuseToken = false
+        val tokenStarted = CompletableDeferred<Unit>()
+        val finishToken = CompletableDeferred<Unit>()
+        val backend = Transport { request ->
+            when (URI(request.url).path) {
+                "/oauth/mobile/guest" -> {
+                    registrations++
+                    HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-abcdefghijklmnopqrstuvwxyz"}""")
+                }
+                "/oauth/mobile/token" -> if (refuseToken) {
+                    tokenStarted.complete(Unit)
+                    finishToken.await()
+                    HttpResponse(400, body = """{"error":"invalid_grant"}""")
+                }
+                    else HttpResponse(200, body = """{"token_type":"Bearer","access_token":"guest-token-abcdefghijklmnopqrstuvwxyz","expires_in":3600,"scope":"guest"}""")
+                "/api/v2/task/42/choice/pending" -> HttpResponse(200, body = """{"taskId":42,"state":"pending","answeredAt":"2026-10-11T12:00:00Z"}""")
+                else -> error("unexpected request")
+            }
+        }
+        fun app() = AppSession(config(), disk, backend, pending, evidence)
+        fun controller(app: AppSession): TaskWorkController {
+            val bridge = ClientTaskOps(app.client())
+            val ops = object : TaskOps by bridge {
+                override suspend fun getTask(id: TaskId) = task()
+                override suspend fun getChallenge(task: Task) = CHALLENGE
+                override suspend fun checkChoice(id: TaskId) = ChoiceEligibility(true, true, null)
+            }
+            return TaskWorkController(ops, app.writer(), this, StandardTestDispatcher(testScheduler), pendingSaves = pending, campaignId = 1)
+        }
+        val first = app().also { it.restore(); it.ensureGuest() }
+        val saved = controller(first)
+        saved.load(TaskId(42)); advanceUntilIdle()
+        saved.perform(ChoiceAction.Answers(mapOf("backrest" to "yes"))); advanceUntilIdle()
+        assertTrue((saved.state.value as TaskScreen.Done).savedForLater)
+        assertNull(pending.read())
+        refuseToken = true
+        val second = app().also { it.restore(); it.ensureGuest() }
+        val rejected = controller(second)
+        rejected.load(TaskId(42)); advanceUntilIdle()
+        rejected.perform(ChoiceAction.Answers(mapOf("backrest" to "no"))); runCurrent()
+        tokenStarted.await()
+        if (cancel) rejected.cancel()
+        finishToken.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(if (cancel) rejected.state.value is TaskScreen.Submitting else rejected.state.value is TaskScreen.Answering)
+        assertNull(pending.read()) // First definite refusal releases only this new intent.
+        val reopened = app().also { it.restore(); it.ensureGuest() }
+        assertEquals(1, registrations)
+        assertNull(reopened.writer())
+        assertEquals(AppSession.SAVED_ACCESS_UNAVAILABLE, reopened.state.value.message)
+    }
+
+    @Test fun cancelledStatusOrEmailDuringRefusedTokenCannotReplaceGuestOnRelaunch() = runTest {
+        for (email in listOf(false, true)) {
+            val disk = InMemoryCredentialStore()
+            val evidence = InMemoryCredentialStore()
+            val started = CompletableDeferred<Unit>()
+            val finish = CompletableDeferred<Unit>()
+            var registrations = 0
+            val backend = Transport { request ->
+                when (URI(request.url).path) {
+                    "/oauth/mobile/guest" -> {
+                        registrations++
+                        HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-abcdefghijklmnopqrstuvwxyz"}""")
+                    }
+                    "/oauth/mobile/token" -> { started.complete(Unit); finish.await(); HttpResponse(400, body = """{"error":"invalid_grant"}""") }
+                    else -> error("no operation after token refusal")
+                }
+            }
+            val app = AppSession(config(), disk, backend, guestAccessFailureStore = evidence)
+            app.restore(); app.ensureGuest()
+            val operation = launch {
+                try { if (email) app.sendFinishLink("rosa@example.org") else app.refreshGuestStatus() }
+                catch (_: MapRouletteException) { /* SDK may report refusal from noncancellable token work. */ }
+            }
+            runCurrent(); started.await()
+            operation.cancel()
+            finish.complete(Unit)
+            operation.join()
+            val reopened = AppSession(config(), disk, backend, guestAccessFailureStore = evidence)
+            reopened.restore(); reopened.ensureGuest()
+            assertEquals(1, registrations)
+            assertNull(reopened.writer())
+            assertEquals(AppSession.SAVED_ACCESS_UNAVAILABLE, reopened.state.value.message)
+        }
+    }
+
+    @Test fun evidenceStorageFailureExposesNoWriterAndRetriesSameGuest() = runTest {
+        val disk = InMemoryCredentialStore()
+        val evidenceDisk = InMemoryCredentialStore()
+        var failed = true
+        val evidence = object : CredentialStore {
+            override suspend fun read() = evidenceDisk.read()
+            override suspend fun write(data: String) { if (failed) error("disk full"); evidenceDisk.write(data) }
+            override suspend fun clear() = evidenceDisk.clear()
+        }
+        val backend = Backend()
+        val app = AppSession(config(), disk, backend, guestAccessFailureStore = evidence)
+        app.restore(); app.ensureGuest()
+        assertNull(app.writer())
+        assertNull(app.state.value.guest)
+        backend.answer = { status() }
+        app.client().getGuestStatus() // Reads cannot use the SDK guest before evidence persists.
+        assertFalse(backend.requests.any { URI(it.url).path == "/oauth/mobile/token" })
+        assertFalse(backend.requests.last().headers.keys.any { it.equals("Authorization", ignoreCase = true) })
+        failed = false
+        app.ensureGuest()
+        assertNotNull(app.writer())
+        assertEquals(1, backend.requests.count { URI(it.url).path == "/oauth/mobile/guest" })
+        val reopened = AppSession(config(), disk, backend, guestAccessFailureStore = evidence)
+        reopened.restore(); reopened.ensureGuest()
+        assertEquals("guest-1", reopened.state.value.guest?.guestId)
+        assertNull(reopened.state.value.message)
+        assertNotNull(reopened.writer())
     }
 
     @Test fun withoutLocationSelectionNeverSaysNearest() {
