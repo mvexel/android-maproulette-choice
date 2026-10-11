@@ -27,10 +27,12 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
-/** Brand pin colors (brand/colors.json); the brand pin images replace the circles later. */
-private const val TODO_COLOR = "#E8590C"
+/** Brand pins (brand/pins/svg PinTodo, PinDone): amber with a navy ring to check, green with a
+ * white ring once checked. Drawn as circles at the pins' 28 px size. */
+private const val TODO_COLOR = "#F5A524"
+private const val TODO_RING = "#14213D"
 private const val DONE_COLOR = "#1F7A4D"
-private const val OUTLINE_COLOR = "#14213D"
+private const val DONE_RING = "#FFFFFF"
 
 /** A campaign's places on a MapLibre map with OpenFreeMap tiles. Checked places are green, the
  * rest orange. Tapping a place calls [onPlace] with its task id. */
@@ -85,15 +87,10 @@ private class PlacesMapHolder(context: Context, styleUrl: String) {
                 style.addSource(source)
                 style.addLayer(
                     CircleLayer(LAYER, SOURCE).withProperties(
-                        PropertyFactory.circleRadius(8f),
-                        PropertyFactory.circleColor(
-                            Expression.switchCase(
-                                Expression.get("done"), Expression.color(android.graphics.Color.parseColor(DONE_COLOR)),
-                                Expression.color(android.graphics.Color.parseColor(TODO_COLOR)),
-                            ),
-                        ),
-                        PropertyFactory.circleStrokeWidth(2f),
-                        PropertyFactory.circleStrokeColor(OUTLINE_COLOR),
+                        PropertyFactory.circleRadius(Expression.switchCase(Expression.get("done"), Expression.literal(11f), Expression.literal(10f))),
+                        PropertyFactory.circleColor(byDone(DONE_COLOR, TODO_COLOR)),
+                        PropertyFactory.circleStrokeWidth(Expression.switchCase(Expression.get("done"), Expression.literal(2f), Expression.literal(3f))),
+                        PropertyFactory.circleStrokeColor(byDone(DONE_RING, TODO_RING)),
                     ),
                 )
                 this.source = source
@@ -152,3 +149,8 @@ private class PlacesMapHolder(context: Context, styleUrl: String) {
         const val LAYER = "places-circles"
     }
 }
+
+private fun byDone(done: String, todo: String): Expression = Expression.switchCase(
+    Expression.get("done"), Expression.color(android.graphics.Color.parseColor(done)),
+    Expression.color(android.graphics.Color.parseColor(todo)),
+)

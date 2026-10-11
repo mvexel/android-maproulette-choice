@@ -6,6 +6,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.auth.KeystoreCredentialStore
+import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
 import org.maproulette.sdk.OkHttpTransport
 
@@ -15,9 +16,12 @@ class StreetTallyApp : Application() {
     lateinit var session: AppSession
         private set
     val checked = CheckedLog()
+    lateinit var prefs: CampaignPrefs
+        private set
 
     override fun onCreate() {
         super.onCreate()
+        prefs = CampaignPrefs(this)
         val config = AppConfig.fromBuild()
         session = AppSession(
             config,

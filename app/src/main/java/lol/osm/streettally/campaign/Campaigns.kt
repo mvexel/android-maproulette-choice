@@ -2,9 +2,12 @@ package lol.osm.streettally.campaign
 
 import org.maproulette.sdk.Challenge
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.ChoiceQuestion
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.PageCursor
 import org.maproulette.sdk.Task
+import org.maproulette.sdk.TaskWork
+import org.maproulette.sdk.work
 
 /** The published campaigns, as the iOS picker reads them. */
 data class CampaignList(val campaigns: List<Challenge>, val hidden: Int, val truncated: Boolean)
@@ -56,6 +59,12 @@ object Campaigns {
             pages += 1
         } while (cursor != null && pages < MAX_TASK_PAGES)
         return CampaignPlaces(challenge, all.map(LocatedTask::of), Noun.from(all), cursor != null)
+    }
+
+    /** Every question asked in the campaign, in first-seen order, for the welcome card. */
+    fun questions(tasks: List<Task>): List<ChoiceQuestion> {
+        val seen = mutableSetOf<String>()
+        return tasks.flatMap { (it.work() as? TaskWork.Choice)?.questions.orEmpty() }.filter { seen.add(it.id) }
     }
 
     /** Places shown on the map and list: open ones and checked ones. */

@@ -63,6 +63,9 @@ object Wording {
     fun locationStaysOnPhone(noun: Noun): String =
         "Your location stays on your phone. We use it to find the nearest ${noun.many}."
 
+    const val ANSWERS_ARE_PUBLIC =
+        "Your answers are saved to OpenStreetMap, the free map anyone can use and improve. Edits are public and show your OpenStreetMap username."
+
     // The place screen.
     const val NOT_SURE = "I'm not sure"
     const val NOT_SURE_SHORT = "Not sure"
