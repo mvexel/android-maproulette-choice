@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -38,11 +39,11 @@ object Locator {
             .firstOrNull { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
             ?: return LocateResult.Unavailable
         val fix = withTimeoutOrNull(timeoutMs) {
-            suspendCancellableCoroutine { continuation ->
+            suspendCancellableCoroutine<Location?> { continuation ->
                 val signal = CancellationSignal()
                 continuation.invokeOnCancellation { signal.cancel() }
                 LocationManagerCompat.getCurrentLocation(manager, provider, signal, executor) { location ->
-                    continuation.resumeWith(Result.success(location))
+                    continuation.resumeWith(Result.success(location)) // Null when the provider has no fix.
                 }
             }
         } ?: return LocateResult.TimedOut
