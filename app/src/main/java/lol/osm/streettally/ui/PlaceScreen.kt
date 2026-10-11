@@ -1,6 +1,8 @@
 package lol.osm.streettally.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +51,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
@@ -604,6 +607,9 @@ private fun ProblemRow(label: String, explanation: String?, onClick: () -> Unit)
     }
 }
 
+/** How often the moved map refreshes its fix while open. */
+private const val FIX_REFRESH_MS = 3_000L
+
 /** "It's moved" (design/not-here-moved.md §3.2): tap the map, or "I'm standing at it" with a fix
  * within [MovedSpot.GOOD_FIX_M]. Only the picked spot is saved. */
 @Composable
@@ -618,32 +624,32 @@ internal fun MovedPicker(
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var locating by remember { mutableStateOf(false) }
-    var waiting by remember { mutableStateOf(false) }
-    val permitted = Locator.permitted(context)
-    Text(Wording.movedTitle(noun), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-    // The accessible path comes first: tapping the map isn't usable with TalkBack.
-    BigButton(Wording.STANDING_AT_IT, enabled = permitted && !locating) {
-        locating = true
-        waiting = false
-        scope.launch {
-            val result = Locator.locate(context)
-            locating = false
-            val fix = result as? LocateResult.Found
-            if (fix != null && (fix.accuracyM ?: Float.MAX_VALUE) <= MovedSpot.GOOD_FIX_M) onPick(fix.position, true) else waiting = true
+    var permitted by remember { mutableStateOf(Locator.permitted(context)) }
+    // The latest fix within [MovedSpot.GOOD_FIX_M]; "I'm standing at it" waits for one, as on iOS.
+    var goodFix by remember { mutableStateOf<LatLon?>(null) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        permitted = Locator.permitted(context)
+    }
+    LaunchedEffect(Unit) { if (!permitted) permission.launch(Locator.PERMISSIONS) }
+    LaunchedEffect(permitted) {
+        while (permitted && isActive) {
+            val fix = Locator.locate(context) as? LocateResult.Found
+            if (fix != null && (fix.accuracyM ?: Float.MAX_VALUE) <= MovedSpot.GOOD_FIX_M) goodFix = fix.position
+            delay(FIX_REFRESH_MS)
         }
     }
-    if (locating || waiting) {
+    Text(Wording.movedTitle(noun), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+    // The accessible path comes first: tapping the map isn't usable with TalkBack.
+    BigButton(Wording.STANDING_AT_IT, enabled = goodFix != null) {
+        goodFix?.let { onPick(it, true) }
+    }
+    if (goodFix == null) {
         Text(Wording.WAITING_FOR_FIX, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Text(Wording.MOVED_HELP)
     MovedSpotMap(
         styleUrl, mapped, picked, Wording.ON_THE_MAP, interactive = true,
-        onPick = { spot ->
-            waiting = false
-            onPick(spot, false)
-        },
+        onPick = { spot -> onPick(spot, false) },
         modifier = Modifier.fillMaxWidth().height(380.dp),
     )
     val meters = picked?.let { Places.meters(mapped, it) }
