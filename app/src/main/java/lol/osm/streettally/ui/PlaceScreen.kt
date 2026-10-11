@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -42,27 +43,34 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.campaign.MovedSpot
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.location.LocateResult
+import lol.osm.streettally.location.Locator
 import lol.osm.streettally.task.ChoiceAction
 import lol.osm.streettally.task.ChoiceForm
 import lol.osm.streettally.task.ClientTaskOps
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
+import lol.osm.streettally.task.isReport
 import lol.osm.streettally.task.Writer
 import org.maproulette.sdk.ChoiceOutcome
 import org.maproulette.sdk.ChoiceQuestion
+import org.maproulette.sdk.MovedLocation
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
 import org.maproulette.sdk.TaskWork
@@ -98,6 +106,17 @@ fun PlaceScreen(
     var notSure by remember { mutableStateOf(emptySet<String>()) }
     var counted by remember { mutableStateOf(false) }
     var showProblems by remember { mutableStateOf(false) }
+    // "It's moved": picking the spot on the map, then the report waiting for Done.
+    var picking by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf<LatLon?>(null) }
+    var pickedFromHere by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<ChoiceAction?>(null) }
+    fun resetReport() {
+        picking = false
+        picked = null
+        pickedFromHere = false
+        report = null
+    }
 
     LaunchedEffect(Unit) { controller.load(TaskId(taskId)) }
     // Account switch or sign-out: discard the old account's controller and any late result.
@@ -114,6 +133,7 @@ fun PlaceScreen(
         } else null
         step = 0
         notSure = emptySet()
+        resetReport()
         controller.load(TaskId(taskId))
     }
     val c = controller
@@ -139,6 +159,7 @@ fun PlaceScreen(
         counted = false
         step = 0
         notSure = emptySet()
+        resetReport()
         controller = newController(session, scope, noun)
         controller.load(TaskId(place.id))
     }
@@ -200,7 +221,32 @@ fun PlaceScreen(
                 }
                 is TaskScreen.Answering -> {
                     s.notice?.let { Banner(it) }
-                    if (!c.canEditOsm) {
+                    val mapped = Places.position(s.task)
+                    val pending = report
+                    if (pending != null) {
+                        ReportReview(pending, mapped, noun, session.config.mapStyleUrl, onDone = {
+                            resetReport()
+                            switchNotice = null
+                            c.perform(pending)
+                        }, onBack = {
+                            report = null
+                            picking = pending is ChoiceAction.Moved
+                        })
+                    } else if (picking && mapped != null) {
+                        MovedPicker(
+                            mapped, picked, pickedFromHere, noun, session.config.mapStyleUrl,
+                            onPick = { spot, fromHere ->
+                                picked = spot
+                                pickedFromHere = fromHere
+                            },
+                            onSave = { spot ->
+                                val source = if (pickedFromHere) MovedLocation.Source.HERE else MovedLocation.Source.TAP
+                                report = ChoiceAction.Moved(MovedLocation(spot.lat, spot.lon, source))
+                                picking = false
+                            },
+                            onCancel = { resetReport() },
+                        )
+                    } else if (!c.canEditOsm) {
                         Text("This sign-in can't save answers to OpenStreetMap.")
                         BigButton("Sign in again", onClick = onSignIn)
                     } else {
@@ -221,7 +267,12 @@ fun PlaceScreen(
                             Review(c, s.task, s.form, noun, onEdit = { step = it })
                         }
                     }
-                    Problems(c, s.task, s.form, noun, showProblems, { showProblems = it }) { action ->
+                    if (report == null && !picking) Problems(
+                        c, s.task, s.form, noun, showProblems, { showProblems = it },
+                        canMove = Places.position(s.task) != null,
+                        onNotHere = { report = ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE) },
+                        onMoved = { picking = true },
+                    ) { action ->
                         switchNotice = null
                         val outcome = (action as? ChoiceAction.Outcome)?.outcome
                         val me = state.account?.userId
@@ -243,6 +294,11 @@ fun PlaceScreen(
                 is TaskScreen.Done -> {
                     if (s.byOther) {
                         Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
+                    } else if (s.action.isReport) {
+                        Text(
+                            "✓ " + if (s.action is ChoiceAction.Moved) Wording.REPORTED_MOVED else Wording.REPORTED_NOT_HERE,
+                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                        )
                     } else {
                         // Counted once the effect above has recorded it; reading [counted] recomposes then.
                         val today = checked.today(campaignId) + if (counted) 0 else 1
@@ -429,7 +485,8 @@ private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: No
     }
 }
 
-/** "Something's wrong here": the campaign's outcomes, "I can't check this", and Skip. */
+/** "Something's wrong here" (design/not-here-moved.md §2), least consequence first: Skip,
+ * "I can't check this", "It's not here", "It's moved", then the campaign's own outcomes. */
 @Composable
 private fun Problems(
     c: TaskWorkController,
@@ -438,46 +495,150 @@ private fun Problems(
     noun: Noun,
     open: Boolean,
     setOpen: (Boolean) -> Unit,
+    /** The place has a position to measure a move from. */
+    canMove: Boolean,
+    onNotHere: () -> Unit,
+    onMoved: () -> Unit,
     choose: (ChoiceAction) -> Unit,
 ) {
     val outcomes = form.outcomes.filter { c.offers(task, form, ChoiceAction.Outcome(it)) }
     val canSkip = c.offers(task, form, ChoiceAction.Skip)
-    if (outcomes.isEmpty() && !canSkip) return
+    val notHere = c.offers(task, form, ChoiceAction.Outcome(ChoiceOutcome.NOT_HERE))
     HorizontalDivider()
     TextButton(onClick = { setOpen(true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text(Wording.SOMETHING_WRONG)
     }
     if (!open) return
-    fun pick(action: ChoiceAction) {
+    fun pick(run: () -> Unit) {
         setOpen(false)
-        choose(action)
+        run()
     }
     AlertDialog(
         onDismissRequest = { setOpen(false) },
         title = { Text(Wording.SOMETHING_WRONG) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(Wording.problemsMessage(noun))
-                outcomes.filter { it.id != ChoiceOutcome.TOO_HARD_ID }.forEach { outcome ->
-                    OutlinedButton(onClick = { pick(ChoiceAction.Outcome(outcome)) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(outcome.label)
-                    }
-                }
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(Wording.PROBLEMS_MESSAGE)
+                if (canSkip) ProblemRow(Wording.skip(noun), Wording.SKIP_EXPLAINED) { pick { choose(ChoiceAction.Skip) } }
                 outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }?.let { tooHard ->
-                    OutlinedButton(onClick = { pick(ChoiceAction.Outcome(tooHard)) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(Wording.cantCheck(noun))
-                    }
+                    ProblemRow(Wording.cantCheck(noun), Wording.CANT_CHECK_EXPLAINED) { pick { choose(ChoiceAction.Outcome(tooHard)) } }
                 }
-                if (canSkip) {
-                    OutlinedButton(onClick = { pick(ChoiceAction.Skip) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(Wording.skip(noun))
-                    }
+                if (notHere) ProblemRow(Wording.NOT_HERE, Wording.notHereExplained(noun)) { pick(onNotHere) }
+                if (notHere && canMove) ProblemRow(Wording.MOVED, Wording.MOVED_EXPLAINED) { pick(onMoved) }
+                outcomes.filter { it.id != ChoiceOutcome.TOO_HARD_ID }.forEach { outcome ->
+                    ProblemRow(outcome.label, outcome.description) { pick { choose(ChoiceAction.Outcome(outcome)) } }
                 }
             }
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = { setOpen(false) }) { Text("Cancel") } },
     )
+}
+
+@Composable
+private fun ProblemRow(label: String, explanation: String?, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, fontWeight = FontWeight.SemiBold)
+            explanation?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** "It's moved" (design/not-here-moved.md §3.2): tap the map, or "I'm standing at it" with a fix
+ * within [MovedSpot.GOOD_FIX_M]. Only the picked spot is saved. */
+@Composable
+private fun MovedPicker(
+    mapped: LatLon,
+    picked: LatLon?,
+    fromHere: Boolean,
+    noun: Noun,
+    styleUrl: String,
+    onPick: (LatLon, Boolean) -> Unit,
+    onSave: (LatLon) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var locating by remember { mutableStateOf(false) }
+    var waiting by remember { mutableStateOf(false) }
+    val permitted = Locator.permitted(context)
+    Text(Wording.movedTitle(noun), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+    // The accessible path comes first: tapping the map isn't usable with TalkBack.
+    BigButton(Wording.STANDING_AT_IT, enabled = permitted && !locating) {
+        locating = true
+        waiting = false
+        scope.launch {
+            val result = Locator.locate(context)
+            locating = false
+            val fix = result as? LocateResult.Found
+            if (fix != null && (fix.accuracyM ?: Float.MAX_VALUE) <= MovedSpot.GOOD_FIX_M) onPick(fix.position, true) else waiting = true
+        }
+    }
+    if (locating || waiting) {
+        Text(Wording.WAITING_FOR_FIX, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Text(Wording.MOVED_HELP)
+    MovedSpotMap(
+        styleUrl, mapped, picked, Wording.ON_THE_MAP, interactive = true,
+        onPick = { spot ->
+            waiting = false
+            onPick(spot, false)
+        },
+        modifier = Modifier.fillMaxWidth().height(380.dp),
+    )
+    val meters = picked?.let { Places.meters(mapped, it) }
+    if (meters != null) {
+        Text(Wording.movedDistance(meters), style = MaterialTheme.typography.titleMedium)
+        when (MovedSpot.check(meters)) {
+            MovedSpot.Check.TOO_CLOSE -> Banner(Wording.MOVED_TOO_CLOSE)
+            MovedSpot.Check.FAR -> Banner(Wording.movedFar(meters, noun))
+            MovedSpot.Check.TOO_FAR -> Banner(Wording.movedTooFar(noun))
+            MovedSpot.Check.OK -> Unit
+        }
+    }
+    Text(
+        if (picked != null && fromHere) Wording.spotIsHere(noun) else Wording.SPOT_ONLY,
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    BigButton(Wording.SAVE_THIS_SPOT, prominent = true, enabled = picked != null && meters != null && MovedSpot.canSave(meters)) {
+        picked?.let(onSave)
+    }
+    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
+}
+
+/** "Check your report": always shown before a not-here or moved report is sent. */
+@Composable
+private fun ReportReview(
+    report: ChoiceAction,
+    mapped: LatLon?,
+    noun: Noun,
+    styleUrl: String,
+    onDone: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val moved = report as? ChoiceAction.Moved
+    val spot = moved?.let { LatLon(it.location.latitude, it.location.longitude) }
+    Text(Wording.CHECK_REPORT, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+    Text(Wording.REPORTING, fontWeight = FontWeight.SemiBold)
+    if (spot != null && mapped != null) {
+        Text(Wording.reportMoved(Places.meters(mapped, spot), noun), style = MaterialTheme.typography.titleMedium)
+        MovedSpotMap(
+            styleUrl, mapped, spot, Wording.ON_THE_MAP, interactive = false, onPick = {},
+            modifier = Modifier.fillMaxWidth().height(180.dp),
+        )
+        Text(Wording.REPORT_MOVED_NOTE)
+    } else {
+        Text(Wording.reportNotHere(noun), style = MaterialTheme.typography.titleMedium)
+        Text(Wording.REPORT_NOT_HERE_NOTE)
+    }
+    BigButton(Wording.DONE, prominent = true, onClick = onDone)
+    TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Back") }
 }
 
 @Composable

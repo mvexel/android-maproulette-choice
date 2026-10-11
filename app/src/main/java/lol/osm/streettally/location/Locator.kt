@@ -16,7 +16,8 @@ import lol.osm.streettally.campaign.LatLon
 
 /** One position fix for sorting places. The location never leaves the phone. */
 sealed interface LocateResult {
-    data class Found(val position: LatLon) : LocateResult
+    /** [accuracyM]: the fix's horizontal accuracy in meters, when the provider reports one. */
+    data class Found(val position: LatLon, val accuracyM: Float? = null) : LocateResult
     data object Denied : LocateResult
     data object Unavailable : LocateResult
     data object TimedOut : LocateResult
@@ -47,7 +48,7 @@ object Locator {
                 }
             }
         } ?: return LocateResult.TimedOut
-        return LocateResult.Found(LatLon(fix.latitude, fix.longitude))
+        return LocateResult.Found(LatLon(fix.latitude, fix.longitude), fix.accuracy.takeIf { fix.hasAccuracy() })
     }
 
     private val executor = Executors.newSingleThreadExecutor()

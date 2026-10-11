@@ -1,0 +1,32 @@
+package lol.osm.streettally.campaign
+
+import kotlin.math.roundToInt
+
+/** Distance rules for "It's moved" (design/not-here-moved.md §3.2), as in the iOS MovedSpotView. */
+object MovedSpot {
+    /** Under this the pick is where the map already has it; Save is disabled. */
+    const val TOO_CLOSE_M = 5.0
+    /** Over this the pick may be a different place; Save still works. */
+    const val FAR_M = 150.0
+    /** Over this it can't be the same place; Save is disabled (the server refuses it too). */
+    const val TOO_FAR_M = 500.0
+    /** "I'm standing at it" needs a fix at least this accurate. */
+    const val GOOD_FIX_M = 50f
+
+    enum class Check { TOO_CLOSE, OK, FAR, TOO_FAR }
+
+    fun check(meters: Double): Check = when {
+        meters < TOO_CLOSE_M -> Check.TOO_CLOSE
+        meters > TOO_FAR_M -> Check.TOO_FAR
+        meters > FAR_M -> Check.FAR
+        else -> Check.OK
+    }
+
+    fun canSave(meters: Double): Boolean = check(meters).let { it == Check.OK || it == Check.FAR }
+
+    /** Under 100 m to the nearest 5 m, then to the nearest 10 m. */
+    fun roundedMeters(meters: Double): Int {
+        val step = if (meters < 100) 5 else 10
+        return (meters / step).roundToInt() * step
+    }
+}
