@@ -35,6 +35,8 @@ data class SessionState(
     val busy: Boolean = false,
     /** A one-off note about the last sign-in or sign-out, or null. */
     val message: String? = null,
+    /** The backend refused guests in this launch, so signing in comes first again. */
+    val guestsRefused: Boolean = false,
 )
 
 /** A guest's saved answers as last read ([status]; null when not a guest or not read yet), and the
@@ -199,6 +201,7 @@ class AppSession(
             generation = signIn.generation,
             busy = false,
             message = message,
+            guestsRefused = guestsRefused,
         )
     }
 

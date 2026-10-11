@@ -36,7 +36,7 @@ internal fun AccountSection(
     val enabled = state.restored && !state.busy
     when {
         account == null || needsReconsent -> Button(onClick = onSignIn, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text(signInLabel(account != null, needsReconsent))
+            Text(signInLabel(account != null, needsReconsent, guestsAvailable))
         }
         else -> OutlinedButton(onClick = onSignOut, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Text("Sign out")

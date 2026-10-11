@@ -88,4 +88,11 @@ class WordingTest {
             Wording.claimedMessage(null),
         )
     }
+
+    @Test fun withoutALocationNothingIsNearest() {
+        val stop = Noun("stop", "stops")
+        assertEquals("Choose a stop", Wording.choose(stop))
+        assertEquals("Location is off. Choose a stop on the map or in the list.", Wording.noLocation(stop, permitted = false))
+        assertEquals("Your location isn't available yet. Choose a stop on the map or in the list.", Wording.noLocation(stop, permitted = true))
+    }
 }

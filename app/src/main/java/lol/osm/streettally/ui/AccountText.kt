@@ -18,7 +18,9 @@ internal fun accountLine(state: SessionState, guestsAvailable: Boolean = false):
     }
 }
 
-internal fun signInLabel(signedIn: Boolean, needsReconsent: Boolean): String = when {
+/** [guestsAvailable]: as for [accountLine]; the guest copy points at "I already use OpenStreetMap". */
+internal fun signInLabel(signedIn: Boolean, needsReconsent: Boolean, guestsAvailable: Boolean = false): String = when {
+    !signedIn && guestsAvailable -> Wording.I_ALREADY_USE_OSM
     !signedIn -> "Sign in with OpenStreetMap"
     needsReconsent -> "Sign in again to save answers"
     else -> "Sign out"

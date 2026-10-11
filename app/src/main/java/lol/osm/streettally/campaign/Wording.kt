@@ -66,6 +66,11 @@ object Wording {
 
     fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun progress(done: Int, total: Int, noun: Noun): String = "The tally: $done of ${noun.count(total)} checked"
+    /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
+    fun choose(noun: Noun): String = "Choose a ${noun.one}"
+    fun noLocation(noun: Noun, permitted: Boolean): String =
+        (if (permitted) "Your location isn't available yet." else "Location is off.") +
+            " Choose a ${noun.one} on the map or in the list."
     fun allChecked(noun: Noun): String = "All ${noun.many} are checked. Thank you!"
     fun locationStaysOnPhone(noun: Noun): String =
         "Your location stays on your phone. We use it to find the nearest ${noun.many}."

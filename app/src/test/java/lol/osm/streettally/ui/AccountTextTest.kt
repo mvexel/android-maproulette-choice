@@ -10,6 +10,8 @@ class AccountTextTest {
         assertEquals("Sign in with OpenStreetMap", signInLabel(signedIn = false, needsReconsent = false))
         assertEquals("Sign in again to save answers", signInLabel(signedIn = true, needsReconsent = true))
         assertEquals("Sign out", signInLabel(signedIn = true, needsReconsent = false))
+        assertEquals("I already use OpenStreetMap", signInLabel(signedIn = false, needsReconsent = false, guestsAvailable = true))
+        assertEquals("Sign out", signInLabel(signedIn = true, needsReconsent = false, guestsAvailable = true))
     }
 
     @Test fun accountLine() {

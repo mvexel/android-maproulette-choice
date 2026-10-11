@@ -283,7 +283,13 @@ fun CampaignScreen(
                     }
                 }
                 val nearest = open.firstOrNull()
-                if (nearest != null) {
+                if (nearest != null && origin == null) {
+                    // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
+                    Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { showList = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(Wording.choose(noun))
+                    }
+                } else if (nearest != null) {
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                     }

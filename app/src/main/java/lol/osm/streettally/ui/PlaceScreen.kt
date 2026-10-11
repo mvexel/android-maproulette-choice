@@ -127,13 +127,10 @@ fun PlaceScreen(
     LaunchedEffect(Unit) {
         // Registering a guest changes the session generation; do it before binding the controller.
         // Never in preview: that would leave a guest behind (design/preview-mode.md §2).
+        val bound = generation
         if (!previewing && session.canAnswerAsGuest) session.ensureGuest()
-        val now = session.state.value.generation
-        if (now != generation) {
-            generation = now
-            controller.cancel()
-            controller = newController(session, scope, noun, previewing)
-        }
+        // A new generation (the guest just registered) rebinds and loads in the effect below, once.
+        if (session.state.value.generation != bound) return@LaunchedEffect
         controller.load(TaskId(taskId))
     }
     // Account switch or sign-out: discard the old account's controller and any late result.

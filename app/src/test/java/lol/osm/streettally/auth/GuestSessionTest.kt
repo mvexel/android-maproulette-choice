@@ -85,6 +85,8 @@ class GuestSessionTest {
         assertFalse(session.ensureGuest())
         assertEquals(listOf("/oauth/mobile/guest"), backend.paths)
         assertFalse(session.state.value.guest)
+        // Published, so the account section falls back to the sign-in wording.
+        assertTrue(session.state.value.guestsRefused)
     }
 
     @Test fun aFailedRegistrationTriesAgainLater() = runTest {
