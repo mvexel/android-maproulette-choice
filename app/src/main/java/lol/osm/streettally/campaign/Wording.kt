@@ -4,7 +4,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import org.maproulette.sdk.ClaimState
+import org.maproulette.sdk.ClaimStatus
 import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.GuestClaim
 import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.Task
@@ -158,8 +161,8 @@ object Wording {
     const val RESEND_THE_LINK = "Resend the link"
     const val I_ALREADY_USE_OSM = "I already use OpenStreetMap"
     /** Phone sign-in doesn't claim saved answers yet (Iris fix 5). */
-    const val SIGN_IN_PUTS_ON_MAP =
-        "Sign in now and your next answers go straight on the map. The ones you already saved stay saved until you finish on a computer."
+    /** Phone sign-in claims the saved answers (B5), so the original line is back (copy fix 5). */
+    const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     /** Only a bad address is the participant's to fix (shown in the error color); the rest are calm. */
     fun isInputError(error: Throwable): Boolean =
         error is IllegalArgumentException || (error as? MapRouletteException)?.status.let { it == 400 || it == 422 }
@@ -212,6 +215,50 @@ object Wording {
         }
         return "$who$onMap New answers go straight on the map from now on."
     }
+
+    /** "I already use OpenStreetMap" with saved answers (UX §1.3, §3.4–3.5): the claim was accepted. */
+    fun claimStarted(claim: GuestClaim): String {
+        val who = "You're signed in as ${claim.account.displayName}."
+        val n = claim.pendingCount
+        val saved = if (n == 1) "your saved answer" else "your $n saved answers"
+        return when {
+            n == 0 -> "$who New answers go straight on the map from now on."
+            claim.state == ClaimState.WAITING -> "$who ${saved.replaceFirstChar { it.uppercase() }} " +
+                "${if (n == 1) "is" else "are"} safe. ${if (n == 1) "It goes" else "They go"} on the map automatically " +
+                "as soon as we can. Nothing else to do."
+            else -> "$who Putting $saved on the map…"
+        }
+    }
+
+    /** The publish job's progress, then its result (UX §3.4–3.5). */
+    fun claimProgress(status: ClaimStatus): String {
+        val onMap = status.published
+        val notAdded = status.skipped + status.superseded
+        fun answers(n: Int) = if (n == 1) "1 answer" else "$n answers"
+        return when (status.state) {
+            ClaimState.QUEUED, ClaimState.RUNNING ->
+                "Putting your answers on the map… $onMap of ${status.total}"
+            ClaimState.WAITING ->
+                "Your saved answers are safe. They go on the map automatically as soon as we can. Nothing else to do."
+            ClaimState.DONE, ClaimState.FAILED -> buildString {
+                append(if (status.failed > 0) "$onMap of ${status.total} are on the map." else "✓ ${answers(onMap)} ${if (onMap == 1) "is" else "are"} on the map.")
+                if (notAdded > 0) {
+                    append(
+                        if (notAdded == 1) " 1 wasn't added, because someone updated it after you checked. Nothing to do; it's up to date."
+                        else " $notAdded weren't added, because someone updated them after you checked. Nothing to do; they're up to date.",
+                    )
+                }
+                if (status.failed > 0) append(" Something went wrong with the rest. They stay saved, and nothing will be added twice.")
+            }
+        }
+    }
+
+    /** OpenStreetMap needs a fresh sign-in before the answers can be published (UX §3.5). */
+    const val CLAIM_SIGN_IN_AGAIN =
+        "Your saved answers are safe. OpenStreetMap needs you to sign in again to put them on the map."
+    /** The claim didn't go through (offline, or the server was busy); it's tried again on the next launch. */
+    const val CLAIM_LATER =
+        "You're signed in. Your saved answers are safe, and we'll put them on the map the next time you open Street Tally."
 
     fun saved(todayCount: Int, noun: Noun): String = "Saved, thanks! That's ${noun.count(todayCount)} today."
     fun checkedByOtherFirst(noun: Noun): String =

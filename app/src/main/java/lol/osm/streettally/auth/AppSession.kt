@@ -1,6 +1,7 @@
 package lol.osm.streettally.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -11,6 +12,7 @@ import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteException
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.campaign.Wording
+import org.maproulette.sdk.ClaimState
 import org.maproulette.sdk.CredentialStore
 import org.maproulette.sdk.GuestState
 import org.maproulette.sdk.GuestStatus
@@ -155,6 +157,44 @@ class AppSession(
         publish(null)
     }
 
+    /** After an OSM sign-in with a kept guest ("I already use OpenStreetMap", UX §1.3): claims the
+     * guest's saved answers for the account, then follows the backend's publish job, with its progress
+     * and result in [SessionState.message]. Does nothing without a kept guest, or for an account or
+     * build that can't edit OSM. A failure that might pass keeps the guest for the next launch.
+     * [pollMillis] and [maxPolls] bound the follow-up (the claim page polls every 2 s). */
+    suspend fun claimKeptGuest(pollMillis: Long = 2_000, maxPolls: Int = 90) {
+        val account = state.value.account ?: return
+        if (signIn.guest == null || !account.canEditOsm || !config.writesAllowed) return
+        val claim = try {
+            signIn.claimGuest()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: MapRouletteException) {
+            when {
+                // Expired, deleted or claimed elsewhere: the guest is gone, nothing to say.
+                e.kind == ErrorKind.NOT_FOUND && e.reason == "not_found" || e.reason == "guest_claimed" -> publish(state.value.message)
+                e.reason == "osm_reauth_required" -> publish(Wording.CLAIM_SIGN_IN_AGAIN)
+                else -> publish(Wording.CLAIM_LATER)
+            }
+            return
+        } catch (_: Exception) {
+            publish(Wording.CLAIM_LATER)
+            return
+        }
+        val generation = state.value.generation
+        publish(Wording.claimStarted(claim))
+        if (claim.pendingCount == 0 || claim.state == ClaimState.WAITING) return
+        repeat(maxPolls) {
+            delay(pollMillis)
+            if (state.value.generation != generation) return
+            val status = quietly { client().getClaimStatus(claim.claimId) } ?: return@repeat
+            val note = Wording.claimProgress(status)
+            if (state.value.generation != generation) return
+            mutableState.update { it.copy(message = note) }
+            if (status.state in setOf(ClaimState.DONE, ClaimState.FAILED, ClaimState.WAITING)) return
+        }
+    }
+
     private inline fun <T> quietly(block: () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
@@ -178,6 +218,7 @@ class AppSession(
             TRY_AGAIN
         }
         publish(message)
+        claimKeptGuest()
     }
 
     suspend fun signOut() {
