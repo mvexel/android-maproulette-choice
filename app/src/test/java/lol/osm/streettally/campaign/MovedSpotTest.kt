@@ -38,5 +38,7 @@ class MovedSpotTest {
         val east = MovedSpot.nudge(mapped, eastM = 30.0)
         assertEquals(30.0, Places.meters(mapped, east), 0.3)
         assertEquals("About 30 m east of where the map has it", MovedSpot.describe(mapped, east))
+        assertEquals("Where the map has it", MovedSpot.describe(mapped, mapped))
+        assertEquals("Where the map has it", MovedSpot.describe(mapped, MovedSpot.nudge(mapped, northM = 4.0)))
     }
 }
