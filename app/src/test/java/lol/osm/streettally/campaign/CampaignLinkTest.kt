@@ -1,7 +1,9 @@
 package lol.osm.streettally.campaign
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CampaignLinkTest {
@@ -24,5 +26,13 @@ class CampaignLinkTest {
         assertEquals("mrchoice://challenge/3", CampaignLink.url(3))
         assertEquals("https://streettally.osm.lol/challenge/3", CampaignLink.webUrl(3, "streettally.osm.lol"))
         assertEquals(3L, CampaignLink.challenge(CampaignLink.webUrl(3, "streettally.osm.lol")))
+    }
+
+    @Test fun previewFlagIsReadFromTheQuery() {
+        assertTrue(CampaignLink.isPreview("https://streettally.osm.lol/challenge/42?preview=1"))
+        assertTrue(CampaignLink.isPreview("mrchoice://challenge/42?utm=x&preview=1"))
+        assertFalse(CampaignLink.isPreview("mrchoice://challenge/42"))
+        assertFalse(CampaignLink.isPreview("mrchoice://challenge/42?preview=0"))
+        assertEquals(42L, CampaignLink.challenge("mrchoice://challenge/42?preview=1"))
     }
 }

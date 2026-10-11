@@ -122,6 +122,37 @@ object Wording {
     fun next(noun: Noun, distance: String?): String = "Next nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun lastOne(noun: Noun): String = "That was the last ${noun.one} to check. Thank you!"
     fun backToAll(noun: Noun): String = "Back to all ${noun.many}"
+
+    // Campaign preview (design/preview-mode.md §8), as in the iOS app.
+    const val PREVIEW_BANNER_TITLE = "Preview."
+    const val PREVIEW_BANNER_TEXT = "Answers aren't saved."
+    const val EXIT_PREVIEW = "Exit"
+    const val PREVIEW_SIGN_IN_TITLE = "Sign in to preview this campaign"
+    const val PREVIEW_SIGN_IN_TEXT =
+        "This campaign isn't published yet. Sign in with the OpenStreetMap account that manages it."
+    const val PREVIEW_SIGN_IN = "Sign in to OpenStreetMap"
+    const val CANCEL = "Cancel"
+    const val PREVIEW_NO_ACCESS_TITLE = "You can't preview this campaign"
+    /** [account]: who is signed in now; the parenthesis is left out when unknown. */
+    fun previewNoAccessText(account: String?): String =
+        "Only the campaign's organizers can see it before it's published. Check you're signed in as the right account" +
+            (account?.let { " (now: $it)." } ?: ".")
+    const val SWITCH_ACCOUNT = "Switch account"
+    const val CLOSE = "Close"
+    const val PREVIEW_ALREADY_PUBLISHED = "This campaign is published, so answers are saved for real."
+    fun previewingAs(account: String): String = "You're previewing as $account."
+    /** The signed-in account as preview names it: the OpenStreetMap username (no "@"), else
+     * "MapRoulette user 7" when the server didn't send one. */
+    fun account(userId: Long?, displayName: String?): String? =
+        displayName?.trim()?.takeIf { it.isNotEmpty() } ?: userId?.let { "MapRoulette user $it" }
+    const val DONE_PREVIEW = "Done (preview)"
+    const val PREVIEW_NOT_SAVED = "Preview: not saved."
+    /** [realLine]: what the saved screen says in the real campaign, quoted. */
+    fun previewWouldSay(realLine: String): String = "In the real campaign this would say: “$realLine”"
+    const val PREVIEW_NOW_PUBLISHED = "This campaign is now published."
+    const val OPEN_FOR_REAL = "Open it for real"
+    /** Android has no pull to refresh here; the campaign screen has a Refresh button in preview. */
+    fun previewNoPlaces(noun: Noun): String = "No ${noun.many} yet. Add them in the admin, then tap Refresh."
 }
 
 /** Plain words for a failed read, as in the iOS picker. */

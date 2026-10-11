@@ -28,6 +28,11 @@ object Campaigns {
     private const val MAX_CHALLENGE_PAGES = 5
     private const val MAX_TASK_PAGES = 10
 
+    /** Published for participants (preview-mode §6): enabled and tagged [PUBLISHED_TAG]. Anything
+     * else is a draft, so an unknown `enabled` never lets a preview write. */
+    fun isPublished(challenge: Challenge): Boolean =
+        challenge.enabled == true && challenge.tags?.contains(PUBLISHED_TAG) == true
+
     /** Unarchived choice challenges published for mobile. */
     fun published(all: List<Challenge>): List<Challenge> = all.filter {
         it.cooperativeType == CHOICE_TYPE && it.archived != true && it.tags?.contains(PUBLISHED_TAG) == true

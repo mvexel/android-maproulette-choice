@@ -45,6 +45,8 @@ fun WelcomeDialog(
     noun: Noun,
     signedIn: Boolean,
     onClose: () -> Unit,
+    /** In preview: "You're previewing as …", in place of the account line. */
+    previewingAs: String? = null,
 ) {
     AlertDialog(
         onDismissRequest = onClose,
@@ -66,7 +68,8 @@ fun WelcomeDialog(
                 }
                 Text(Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
-                if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
+                if (previewingAs != null) Text(Wording.previewingAs(previewingAs), style = MaterialTheme.typography.bodySmall)
+                else if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {

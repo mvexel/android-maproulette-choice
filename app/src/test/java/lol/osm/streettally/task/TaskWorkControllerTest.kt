@@ -576,4 +576,35 @@ class TaskWorkControllerTest {
         advanceUntilIdle()
         assertEquals("That's too far to be the same place.", c.answering.notice)
     }
+
+    @Test
+    fun previewAsksEveryQuestionAndNeverWrites() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.check = { error("preview never checks eligibility") }
+        val c = TaskWorkController(ops, writer = null, scope = this, io = StandardTestDispatcher(testScheduler), previewing = true)
+        c.load(ID)
+        advanceUntilIdle()
+        assertTrue(c.canEditOsm)
+        val form = c.answering.form
+        assertEquals(listOf("backrest", "material"), form.work.questions.map { it.id })
+        val answers = ChoiceAction.Answers(mapOf("backrest" to "yes"))
+        assertTrue(c.offers(c.answering.task, form, answers))
+        c.perform(answers)
+        advanceUntilIdle()
+        val saved = c.state.value as TaskScreen.PreviewSaved
+        assertEquals(answers, saved.action)
+        assertFalse("nothing changed for maps and lists", c.changed)
+        assertEquals(listOf("get", "challenge"), ops.calls)
+        assertTrue(ops.submissions.isEmpty())
+    }
+
+    @Test
+    fun previewOpsRefuseWritesBeforeTheSdk() = runTest {
+        val ops = FakeOps()
+        val preview = PreviewTaskOps(ops)
+        val refused = runCatching { preview.submitChoice(task(), ChoiceSubmission.Answers(mapOf("backrest" to "yes"))) }
+        assertEquals(ErrorKind.PERMISSION, (refused.exceptionOrNull() as MapRouletteException).kind)
+        assertTrue(runCatching { preview.skipTask(ID) }.isFailure)
+        assertEquals(emptyList<String>(), ops.calls)
+    }
 }
