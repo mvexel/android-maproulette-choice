@@ -60,6 +60,10 @@ android {
         buildConfig = true
         compose = true
     }
+    // Robolectric (the report screen snapshots) needs the merged resources and manifest.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -93,4 +97,9 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // Screen snapshots on the JVM: Compose rendered by Robolectric's native graphics, saved as PNGs.
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

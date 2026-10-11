@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,6 +38,10 @@ import org.maplibre.geojson.Point
 private const val NAVY = "#14213D"
 private const val GRAY = "#6B7280"
 
+/** Draws in place of the map when set. Snapshot tests set it: MapLibre's view doesn't render under
+ * Robolectric. Gets the picked spot, or null, and the map's modifier. */
+internal val LocalMapPlaceholder = staticCompositionLocalOf<(@Composable (LatLon?, Modifier) -> Unit)?> { null }
+
 /** "It's moved" (design/not-here-moved.md §3.2): the place's mapped position as a gray hollow ring
  * labeled [onTheMapLabel], the picked spot as a navy pin, and a dashed line between them. Tapping the
  * map calls [onPick]. With [interactive] false the map only shows the two points (the review step). */
@@ -50,6 +55,10 @@ fun MovedSpotMap(
     onPick: (LatLon) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    LocalMapPlaceholder.current?.let { placeholder ->
+        placeholder(picked, modifier)
+        return
+    }
     val context = LocalContext.current
     val holder = remember { MovedSpotHolder(context, styleUrl, mapped, onTheMapLabel, interactive) }
     holder.onPick = onPick

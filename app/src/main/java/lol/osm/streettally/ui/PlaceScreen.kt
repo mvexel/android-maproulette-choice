@@ -200,12 +200,10 @@ fun PlaceScreen(
                 if (screen !is TaskScreen.Loading) switchNotice?.let { Banner(it) }
 
                 val nextButtons: @Composable (Boolean) -> Unit = { prominent ->
-                    if (next != null) {
-                        BigButton(Wording.next(noun, Places.directionText(here, next.position)), prominent) { open(next) }
-                    } else {
-                        Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    BackButton(noun, onBack)
+                    NextButtons(
+                        noun, next?.let { Wording.next(noun, Places.directionText(here, it.position)) }, prominent,
+                        onNext = { next?.let { open(it) } }, onBack = onBack,
+                    )
                 }
 
                 when (val s = screen) {
@@ -315,10 +313,7 @@ fun PlaceScreen(
                         if (s.byOther) {
                             Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
                         } else if (s.action.isReport) {
-                            Text(
-                                "✓ " + if (s.action is ChoiceAction.Moved) Wording.REPORTED_MOVED else Wording.REPORTED_NOT_HERE,
-                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
-                            )
+                            ReportSaved(moved = s.action is ChoiceAction.Moved)
                         } else {
                             // Counted once the effect above has recorded it; reading [counted] recomposes then.
                             val today = checked.today(campaignId) + if (counted) 0 else 1
@@ -441,7 +436,7 @@ private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
 }
 
 @Composable
-private fun Header(task: Task, noun: Noun, fromYou: String?) {
+internal fun Header(task: Task, noun: Noun, fromYou: String?) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(Wording.placeName(task, noun), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         fromYou?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -545,21 +540,42 @@ private fun Problems(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(Wording.PROBLEMS_MESSAGE)
-                if (canSkip) ProblemRow(Wording.skip(noun), Wording.SKIP_EXPLAINED) { pick { choose(ChoiceAction.Skip) } }
-                outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }?.let { tooHard ->
-                    ProblemRow(Wording.cantCheck(noun), Wording.CANT_CHECK_EXPLAINED) { pick { choose(ChoiceAction.Outcome(tooHard)) } }
-                }
-                if (notHere) ProblemRow(Wording.NOT_HERE, Wording.notHereExplained(noun)) { pick(onNotHere) }
-                if (notHere && canMove) ProblemRow(Wording.MOVED, Wording.MOVED_EXPLAINED) { pick(onMoved) }
-                outcomes.filter { it.id != ChoiceOutcome.TOO_HARD_ID }.forEach { outcome ->
-                    ProblemRow(outcome.label, outcome.description) { pick { choose(ChoiceAction.Outcome(outcome)) } }
-                }
+                ProblemsList(
+                    noun, canSkip, outcomes, notHere, canMove,
+                    onChoose = { action -> pick { choose(action) } },
+                    onNotHere = { pick(onNotHere) },
+                    onMoved = { pick(onMoved) },
+                )
             }
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = { setOpen(false) }) { Text("Cancel") } },
     )
+}
+
+/** The rows of "Something's wrong here": [outcomes] are the campaign's, already filtered to the
+ * ones offered. */
+@Composable
+internal fun ProblemsList(
+    noun: Noun,
+    canSkip: Boolean,
+    outcomes: List<ChoiceOutcome>,
+    notHere: Boolean,
+    canMove: Boolean,
+    onChoose: (ChoiceAction) -> Unit,
+    onNotHere: () -> Unit,
+    onMoved: () -> Unit,
+) {
+    Text(Wording.PROBLEMS_MESSAGE)
+    if (canSkip) ProblemRow(Wording.skip(noun), Wording.SKIP_EXPLAINED) { onChoose(ChoiceAction.Skip) }
+    outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }?.let { tooHard ->
+        ProblemRow(Wording.cantCheck(noun), Wording.CANT_CHECK_EXPLAINED) { onChoose(ChoiceAction.Outcome(tooHard)) }
+    }
+    if (notHere) ProblemRow(Wording.NOT_HERE, Wording.notHereExplained(noun), onNotHere)
+    if (notHere && canMove) ProblemRow(Wording.MOVED, Wording.MOVED_EXPLAINED, onMoved)
+    outcomes.filter { it.id != ChoiceOutcome.TOO_HARD_ID }.forEach { outcome ->
+        ProblemRow(outcome.label, outcome.description) { onChoose(ChoiceAction.Outcome(outcome)) }
+    }
 }
 
 @Composable
@@ -577,7 +593,7 @@ private fun ProblemRow(label: String, explanation: String?, onClick: () -> Unit)
 /** "It's moved" (design/not-here-moved.md §3.2): tap the map, or "I'm standing at it" with a fix
  * within [MovedSpot.GOOD_FIX_M]. Only the picked spot is saved. */
 @Composable
-private fun MovedPicker(
+internal fun MovedPicker(
     mapped: LatLon,
     picked: LatLon?,
     fromHere: Boolean,
@@ -638,7 +654,7 @@ private fun MovedPicker(
 
 /** "Check your report": always shown before a not-here or moved report is sent. */
 @Composable
-private fun ReportReview(
+internal fun ReportReview(
     report: ChoiceAction,
     mapped: LatLon?,
     noun: Noun,
@@ -664,6 +680,26 @@ private fun ReportReview(
     }
     BigButton(if (previewing) Wording.DONE_PREVIEW else Wording.DONE, prominent = true, onClick = onDone)
     TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Back") }
+}
+
+/** A not-here or moved report went through. */
+@Composable
+internal fun ReportSaved(moved: Boolean) {
+    Text(
+        "✓ " + if (moved) Wording.REPORTED_MOVED else Wording.REPORTED_NOT_HERE,
+        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+    )
+}
+
+/** "Next nearest …" ([nextLabel], or the last-one note when null) and the way back to the list. */
+@Composable
+internal fun NextButtons(noun: Noun, nextLabel: String?, prominent: Boolean, onNext: () -> Unit, onBack: () -> Unit) {
+    if (nextLabel != null) {
+        BigButton(nextLabel, prominent, onClick = onNext)
+    } else {
+        Text(Wording.lastOne(noun), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    BackButton(noun, onBack)
 }
 
 @Composable
