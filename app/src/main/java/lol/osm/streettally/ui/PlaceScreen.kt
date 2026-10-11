@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -213,6 +214,18 @@ fun PlaceScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 loadedTask(screen)?.let { task ->
+                    // A small map of the place above its name, as iOS (parity row 5). The moved flow
+                    // and its review draw their own map, so it steps aside there.
+                    val position = Places.position(task)
+                    if (position != null && !picking && report == null) {
+                        // Keyed: the map keeps its first position, and Next nearest reuses this screen.
+                        key(task.id.value) {
+                            MovedSpotMap(
+                                session.config.mapStyleUrl, position, picked = null, onTheMapLabel = "", interactive = false,
+                                onPick = {}, modifier = Modifier.fillMaxWidth().height(150.dp),
+                            )
+                        }
+                    }
                     Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                 }

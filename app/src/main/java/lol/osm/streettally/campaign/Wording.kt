@@ -163,7 +163,6 @@ object Wording {
     const val SEND_ME_THE_LINK = "Send me the link"
     const val RESEND_THE_LINK = "Resend the link"
     const val I_ALREADY_USE_OSM = "I already use OpenStreetMap"
-    /** Phone sign-in doesn't claim saved answers yet (Iris fix 5). */
     /** Phone sign-in claims the saved answers (B5), so the original line is back (copy fix 5). */
     const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     /** Only a bad address is the participant's to fix (shown in the error color); the rest are calm. */
@@ -284,6 +283,8 @@ object Wording {
     const val UPDATE_LOCATION = "Update my location"
     /** A place reported as not here, moved, or another status 6 outcome (not-here-moved.md §4). */
     const val NEEDS_LOOK = "Needs another look"
+    /** The map name card's second line for a place to check (iOS callout). */
+    const val TAP_TO_ANSWER = "Tap to answer"
     /** A draft opened without its preview link (an old link, the last campaign). */
     const val NOT_PUBLISHED = "This campaign isn't published yet."
     const val CANCEL = "Cancel"

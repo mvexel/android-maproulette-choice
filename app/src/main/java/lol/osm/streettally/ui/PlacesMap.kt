@@ -26,28 +26,16 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
-import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
-/** Brand pins (brand/pins/svg PinTodo, PinDone, PinPending): amber with a navy ring to check, green
- * with a white ring once checked, white with a green ring when a guest's answer is saved but not on
- * the map yet. Drawn as circles at the pins' 28 px size. */
-private const val TODO_COLOR = "#F5A524"
-private const val TODO_RING = "#14213D"
-private const val DONE_COLOR = "#1F7A4D"
-private const val DONE_RING = "#FFFFFF"
-private const val PENDING_COLOR = "#FFFFFF"
-private const val PENDING_RING = "#1F7A4D"
-/** "Needs another look" (PinLook on iOS): gray with a navy ring. */
-private const val LOOK_COLOR = "#8A8F98"
-private const val LOOK_RING = "#14213D"
 
-/** A campaign's places on a MapLibre map with OpenFreeMap tiles. Checked places are green, reported
- * ones gray, the rest orange. Tapping a place calls [onPlace] with its task id. */
+/** A campaign's places on a MapLibre map with OpenFreeMap tiles, drawn as the brand pins ([Pin]).
+ * Tapping a place calls [onPlace] with its task id; tapping elsewhere calls [onBackground]. */
 @Composable
 fun PlacesMap(
     styleUrl: String,
@@ -55,15 +43,17 @@ fun PlacesMap(
     done: Set<Long>,
     /** A guest's saved places (a subset of [done]): saved, not on the map yet. */
     pending: Set<Long> = emptySet(),
-    /** Reported places: "Needs another look", in gray. */
+    /** Reported places: "Needs another look" ([Pin.LOOK]). */
     look: Set<Long> = emptySet(),
     locationPermitted: Boolean,
     onPlace: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    onBackground: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val holder = remember { PlacesMapHolder(context, styleUrl) }
     holder.onPlace = onPlace
+    holder.onBackground = onBackground
     LaunchedEffect(locationPermitted) { holder.syncLocation() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -94,6 +84,7 @@ fun PlacesMap(
 private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     val view: MapView
     var onPlace: (Long) -> Unit = {}
+    var onBackground: () -> Unit = {}
     private var map: MapLibreMap? = null
     private var source: GeoJsonSource? = null
     private var waiting: Shown? = null
@@ -109,17 +100,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                 val source = GeoJsonSource(SOURCE)
                 style.addSource(source)
+                val density = view.resources.displayMetrics.density
+                Pin.entries.forEach { style.addImage(it.id, it.bitmap(density)) }
                 style.addLayer(
-                    CircleLayer(LAYER, SOURCE).withProperties(
-                        PropertyFactory.circleRadius(Expression.switchCase(Expression.get("done"), Expression.literal(11f), Expression.literal(10f))),
-                        PropertyFactory.circleColor(byState(PENDING_COLOR, DONE_COLOR, TODO_COLOR, LOOK_COLOR)),
-                        PropertyFactory.circleStrokeWidth(
-                            Expression.switchCase(
-                                Expression.get("pending"), Expression.literal(2.5f),
-                                Expression.get("done"), Expression.literal(2f), Expression.literal(3f),
-                            ),
-                        ),
-                        PropertyFactory.circleStrokeColor(byState(PENDING_RING, DONE_RING, TODO_RING, LOOK_RING)),
+                    SymbolLayer(LAYER, SOURCE).withProperties(
+                        PropertyFactory.iconImage(Expression.get("pin")),
+                        PropertyFactory.iconAllowOverlap(true),
+                        PropertyFactory.iconIgnorePlacement(true),
                     ),
                 )
                 this.source = source
@@ -132,7 +119,11 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 val hit = map.queryRenderedFeatures(
                     RectF(point.x - slop, point.y - slop, point.x + slop, point.y + slop), LAYER,
                 ).firstOrNull()
-                val id = hit?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
+                val id = hit?.getNumberProperty("id")?.toLong()
+                if (id == null) {
+                    onBackground()
+                    return@addOnMapClickListener false
+                }
                 onPlace(id)
                 true
             }
@@ -175,9 +166,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                     val p = place.position!!
                     Feature.fromGeometry(Point.fromLngLat(p.lon, p.lat)).apply {
                         addNumberProperty("id", place.id)
-                        addBooleanProperty("done", place.id in done)
-                        addBooleanProperty("pending", place.id in pending)
-                        addBooleanProperty("look", place.id in look)
+                        val pin = when (place.id) {
+                            in look -> Pin.LOOK
+                            in pending -> Pin.PENDING
+                            in done -> Pin.DONE
+                            else -> Pin.TODO
+                        }
+                        addStringProperty("pin", pin.id)
                     }
                 },
             ),
@@ -200,15 +195,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
 
     private companion object {
         const val SOURCE = "places"
-        const val LAYER = "places-circles"
+        const val LAYER = "places-pins"
     }
 }
 
 private data class Shown(val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>)
-
-private fun byState(pending: String, done: String, todo: String, look: String): Expression = Expression.switchCase(
-    Expression.get("look"), Expression.color(android.graphics.Color.parseColor(look)),
-    Expression.get("pending"), Expression.color(android.graphics.Color.parseColor(pending)),
-    Expression.get("done"), Expression.color(android.graphics.Color.parseColor(done)),
-    Expression.color(android.graphics.Color.parseColor(todo)),
-)

@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -131,6 +132,8 @@ fun CampaignScreen(
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     // Signed in from a sheet here: the sign-in and claim notes show on this screen too.
     var accountNote by remember { mutableStateOf(false) }
+    // The place whose name card shows on the map.
+    var selected by remember { mutableStateOf<Long?>(null) }
     val signInHere = { accountNote = true; onSignIn() }
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
@@ -334,16 +337,36 @@ fun CampaignScreen(
                         PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
                     }
                 } else {
-                    PlacesMap(
-                        styleUrl = session.config.mapStyleUrl,
-                        places = shown,
-                        done = done,
-                        pending = tally.pending,
-                        look = tally.look,
-                        locationPermitted = locationPermitted,
-                        onPlace = { id -> shown.firstOrNull { it.id == id }?.takeIf { it.isOpen && it.id !in done }?.let(::open) },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        PlacesMap(
+                            styleUrl = session.config.mapStyleUrl,
+                            places = shown,
+                            done = done,
+                            pending = tally.pending,
+                            look = tally.look,
+                            locationPermitted = locationPermitted,
+                            // A tap shows the place's name first, as iOS's callout; the card opens it.
+                            onPlace = { id -> selected = id },
+                            onBackground = { selected = null },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        shown.firstOrNull { it.id == selected }?.let { place ->
+                            val opens = place.isOpen && place.id !in done
+                            val subtitle = when {
+                                place.id in tally.look -> Wording.NEEDS_LOOK
+                                place.id in tally.pending -> Wording.SAVED_NOT_ON_MAP
+                                place.id in done -> "Already checked"
+                                else -> Wording.TAP_TO_ANSWER
+                            }
+                            PlaceCallout(
+                                name = Wording.placeName(place.task, noun),
+                                subtitle = subtitle,
+                                distance = Places.rowText(origin, place.position),
+                                onOpen = if (opens) ({ selected = null; open(place) }) else null,
+                                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -399,6 +422,25 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
         Text(text)
         Button(onClick = primary.second, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(primary.first) }
         TextButton(onClick = secondary.second, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(secondary.first) }
+    }
+}
+
+/** A tapped pin's name card (iOS: the callout). Tapping it opens the place when [onOpen] is set. */
+@Composable
+private fun PlaceCallout(name: String, subtitle: String, distance: String?, onOpen: (() -> Unit)?, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth().let { if (onOpen != null) it.clickable(onClick = onOpen) else it },
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 3.dp,
+        shadowElevation = 3.dp,
+    ) {
+        Row(modifier = Modifier.heightIn(min = 56.dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            distance?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
     }
 }
 

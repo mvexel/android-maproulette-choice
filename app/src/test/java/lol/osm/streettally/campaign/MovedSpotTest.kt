@@ -29,4 +29,14 @@ class MovedSpotTest {
         assertEquals("About 30 m from where the map has it.", Wording.movedDistance(31.0))
         assertEquals("The stop has moved, about 120 m from where the map has it.", Wording.reportMoved(123.0, Noun("stop", "stops")))
     }
+
+    @Test
+    fun nudgesMoveFiveMetersAndDescribeTheSpot() {
+        val mapped = LatLon(40.7600, -111.8900)
+        val north = MovedSpot.nudge(mapped, northM = 5.0)
+        assertEquals(5.0, Places.meters(mapped, north), 0.1)
+        val east = MovedSpot.nudge(mapped, eastM = 30.0)
+        assertEquals(30.0, Places.meters(mapped, east), 0.3)
+        assertEquals("About 30 m east of where the map has it", MovedSpot.describe(mapped, east))
+    }
 }
