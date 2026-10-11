@@ -60,6 +60,8 @@ dependencies {
     // The submodule commit is the pin; the JitPack coordinate also works once a tag exists.
     implementation("com.github.mvexel:maproulette-mobile-sdk:0.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // Custom Tabs, with private (ephemeral) tabs where the browser supports them, for sign-in.
+    implementation("androidx.browser:browser:1.9.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")
     implementation(composeBom)
@@ -71,4 +73,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
