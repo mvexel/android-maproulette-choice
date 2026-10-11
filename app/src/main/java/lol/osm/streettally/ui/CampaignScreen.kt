@@ -66,6 +66,7 @@ import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.task.takesGuestAnswers
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
@@ -208,13 +209,21 @@ fun CampaignScreen(
     val tally = remember(current, held, justDone, reported, state.guest) {
         CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
     }
-    val shown = tally.shown
+    // A guest is offered only places the server keeps guest answers for (Martijn, 2026-10-11): the
+    // rest stay off the map, the list and Nearest until signing in, but still count in the tally.
+    val asGuest = !preview && state.account == null && (state.guest || session.canAnswerAsGuest)
+    fun answerable(task: LocatedTask) = !asGuest || task.task.takesGuestAnswers()
+    val shown = tally.shown.filter { it.id in tally.done || answerable(it) }
     val done = tally.done
-    val open = Places.sorted(tally.open, origin)
+    val open = Places.sorted(tally.open.filter(::answerable), origin)
+    // Open places remain, but none a guest can answer: signing in comes first.
+    val shutOut = asGuest && open.isEmpty() && tally.shown.any { it.isOpen && it.id !in done && it.id !in tally.look }
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
-    fun open(task: LocatedTask) { current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) } }
+    fun open(task: LocatedTask) {
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held && answerable(t) }), origin) }
+    }
 
     Scaffold(
         topBar = {
@@ -313,6 +322,8 @@ fun CampaignScreen(
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                     }
+                } else if (shutOut) {
+                    GuestNeedsAccount(noun, onSignIn = signInHere)
                 } else if (tally.total > 0) {
                     Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                 }
@@ -383,6 +394,7 @@ fun CampaignScreen(
             onClose = { closeWelcome() },
             previewingAs = if (previewing) Wording.account(state.account?.userId, state.account?.displayName) ?: "" else null,
             guest = !previewing && session.canAnswerAsGuest,
+            needsAccount = shutOut,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
         Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = signInHere) { sheet = null }
@@ -518,5 +530,16 @@ private fun PlaceRow(
         Text(name, color = color)
         Spacer(Modifier.weight(1f))
         distance?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** A guest where every open place needs an account (none takes guest answers). */
+@Composable
+private fun GuestNeedsAccount(noun: lol.osm.streettally.campaign.Noun, onSignIn: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(Wording.guestCampaignNeedsAccount(noun), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(Wording.guestCampaignNeedsAccountDetail(noun))
+        Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Sign in with OpenStreetMap") }
+        Text(ACCOUNT_HINT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
