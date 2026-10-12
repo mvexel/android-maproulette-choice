@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -153,6 +154,20 @@ class GuestCasesTest {
         tap("List")
         waitFor("To check")
         WoodbineBackend.DOORS.forEach { compose.onNodeWithText(it.name).assertExists() }
+    }
+
+    /** Largest text (font scale 2.0) on a small phone: the sign-in block above the map scrolls, so its
+     * headline and button stay whole, and the map/list keeps room (iOS #30 clipped them; 8f2617c). */
+    @Config(qualifiers = "w360dp-h640dp", fontScale = 2.0f)
+    @Test fun theSignInBlockFitsAtTheLargestTextSize() {
+        open(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
+        tap("Let's go")
+        waitFor(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
+        compose.onNodeWithText(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("Sign in with OpenStreetMap") and hasClickAction()).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("List") and hasClickAction()).performScrollTo().performClick()
+        waitFor("To check")
+        compose.onAllNodesWithText(WoodbineBackend.DOORS.first().name)[0].assertIsDisplayed()
     }
 
     /** G-4: a place that needs an account, in a campaign with others still open: sign-in is offered for
