@@ -147,6 +147,15 @@ class GuestClaimTest {
         assertNotNullAccount(session)
     }
 
+    @Test fun whenPollingStopsWhileTheJobRunsTheLineSaysItFinishesOnItsOwn() = runTest {
+        val backend = Backend(listOf(claim()), listOf(progress("running", 1)))
+        val session = guest(backend)
+        session.signIn(::approve)
+        assertEquals(90, backend.calls.count { it == "GET /api/v2/mobile-claim/9" })
+        assertEquals(Wording.CLAIM_STILL_GOING, session.state.value.message)
+        assertTrue(session.state.value.messageCalm)
+    }
+
     @Test fun aFailedClaimIsTriedAgainOnTheNextLaunch() = runTest {
         val store = InMemoryCredentialStore()
         val backend = Backend(listOf(HttpResponse(503)), listOf(progress("done", 3)))
