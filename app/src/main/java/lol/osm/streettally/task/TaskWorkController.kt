@@ -149,10 +149,14 @@ sealed interface TaskScreen {
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** Ineligible (stale) at open or submit. No actions. */
     data class NoLongerNeeded(val task: Task, val challenge: Challenge) : TaskScreen
-    /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds. */
-    data class CheckFailed(val task: Task, val challenge: Challenge) : TaskScreen
-    /** [notice] explains why the user is back here; the answers are kept. */
-    data class Answering(val task: Task, val challenge: Challenge, val form: ChoiceForm, val notice: String? = null) : TaskScreen
+    /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.
+     * [paused]: the backend's mobile writes are switched off (403 mobile_writes_disabled), so a retry won't help. */
+    data class CheckFailed(val task: Task, val challenge: Challenge, val paused: Boolean = false) : TaskScreen
+    /** [notice] explains why the user is back here; the answers are kept. [paused]: the save was refused
+     * because the backend's mobile writes are switched off; shown as an alert until [TaskWorkController.dismissPaused]. */
+    data class Answering(
+        val task: Task, val challenge: Challenge, val form: ChoiceForm, val notice: String? = null, val paused: Boolean = false,
+    ) : TaskScreen
     data class Submitting(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** [task] is the fresh read after the write, or the pre-write task when [readFailed].
      * [byOther]: a check found someone else's result; this user's submission was not recorded.
@@ -252,6 +256,10 @@ class TaskWorkController(
             ops.checkChoice(task.id)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: MapRouletteException) {
+            if (e.problem == WriteProblem.WritesPaused) return TaskScreen.CheckFailed(task, challenge, paused = true)
+            log("Choice check for task ${task.id.value} failed: ${e.javaClass.simpleName}")
+            null
         } catch (e: Exception) {
             // Not checked: not offered (spec §5a). Class name only: messages may carry server text.
             log("Choice check for task ${task.id.value} failed: ${e.javaClass.simpleName}")
@@ -361,6 +369,12 @@ class TaskWorkController(
         }
     }
 
+    /** Closes the "saving is paused" alert; the answers stay as they were. */
+    fun dismissPaused() {
+        val current = state.value as? TaskScreen.Answering ?: return
+        if (current.paused) mutableState.value = current.copy(paused = false)
+    }
+
     /** Cancels reads and discards results. A write already sent still finishes (see class doc). */
     fun cancel() {
         job?.cancel()
@@ -448,6 +462,7 @@ class TaskWorkController(
             // Credential failures (for example a refresh that could not complete) happen before sending.
             return answering("Couldn't send your answers. Nothing was saved. Try again.")
         }
+        if (error.problem == WriteProblem.WritesPaused) return TaskScreen.Answering(task, challenge, form, paused = true)
         return when (val problem = error.problem) {
             is ChoiceProblem.TaskIneligible -> TaskScreen.NoLongerNeeded(task, challenge)
             ChoiceProblem.ElementInUse -> if (action is ChoiceAction.Outcome && withoutDeletion(action.outcome) != null) {

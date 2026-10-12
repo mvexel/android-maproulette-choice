@@ -191,6 +191,37 @@ class TaskWorkControllerTest {
     }
 
     @Test
+    fun writesSwitchedOffAtOpenSaySavingIsPausedWithoutARetry() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.check = { throw failure(ErrorKind.PERMISSION, WriteProblem.WritesPaused) }
+        val c = controller(ops)
+        assertEquals(TaskScreen.CheckFailed(task(), CHALLENGE, paused = true), c.state.value)
+        assertFalse(c.changed)
+    }
+
+    @Test
+    fun writesSwitchedOffAtSaveKeepTheAnswersBehindAnAlert() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.submit = { throw failure(ErrorKind.PERMISSION, WriteProblem.WritesPaused) }
+        val c = answered(ops)
+        assertTrue(c.answering.paused)
+        assertEquals(null, c.answering.notice)
+        assertEquals("yes", c.answering.form.answers["backrest"])
+        c.dismissPaused()
+        assertFalse(c.answering.paused)
+        assertEquals("yes", c.answering.form.answers["backrest"])
+    }
+
+    @Test
+    fun anotherPermissionRefusalAtSaveKeepsItsNotice() = runTest {
+        val ops = FakeOps().thenRead({ task() })
+        ops.submit = { throw MapRouletteException(ErrorKind.PERMISSION, 403) }
+        val c = answered(ops)
+        assertFalse(c.answering.paused)
+        assertEquals("This couldn't be saved. Nothing was changed. Try again later.", c.answering.notice)
+    }
+
+    @Test
     fun deletionOffShowsGoneAsNotAnIssue() = runTest {
         val c = controller(FakeOps(allowElementDeletion = false).thenRead({ task() }))
         assertEquals(listOf("not-a-bench", "gone", "too-hard"), c.answering.form.outcomes.map { it.id })
