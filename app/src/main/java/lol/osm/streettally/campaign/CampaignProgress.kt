@@ -10,9 +10,9 @@ import org.maproulette.sdk.TaskSummary
 
 /** A campaign's progress from its tasks, as in the iOS `CampaignProgress`.
  *
- * Held places (open tasks someone's saved guest answer holds) count as checked in the tally and
- * toward the total (design/live-progress.md §3.2): they are answered, just not on the map yet.
- * They are neither shown nor offered. */
+ * Held places (open tasks someone's saved guest answer holds) are checked (design/live-progress.md
+ * §3.2): shown and counted as checked, never offered. Only the phone that saved one shows it as
+ * saved, not on the map yet ([pending]); everywhere else it is plainly checked (T-001). */
 class CampaignProgress(
     tasks: List<LocatedTask>,
     held: Set<Long>,
@@ -22,14 +22,16 @@ class CampaignProgress(
     /** Reported here as needing another look (status 6, not-here-moved.md §3.3). */
     reported: Set<Long> = emptySet(),
 ) {
-    /** Checked: done on the server, or saved on this phone since launch ([justDone]). */
-    val done: Set<Long> = tasks.filter { it.isDone || it.id in justDone }.map { it.id }.toSet()
-    /** The tally's "N": checked places plus held ones. */
-    val checked: Int = tasks.count { it.id in done || (it.isOpen && it.id in held) }
+    /** Checked: done on the server, saved on this phone since launch ([justDone]), or held (unless
+     * reported here: a report needs another look, even once a guest's saved report holds it). */
+    val done: Set<Long> =
+        tasks.filter { it.isDone || it.id in justDone || (it.isOpen && it.id in held && it.id !in reported) }.map { it.id }.toSet()
+    /** The tally's "N". */
+    val checked: Int = done.size
     /** The campaign's size: open places (held ones included) and checked ones. */
     val total: Int = tasks.count { it.isOpen || it.id in done }
-    /** Open places that are not held, and checked ones; the rest are left off the map and list. */
-    val shown: List<LocatedTask> = tasks.filter { (it.isOpen && it.id !in held) || it.id in done }
+    /** Open places and checked ones; the rest are left off the map and list. */
+    val shown: List<LocatedTask> = tasks.filter { it.isOpen || it.id in done }
     /** Needs another look: reported here and still open. Shown, but neither checked nor offered. */
     val look: Set<Long> = tasks.filter { it.isOpen && it.id in reported && it.id !in done }.map { it.id }.toSet()
     /** Still to check: open, not saved or reported here, not held. In task order. */
