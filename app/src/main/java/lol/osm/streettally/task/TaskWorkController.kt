@@ -11,8 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.Challenge
@@ -132,11 +130,6 @@ data class ChoiceForm(
     val notDeletable: Set<String> = emptySet(),
 )
 
-/** The server keeps a guest's answers only for payloads with `liveMissingQuestions: true`
- * (backend MobileChoicePendingService); other choice tasks need a signed-in account. */
-fun Task.takesGuestAnswers(): Boolean =
-    (cooperativeWork?.get("liveMissingQuestions") as? JsonPrimitive)?.booleanOrNull == true
-
 /** Screen states (docs/design/task-completion.md §11, docs/design/mobile-choice-challenges.md §7 app rules). */
 sealed interface TaskScreen {
     data object Loading : TaskScreen
@@ -246,8 +239,6 @@ class TaskWorkController(
             return TaskScreen.Answering(task, challenge, form(work, ops.choiceOutcomes(task), deleteAllowed = true))
         }
         if (writer == null) return TaskScreen.Preview(task, challenge, work)
-        // Asked before the questions, not after the guest has answered them.
-        if (writer.guest && !task.takesGuestAnswers()) return TaskScreen.GuestSignIn(task, challenge)
         val eligibility = try {
             ops.checkChoice(task.id)
         } catch (e: CancellationException) {
