@@ -193,7 +193,7 @@ class TaskWorkControllerTest {
     @Test
     fun writesSwitchedOffAtOpenSaySavingIsPausedWithoutARetry() = runTest {
         val ops = FakeOps().thenRead({ task() })
-        ops.check = { throw MapRouletteException(ErrorKind.PERMISSION, 403, reason = "mobile_writes_disabled") }
+        ops.check = { throw failure(ErrorKind.PERMISSION, WriteProblem.WritesPaused) }
         val c = controller(ops)
         assertEquals(TaskScreen.CheckFailed(task(), CHALLENGE, paused = true), c.state.value)
         assertFalse(c.changed)
@@ -202,7 +202,7 @@ class TaskWorkControllerTest {
     @Test
     fun writesSwitchedOffAtSaveKeepTheAnswersBehindAnAlert() = runTest {
         val ops = FakeOps().thenRead({ task() })
-        ops.submit = { throw MapRouletteException(ErrorKind.PERMISSION, 403, reason = "mobile_writes_disabled") }
+        ops.submit = { throw failure(ErrorKind.PERMISSION, WriteProblem.WritesPaused) }
         val c = answered(ops)
         assertTrue(c.answering.paused)
         assertEquals(null, c.answering.notice)

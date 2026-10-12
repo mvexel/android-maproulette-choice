@@ -260,8 +260,8 @@ fun PlaceScreen(
                     }
                     is TaskScreen.Preview -> Preview(s.work, noun, session, state.account != null, onSignIn) { BackButton(noun, onBack) }
                     is TaskScreen.CheckFailed -> if (s.paused) {
+                        // The alert below says why; OK goes back to the campaign.
                         Text(Wording.writesPausedAtOpen(noun))
-                        nextButtons(true)
                     } else {
                         Text(Wording.checkFailed(noun))
                         BigButton("Try again") { c.load(TaskId(taskId)) }
@@ -441,6 +441,13 @@ fun PlaceScreen(
         }
     }
 
+    if ((screen as? TaskScreen.CheckFailed)?.paused == true) {
+        AlertDialog(
+            onDismissRequest = onBack,
+            text = { Text(Wording.writesPausedAtOpen(noun)) },
+            confirmButton = { TextButton(onClick = onBack) { Text("OK") } },
+        )
+    }
     if ((screen as? TaskScreen.Answering)?.paused == true) {
         AlertDialog(
             onDismissRequest = { controller.dismissPaused() },

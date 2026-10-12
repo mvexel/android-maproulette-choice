@@ -151,10 +151,10 @@ object Wording {
 
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
     /** A signed-in save refused because the backend's mobile writes are off (Iris, copy-fixes-2026-10-11.md). */
-    const val WRITES_PAUSED = "Saving is paused right now. This answer wasn't saved, and nothing changed on the map. Please try again later."
+    const val WRITES_PAUSED = "Saving answers is paused right now. This answer wasn't saved, and nothing changed on the map. Please try again later."
     /** The same, refused when the place opens: there is no answer yet. */
     fun writesPausedAtOpen(noun: Noun): String =
-        "Saving is paused right now, so this ${noun.one} can't be answered. Nothing changed on the map. Please try again later."
+        "Saving answers is paused right now, so this ${noun.one} can't be checked. Nothing changed on the map. Please try again later."
     fun checkFailed(noun: Noun): String =
         "Couldn't check this ${noun.one} right now. Check your connection and try again."
     fun takenByOther(noun: Noun): String = "Someone else is checking this ${noun.one} right now. Try another one."

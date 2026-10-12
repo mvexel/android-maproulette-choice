@@ -257,7 +257,7 @@ class TaskWorkController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: MapRouletteException) {
-            if (e.reason == WRITES_DISABLED) return TaskScreen.CheckFailed(task, challenge, paused = true)
+            if (e.problem == WriteProblem.WritesPaused) return TaskScreen.CheckFailed(task, challenge, paused = true)
             log("Choice check for task ${task.id.value} failed: ${e.javaClass.simpleName}")
             null
         } catch (e: Exception) {
@@ -462,7 +462,7 @@ class TaskWorkController(
             // Credential failures (for example a refresh that could not complete) happen before sending.
             return answering("Couldn't send your answers. Nothing was saved. Try again.")
         }
-        if (error.reason == WRITES_DISABLED) return TaskScreen.Answering(task, challenge, form, paused = true)
+        if (error.problem == WriteProblem.WritesPaused) return TaskScreen.Answering(task, challenge, form, paused = true)
         return when (val problem = error.problem) {
             is ChoiceProblem.TaskIneligible -> TaskScreen.NoLongerNeeded(task, challenge)
             ChoiceProblem.ElementInUse -> if (action is ChoiceAction.Outcome && withoutDeletion(action.outcome) != null) {
@@ -583,9 +583,6 @@ class TaskWorkController(
     }
 
     companion object {
-        /** The backend's mobile writes are switched off (a stage backend with OSM publication off). */
-        private const val WRITES_DISABLED = "mobile_writes_disabled"
-
         /** The form for an eligible task: [outcomes] are the client's (declared plus Too hard, decoded
          * with the deletion setting). When the check does not allow deletion (the node is in a way or
          * relation), a delete outcome is offered without deletion instead (Not an issue) and listed in
