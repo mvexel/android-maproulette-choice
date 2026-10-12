@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.HeldKind
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
 import org.maproulette.sdk.TaskStatus
@@ -75,8 +76,15 @@ class CampaignProgressTest {
     }
 
     @Test fun flagsAreUsedOnlyWhenEveryRowHasOne() {
-        fun row(id: Long, pending: Boolean?) = TaskSummary(TaskId(id), ChallengeId(3), "t$id", TaskStatus(0), null, pending)
-        assertEquals(setOf(2L), HeldTasks.fromFlags(listOf(row(1, false), row(2, true))))
+        fun row(id: Long, pending: Boolean?, kind: HeldKind? = null) =
+            TaskSummary(TaskId(id), ChallengeId(3), "t$id", TaskStatus(0), null, pending, kind)
+        // An older backend says nothing about what holds a task: every held place reads as checked.
+        assertEquals(Held(setOf(2L)), HeldTasks.fromFlags(listOf(row(1, false), row(2, true))))
+        // A report holds 3 (T-002): it needs another look instead.
+        assertEquals(
+            Held(setOf(2L, 3L), reports = setOf(3L)),
+            HeldTasks.fromFlags(listOf(row(1, false), row(2, true, HeldKind.ANSWER), row(3, true, HeldKind.REPORT))),
+        )
         assertNull(HeldTasks.fromFlags(listOf(row(1, false), row(2, null))))
         assertNull(HeldTasks.fromFlags(emptyList()))
     }

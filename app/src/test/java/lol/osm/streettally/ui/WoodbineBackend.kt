@@ -103,7 +103,15 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
     /** A bounds-search row; [pending] says whether a guest's saved answer holds it. */
     private fun summary(door: Door): String =
         """{"id":${door.id},"parentId":$CAMPAIGN,"title":"${door.id}","status":${door.status},""" +
-            """"point":{"lat":${door.position.lat},"lng":${door.position.lon}},"pending":${door.id in pending}}"""
+            """"point":{"lat":${door.position.lat},"lng":${door.position.lon}},"pending":${door.id in pending},""" +
+            """"heldKind":${heldKind(door.id)}}"""
+
+    /** A saved outcome (no door, moved) is a report; saved answers are answers (backend T-002). */
+    private fun heldKind(id: Long): String = when (pending[id]?.contains("\"outcome\"")) {
+        null -> "null"
+        true -> "\"report\""
+        false -> "\"answer\""
+    }
 
     private fun json(status: Int, body: String) = HttpResponse(status, body = body)
 
