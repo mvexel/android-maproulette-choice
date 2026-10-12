@@ -31,8 +31,8 @@ object Locator {
     }
 
     /** A current fix within [timeoutMs]; call after the permission prompt. Fused first where the
-     * phone has it (it uses Wi-Fi indoors). Otherwise GPS, falling back to the network for the last
-     * third of the time, because GPS alone rarely gets a fix indoors. */
+     * phone has it (it uses Wi-Fi indoors), otherwise GPS; the network gets the last third of the
+     * time, because GPS alone rarely gets a fix indoors. */
     @SuppressLint("MissingPermission") // Checked by permitted().
     suspend fun locate(context: Context, timeoutMs: Long = 15_000): LocateResult {
         if (!permitted(context)) return LocateResult.Denied
@@ -51,12 +51,13 @@ object Locator {
 
     /** Which providers to ask, in order, and how long each gets out of [timeoutMs]. */
     internal fun attempts(enabled: List<String>, timeoutMs: Long): List<Pair<String, Long>> = when {
-        LocationManager.FUSED_PROVIDER in enabled -> listOf(LocationManager.FUSED_PROVIDER to timeoutMs)
-        LocationManager.GPS_PROVIDER in enabled && LocationManager.NETWORK_PROVIDER in enabled -> listOf(
-            LocationManager.GPS_PROVIDER to timeoutMs * 2 / 3,
-            LocationManager.NETWORK_PROVIDER to timeoutMs - timeoutMs * 2 / 3,
-        )
-        else -> enabled.take(1).map { it to timeoutMs }
+        enabled.size < 2 -> enabled.map { it to timeoutMs }
+        // Fused can come back empty (e.g. Google location accuracy off): the network, else GPS, gets the rest.
+        else -> {
+            val first = if (LocationManager.FUSED_PROVIDER in enabled) LocationManager.FUSED_PROVIDER else LocationManager.GPS_PROVIDER
+            val fallback = if (LocationManager.NETWORK_PROVIDER in enabled) LocationManager.NETWORK_PROVIDER else LocationManager.GPS_PROVIDER
+            listOf(first to timeoutMs * 2 / 3, fallback to timeoutMs - timeoutMs * 2 / 3)
+        }
     }
 
     /** One provider's current fix, or null when it has none within [timeoutMs]. */

@@ -5,8 +5,12 @@ import org.junit.Test
 
 /** Indoors GPS rarely gets a fix, so it never gets the whole wait when another provider can help. */
 class LocatorTest {
-    @Test fun fusedGetsTheWholeWait() {
-        assertEquals(listOf("fused" to 15_000L), Locator.attempts(listOf("fused", "gps", "network"), 15_000))
+    @Test fun fusedFirstThenTheNetwork() {
+        assertEquals(listOf("fused" to 10_000L, "network" to 5_000L), Locator.attempts(listOf("fused", "gps", "network"), 15_000))
+    }
+
+    @Test fun fusedWithoutTheNetworkFallsBackToGps() {
+        assertEquals(listOf("fused" to 10_000L, "gps" to 5_000L), Locator.attempts(listOf("fused", "gps"), 15_000))
     }
 
     @Test fun withoutFusedGpsFallsBackToTheNetwork() {
