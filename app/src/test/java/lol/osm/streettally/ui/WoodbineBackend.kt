@@ -39,8 +39,10 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
             api == "challenge/$CAMPAIGN" -> json(200,
                 """{"id":$CAMPAIGN,"parent":1,"name":"$NAME","description":"Check the doors at the Woodbine entrances.",""" +
                     """"enabled":true,"isArchived":false,"cooperativeType":3}""")
-            api == "challenge/$CAMPAIGN/tasks" ->
-                json(200, if (request.url.contains("page=0")) doors.joinToString(",", "[", "]") { task(it) } else "[]")
+            api == "challenge/$CAMPAIGN/tasks" -> {
+                val limit = Regex("[?&]limit=([0-9]+)").find(request.url)?.groupValues?.get(1)?.toInt() ?: doors.size
+                json(200, if (request.url.contains("page=0")) doors.take(limit).joinToString(",", "[", "]") { task(it) } else "[]")
+            }
             else -> door(api)?.let { (door, rest) ->
                 when {
                     rest == "" -> json(200, task(door))

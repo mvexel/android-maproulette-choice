@@ -8,6 +8,11 @@ import org.maproulette.sdk.PageCursor
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskWork
 import org.maproulette.sdk.work
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import lol.osm.streettally.task.takesGuestAnswers
 
 /** The published campaigns, as the iOS picker reads them. */
 data class CampaignList(val campaigns: List<Challenge>, val hidden: Int, val truncated: Boolean)
@@ -65,6 +70,26 @@ object Campaigns {
             pages += 1
         } while (cursor != null && pages < MAX_TASK_PAGES)
         return CampaignPlaces(challenge, all.map(LocatedTask::of), Noun.from(all), cursor != null)
+    }
+
+    /**
+     * Campaigns a guest can't answer (no `liveMissingQuestions`), from each one's first task: the
+     * survey builder sets the flag per campaign (guest-vs-signed-in-review.md). A failed read leaves
+     * the campaign out; its places still say so when opened.
+     */
+    suspend fun needingAccount(client: MapRouletteClient, campaigns: List<Challenge>): Set<ChallengeId> = coroutineScope {
+        campaigns.map { c ->
+            async {
+                val first = try {
+                    client.listTasks(c.id, pageSize = 1).items.firstOrNull()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                c.id.takeIf { first != null && !first.takesGuestAnswers() }
+            }
+        }.awaitAll().filterNotNull().toSet()
     }
 
     /** Every question asked in the campaign, in first-seen order, for the welcome card. */
