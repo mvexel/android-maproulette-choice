@@ -21,15 +21,19 @@ class CampaignProgressTest {
         LatLon(lat, lon),
     )
 
-    @Test fun heldPlacesCountAsCheckedButAreNeitherShownNorOffered() {
-        // 1 and 2 open, 3 open but held, 4 fixed, 5 deleted (neither open nor done).
+    @Test fun heldPlacesAreShownAndCountedAsCheckedButNotOffered() {
+        // 1 and 2 open, 3 open but held by someone else's saved answer, 4 fixed, 5 deleted (neither open nor done).
         val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 1), place(5, 4))
-        val tally = CampaignProgress(tasks, held = setOf(3L))
-        assertEquals(setOf(4L), tally.done)
-        assertEquals(2, tally.checked)
-        assertEquals(4, tally.total)
-        assertEquals(listOf(1L, 2L, 4L), tally.shown.map { it.id })
-        assertEquals(listOf(1L, 2L), tally.open.map { it.id })
+        for (guest in listOf(false, true)) {
+            val tally = CampaignProgress(tasks, held = setOf(3L), guest = guest)
+            assertEquals(setOf(3L, 4L), tally.done)
+            assertEquals(2, tally.checked)
+            assertEquals(4, tally.total)
+            assertEquals(listOf(1L, 2L, 3L, 4L), tally.shown.map { it.id })
+            assertEquals(listOf(1L, 2L), tally.open.map { it.id })
+            // Plainly checked here: "Saved, not on the map yet" is only for the phone that saved it (T-001).
+            assertEquals(emptySet<Long>(), tally.pending)
+        }
         // A held id that isn't open (already fixed) is not counted twice.
         assertEquals(1, CampaignProgress(tasks, held = setOf(4L)).checked)
     }
@@ -46,6 +50,10 @@ class CampaignProgressTest {
             assertEquals(listOf(1L, 2L, 3L), tally.shown.map { it.id })
             assertEquals(listOf(1L), tally.open.map { it.id })
             assertEquals(emptySet<Long>(), tally.pending)
+            // Held by the guest's own saved report: still needs another look, not checked.
+            val heldReport = CampaignProgress(tasks, held = setOf(2L), guest = guest, reported = setOf(2L, 3L))
+            assertEquals(setOf(2L), heldReport.look)
+            assertEquals(1, heldReport.checked)
         }
     }
 

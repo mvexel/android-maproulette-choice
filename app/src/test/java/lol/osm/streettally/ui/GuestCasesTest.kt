@@ -4,10 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasClickAction
@@ -80,18 +83,23 @@ class GuestCasesTest {
         assertEquals(listOf(101L), backend.pending.keys.toList())
     }
 
-    /** G-2 on the other phone: a guest's saved answer (the bounds search flags it with includePending)
-     * counts in the tally and the place is no longer offered. */
-    @Test fun g2AnotherPhoneCountsTheSavedAnswer() {
+    /** G-2 on the other phone (T-001): a guest's saved answer, flagged by the bounds search with
+     * includePending, shows as plainly checked: counted, under "Already checked", never "Saved, not on
+     * the map yet", and not offered. */
+    @Test fun g2AnotherPhoneShowsTheSavedPlaceAsChecked() {
         val backend = WoodbineBackend()
         backend.pending[101L] = """{"answers":{"automatic-opening":"button","door-type":"hinged"}}"""
         open(backend)
         tap("Let's go")
         waitFor(Wording.progress(1, 4, noun))
         tap("List")
-        waitFor("To check")
-        assertGone("Main door")
-        compose.onNodeWithText("Food hall door").assertExists()
+        waitFor("Already checked")
+        compose.onNode(hasContentDescription("Main door", substring = true) and hasContentDescription("Already checked", substring = true))
+            .assertExists()
+        assertGone(Wording.SAVED_NOT_ON_MAP)
+        assertEquals(0, compose.onAllNodes(hasContentDescription(Wording.SAVED_NOT_ON_MAP, substring = true)).fetchSemanticsNodes().size)
+        // Listed once, as checked: not also under "To check".
+        assertEquals(1, compose.onAllNodesWithText("Main door").fetchSemanticsNodes().size)
     }
 
     /** G-3: a campaign without liveMissingQuestions is badged in the picker. */
@@ -105,8 +113,11 @@ class GuestCasesTest {
                 )
             }
         }
-        waitFor(WoodbineBackend.NAME)
+        waitFor(WoodbineBackend.OTHER_NAME)
         waitFor(Wording.NEEDS_ACCOUNT_BADGE)
+        // On the campaign without the flag only; the other campaign has no badge.
+        compose.onNode(hasText(WoodbineBackend.NAME) and hasText(Wording.NEEDS_ACCOUNT_BADGE)).assertExists()
+        assertEquals(1, compose.onAllNodesWithText(Wording.NEEDS_ACCOUNT_BADGE).fetchSemanticsNodes().size)
     }
 
     /** G-3 and tonight's bug: in a campaign without liveMissingQuestions, every place stays visible to a
@@ -125,7 +136,8 @@ class GuestCasesTest {
     }
 
     /** G-4: a place that needs an account, in a campaign with others still open: sign-in is offered for
-     * this place, with the next open one first; the campaign never says "the rest" need an account. */
+     * this place, with the next open one first; the campaign never says "the rest" need an account.
+     * Since "every campaign" (Martijn, 23:46) a mixed campaign shouldn't exist; this is the safety net. */
     @Test fun g4APlaceThatNeedsAnAccountOffersSignIn() {
         val backend = WoodbineBackend()
         open(backend)
@@ -152,6 +164,44 @@ class GuestCasesTest {
         waitFor(Wording.allChecked(noun))
         assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         assertGone("Sign in with OpenStreetMap")
+    }
+
+    /** G-1 / S-3 parity: on the same backend, a guest and a signed-in account see the same places in
+     * the same sections, and the same tally (one place held by someone's saved answer). */
+    @Test fun g1AGuestAndAnAccountSeeTheSamePlaces() {
+        val backend = WoodbineBackend()
+        backend.pending[102L] = """{"outcome":"no-door"}"""
+        val guest = session(backend)
+        val account = session(backend).also { s -> runBlocking { s.signIn(::approve) } }
+        assertEquals("rosa_slc", account.state.value.account?.displayName)
+        var current by mutableStateOf(guest)
+        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication())
+        compose.setContent {
+            StreetTallyTheme(dark = false) { key(current) { App(current, prefs, CheckedLog()) } }
+        }
+        tap("Let's go")
+        fun seen(): List<String> {
+            waitFor(Wording.progress(1, 4, noun))
+            tap("List")
+            waitFor("Already checked")
+            val rows = compose.onAllNodes(hasClickAction() or hasContentDescription("Already checked", substring = true))
+                .fetchSemanticsNodes()
+                .mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString() }
+                .filter { d -> WoodbineBackend.DOORS.any { d.startsWith(it.name) } }
+            return rows
+        }
+        val asGuest = seen()
+        current = account
+        compose.waitForIdle()
+        val signedIn = seen()
+        assertEquals(asGuest, signedIn)
+        assertEquals(listOf("Main door", "East door", "Loading dock door", "Food hall door, Already checked"), asGuest)
+    }
+
+    /** Plays the browser for an account sign-in: approves and echoes the state. */
+    private fun approve(url: String): String {
+        val state = java.net.URI(url).rawQuery.split('&').map { it.split('=', limit = 2) }.first { it[0] == "state" }[1]
+        return "lol.osm.maproulette.choice:/oauth2redirect?code=the-code&state=$state"
     }
 
     /** G-8: the connection drops after the server stored the answer. The answers stay on screen, sending

@@ -18,7 +18,8 @@ internal data class Door(val id: Long, val name: String, val position: LatLon, v
 
 /**
  * The Woodbine campaign (challenge 3) on dev, served without a network: the campaign, its doors, the
- * live check, guest registration, its token and status, guest answers, the picker's campaign search and the
+ * live check, guest registration, its token and status, guest answers, an account sign-in, the picker's
+ * campaign search (with a second campaign, [OTHER], whose doors take guest answers) and the
  * bounds search that flags held places (`includePending`). Anything else is a 404. Records every guest
  * answer in [pending] (task id to request body; one per task, as the server keeps them) and every
  * attempt in [answerPosts]. With [dropNextAnswer], the next answer is stored but its response is lost.
@@ -36,6 +37,10 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
         return when {
             path == "/oauth/mobile/guest" && request.method == HttpMethod.POST ->
                 json(201, """{"guestId":"guest-1","guestSecret":"secret-secret-secret-1"}""")
+            path == "/oauth/mobile/token" && request.body.orEmpty().contains("authorization_code") -> json(200,
+                """{"token_type":"Bearer","access_token":"account-token-1","refresh_token":"refresh-1","expires_in":3600,""" +
+                    """"scope":"osm:tagfix tasks:read tasks:write"}""")
+            path == "/oauth/mobile/me" -> json(200, """{"id":900,"osmId":12345,"displayName":"rosa_slc","scope":"osm:tagfix tasks:read tasks:write"}""")
             path == "/oauth/mobile/token" && request.method == HttpMethod.POST ->
                 json(200, """{"token_type":"Bearer","access_token":"guest-token-guest-token-1","expires_in":3600,"scope":"guest"}""")
             api == "mobile-guest/me" -> json(200,
@@ -46,7 +51,10 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
                     """"enabled":true,"isArchived":false,"cooperativeType":3}""")
             api == "challenges/extendedFind" -> json(200,
                 """[{"id":$CAMPAIGN,"parent":1,"name":"$NAME","description":"Check the doors at the Woodbine entrances.",""" +
+                    """"enabled":true,"isArchived":false,"cooperativeType":3,"tags":["mobile-survey-v1"]},""" +
+                    """{"id":$OTHER,"parent":1,"name":"$OTHER_NAME","description":"Every door takes guest answers.",""" +
                     """"enabled":true,"isArchived":false,"cooperativeType":3,"tags":["mobile-survey-v1"]}]""")
+            api == "challenge/$OTHER/tasks" -> json(200, if (request.url.contains("page=0")) "[${task(DOORS.first(), OTHER)}]" else "[]")
             api.startsWith("tasks/box/") -> {
                 val rows = if (request.url.contains("page=0")) doors.filter { it.status == 0 } else emptyList()
                 json(200, rows.joinToString(",", """{"total":${rows.size},"tasks":[""", "]}") { summary(it) })
@@ -83,10 +91,10 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
         return door to api.removePrefix("task/$id")
     }
 
-    private fun task(door: Door): String {
+    private fun task(door: Door, campaign: Long = CAMPAIGN): String {
         val work = if (door.live) woodbine() else JsonObject(woodbine() - "liveMissingQuestions")
         val point = """{"type":"Point","coordinates":[${door.position.lon},${door.position.lat}]}"""
-        return """{"id":${door.id},"parent":$CAMPAIGN,"name":"${door.id}","status":${door.status},""" +
+        return """{"id":${door.id},"parent":$campaign,"name":"${door.id}","status":${door.status},""" +
             """"geometries":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":$point,""" +
             """"properties":{"name":${JsonPrimitive(door.name)},"entrance":"main"}}]},""" +
             """"location":$point,"cooperativeWork":$work}"""
@@ -102,6 +110,9 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
     companion object {
         const val CAMPAIGN = 3L
         const val NAME = "Woodbine entrance doors"
+        /** A second campaign in the picker, whose doors always take guest answers. */
+        const val OTHER = 7L
+        const val OTHER_NAME = "Danforth shop doors"
         private val ORIGIN = LatLon(43.68420, -79.31780)
         private fun north(meters: Double) = LatLon(ORIGIN.lat + meters / 111_320.0, ORIGIN.lon)
 
