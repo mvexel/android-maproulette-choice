@@ -725,14 +725,10 @@ class TaskWorkControllerTest {
     }
 
     @Test
-    fun guestIsAskedToSignInBeforeQuestionsTheServerWontKeep() = runTest {
-        val ops = FakeOps().thenRead({ task() })
-        val c = controller(ops, writer = Writer.GUEST)
-        assertEquals(TaskScreen.GuestSignIn(task(), CHALLENGE), c.state.value)
-        assertEquals(listOf("get", "challenge"), ops.calls)
-        // Signed in, the same task is answered as before.
-        val signedIn = controller(FakeOps().thenRead({ task() }))
-        assertTrue(signedIn.state.value is TaskScreen.Answering)
+    fun guestAnswersATaskWithoutTheLiveFlag() = runTest {
+        // Guests everywhere (G1): the server keeps guest answers on every campaign, so nothing is asked first.
+        val c = controller(FakeOps().thenRead({ task() }), writer = Writer.GUEST)
+        assertTrue(c.state.value is TaskScreen.Answering)
     }
 
     @Test

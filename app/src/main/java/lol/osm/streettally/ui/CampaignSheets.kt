@@ -49,8 +49,6 @@ fun WelcomeDialog(
     previewingAs: String? = null,
     /** Signed out in a build where guests answer first (deferred sign-up). */
     guest: Boolean = false,
-    /** A guest with nothing here to answer: the card doesn't promise "no account needed". */
-    needsAccount: Boolean = false,
 ) {
     AlertDialog(
         onDismissRequest = onClose,
@@ -73,7 +71,6 @@ fun WelcomeDialog(
                 Text(if (guest) Wording.GUEST_ANSWERS_ARE_PUBLIC else Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
                 if (previewingAs != null) Text(Wording.previewingAs(previewingAs), style = MaterialTheme.typography.bodySmall)
-                else if (guest && needsAccount) Text(Wording.CAMPAIGN_NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
                 else if (guest) Text(Wording.noAccountNeeded(noun), style = MaterialTheme.typography.bodySmall)
                 else if (!signedIn) Text(Wording.NEEDS_ACCOUNT, style = MaterialTheme.typography.bodySmall)
             }

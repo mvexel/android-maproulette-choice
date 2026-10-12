@@ -73,7 +73,6 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.campaign.Wording
-import lol.osm.streettally.task.takesGuestAnswers
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
@@ -236,14 +235,9 @@ fun CampaignScreen(
     val tally = remember(current, held, justDone, reported, state.guest) {
         CampaignProgress(current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported)
     }
-    val asGuest = !preview && state.account == null && (state.guest || session.canAnswerAsGuest)
     val shown = tally.shown
     val done = tally.done
     val open = Places.sorted(tally.open, origin)
-    // A guest in a campaign whose open places all need an account (no liveMissingQuestions;
-    // guest-vs-signed-in-review.md): said once, on the welcome card and above Nearest. Places stay
-    // shown and say so when opened.
-    val shutOut = asGuest && open.isNotEmpty() && open.none { it.task.takesGuestAnswers() }
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
@@ -346,9 +340,7 @@ fun CampaignScreen(
                             if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
                         }
                     }
-                    if (shutOut) GuestNeedsAccount(noun, onSignIn = signInHere)
-                    // A shut-out guest gets the sign-in block instead of a way into a place (iOS d71afe3).
-                    val nearest = open.firstOrNull().takeUnless { shutOut }
+                    val nearest = open.firstOrNull()
                     if (nearest != null && origin == null) {
                         // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
                         Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
@@ -363,7 +355,7 @@ fun CampaignScreen(
                         Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                         }
-                    } else if (tally.total > 0 && !shutOut) {
+                    } else if (tally.total > 0) {
                         Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                     }
                 }
@@ -436,7 +428,6 @@ fun CampaignScreen(
             onClose = { closeWelcome() },
             previewingAs = if (previewing) Wording.account(state.account?.userId, state.account?.displayName) ?: "" else null,
             guest = !previewing && session.canAnswerAsGuest,
-            needsAccount = shutOut,
         )
         Sheet.SHARE -> ShareDialog(name, CampaignLink.webUrl(campaignId, session.config.campaignLinkHost)) { sheet = null }
         Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = signInHere) { sheet = null }
@@ -575,13 +566,3 @@ private fun PlaceRow(
     }
 }
 
-/** A guest where every open place needs an account (none takes guest answers). */
-@Composable
-private fun GuestNeedsAccount(noun: lol.osm.streettally.campaign.Noun, onSignIn: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(Wording.guestCampaignNeedsAccountDetail(noun))
-        Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Sign in with OpenStreetMap") }
-        Text(ACCOUNT_HINT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
