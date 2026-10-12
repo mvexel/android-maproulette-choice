@@ -100,7 +100,8 @@ fun CampaignScreen(
     val state by session.state.collectAsState()
     val guestInfo by session.guest.collectAsState()
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
-    // Open places a guest's saved answer holds: counted as checked, not shown or offered.
+    // Open places a guest's saved answer or report holds: shown, never offered. An answer counts as
+    // checked; a report needs another look (T-001, T-002).
     var held by remember { mutableStateOf(Held()) }
     // Other people's not-here and moved reports (parity row 4), where this build reads them.
     var serverReports by remember { mutableStateOf(emptyMap<Long, TaskReport>()) }
