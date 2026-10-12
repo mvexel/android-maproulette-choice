@@ -185,7 +185,7 @@ class GuestCasesTest {
      * the same sections, and the same tally (one place held by someone's saved answer). */
     @Test fun g1AGuestAndAnAccountSeeTheSamePlaces() {
         val backend = WoodbineBackend()
-        backend.pending[102L] = """{"outcome":"no-door"}"""
+        backend.pending[102L] = """{"answers":{"automatic-opening":"no","door-type":"hinged"}}"""
         val guest = session(backend)
         val account = session(backend).also { s -> runBlocking { s.signIn(::approve) } }
         assertEquals("rosa_slc", account.state.value.account?.displayName)
