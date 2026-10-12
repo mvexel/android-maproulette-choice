@@ -61,6 +61,7 @@ import lol.osm.streettally.campaign.CampaignProgress
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.campaign.Held
 import lol.osm.streettally.campaign.HeldTasks
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
@@ -99,8 +100,9 @@ fun CampaignScreen(
     val state by session.state.collectAsState()
     val guestInfo by session.guest.collectAsState()
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
-    // Open places a guest's saved answer holds: counted as checked, not shown or offered.
-    var held by remember { mutableStateOf(emptySet<Long>()) }
+    // Open places a guest's saved answer or report holds: shown, never offered. An answer counts as
+    // checked; a report needs another look (T-001, T-002).
+    var held by remember { mutableStateOf(Held()) }
     // Other people's not-here and moved reports (parity row 4), where this build reads them.
     var serverReports by remember { mutableStateOf(emptyMap<Long, TaskReport>()) }
     val reportSource = LocalReportSource.current
@@ -182,7 +184,7 @@ fun CampaignScreen(
                 return@LaunchedEffect
             }
             // Preview hides the tally, so held places aren't looked up.
-            val heldNow = if (preview) emptySet() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
+            val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
             serverReports = if (preview || !session.config.serverReports) emptyMap() else try {
@@ -217,12 +219,13 @@ fun CampaignScreen(
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
     // Reported here or by someone else: either way the place needs another look and isn't offered.
-    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys
+    // A guest's saved report holding a place (T-002) counts the same way.
+    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys + held.reports
     // Where a moved place was reported to be: a gray dot on the map, joined to its pin.
     val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
         .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
     val tally = remember(current, held, justDone, reported, state.guest) {
-        CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
+        CampaignProgress(current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported)
     }
     val asGuest = !preview && state.account == null && (state.guest || session.canAnswerAsGuest)
     val shown = tally.shown
@@ -236,7 +239,7 @@ fun CampaignScreen(
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
-        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }, reports = serverReports), origin) }
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids }, reports = serverReports), origin) }
     }
 
     Scaffold(

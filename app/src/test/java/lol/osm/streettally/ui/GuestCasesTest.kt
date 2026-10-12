@@ -102,6 +102,21 @@ class GuestCasesTest {
         assertEquals(1, compose.onAllNodesWithText("Main door").fetchSemanticsNodes().size)
     }
 
+    /** T-002: another guest's saved report (here "There's no door") holds a place: it needs another
+     * look on this phone, doesn't count, and isn't offered. */
+    @Test fun anotherGuestsSavedReportNeedsAnotherLook() {
+        val backend = WoodbineBackend()
+        backend.pending[102L] = """{"outcome":"no-door"}"""
+        open(backend)
+        tap("Let's go")
+        waitFor(Wording.progress(0, 4, noun))
+        tap("List")
+        waitFor(Wording.NEEDS_LOOK)
+        compose.onNode(hasContentDescription("Food hall door", substring = true) and hasContentDescription(Wording.NEEDS_LOOK, substring = true))
+            .assertExists()
+        assertGone("Already checked")
+    }
+
     /** G-3: a campaign without liveMissingQuestions is badged in the picker. */
     @Test fun g3ThePickerBadgesACampaignGuestsCantAnswer() {
         val session = session(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
@@ -170,7 +185,7 @@ class GuestCasesTest {
      * the same sections, and the same tally (one place held by someone's saved answer). */
     @Test fun g1AGuestAndAnAccountSeeTheSamePlaces() {
         val backend = WoodbineBackend()
-        backend.pending[102L] = """{"outcome":"no-door"}"""
+        backend.pending[102L] = """{"answers":{"automatic-opening":"no","door-type":"hinged"}}"""
         val guest = session(backend)
         val account = session(backend).also { s -> runBlocking { s.signIn(::approve) } }
         assertEquals("rosa_slc", account.state.value.account?.displayName)

@@ -3,6 +3,7 @@ package lol.osm.streettally.campaign
 import kotlinx.coroutines.CancellationException
 import org.maproulette.sdk.Bounds
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.HeldKind
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.PageCursor
 import org.maproulette.sdk.TaskFilter
@@ -42,7 +43,12 @@ class CampaignProgress(
         if (guest) tasks.filter { !it.isDone && it.id in justDone }.map { it.id }.toSet() else emptySet()
 }
 
-/** Which open tasks a guest's saved answer holds until it goes on the map or expires. */
+/** Open tasks a guest's saved submission holds: [ids] all of them, [reports] those held by a report
+ * (no door, moved, any status-6 outcome), which need another look rather than count as checked
+ * (T-002). [reports] is empty from a backend that doesn't say what holds a task. */
+data class Held(val ids: Set<Long> = emptySet(), val reports: Set<Long> = emptySet())
+
+/** Which open tasks a guest's saved answer or report holds until it goes on the map or expires. */
 object HeldTasks {
     private const val MAX_PAGES = 10
     private const val PAD = 0.0005
@@ -60,22 +66,24 @@ object HeldTasks {
         }.getOrNull()
     }
 
-    /** From an `includePending` search: the rows flagged pending, or null when the backend didn't
-     * report the flag on every row (an older backend, or no rows). */
-    fun fromFlags(rows: List<TaskSummary>): Set<Long>? =
-        if (rows.isNotEmpty() && rows.all { it.pending != null }) rows.filter { it.pending == true }.map { it.id.value }.toSet()
-        else null
+    /** From an `includePending` search: the rows flagged pending, and which of them a report holds;
+     * null when the backend didn't report the flag on every row (an older backend, or no rows). */
+    fun fromFlags(rows: List<TaskSummary>): Held? {
+        if (rows.isEmpty() || rows.any { it.pending == null }) return null
+        val held = rows.filter { it.pending == true }
+        return Held(held.map { it.id.value }.toSet(), held.filter { it.heldKind == HeldKind.REPORT }.map { it.id.value }.toSet())
+    }
 
     /** The bounds search with `includePending` says so per task (backend #16). A backend without it
      * sends no `pending`, so the held set is then what the `excludePending` search leaves out. Best
      * effort: on failure or a short read, none. */
-    suspend fun load(client: MapRouletteClient, id: ChallengeId, tasks: List<LocatedTask>): Set<Long> {
+    suspend fun load(client: MapRouletteClient, id: ChallengeId, tasks: List<LocatedTask>): Held {
         val open = tasks.filter { it.isOpen }
-        val bounds = bounds(open.mapNotNull { it.position }) ?: return emptySet()
-        val withFlags = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, includePending = true)) ?: return emptySet()
+        val bounds = bounds(open.mapNotNull { it.position }) ?: return Held()
+        val withFlags = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, includePending = true)) ?: return Held()
         fromFlags(withFlags)?.let { return it }
-        val unheld = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, excludePending = true)) ?: return emptySet()
-        return open.map { it.id }.toSet() - unheld.map { it.id.value }.toSet()
+        val unheld = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, excludePending = true)) ?: return Held()
+        return Held(open.map { it.id }.toSet() - unheld.map { it.id.value }.toSet())
     }
 
     /** Every page of a bounds search, or null on failure or a short read. */
