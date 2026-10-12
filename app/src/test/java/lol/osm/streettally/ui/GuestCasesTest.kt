@@ -62,6 +62,7 @@ class GuestCasesTest {
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
         assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
+        compose.onNodeWithText(Wording.choose(noun)).assertExists()
         tap("List")
         waitFor("To check")
         WoodbineBackend.DOORS.forEach { compose.onNodeWithText(it.name).assertExists() }
@@ -145,6 +146,10 @@ class GuestCasesTest {
         waitFor(Wording.progress(0, 4, noun))
         waitFor(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         compose.onNodeWithText(Wording.guestCampaignNeedsAccountDetail(noun)).assertExists()
+        // The sign-in block is the only action: no Nearest, no "Choose an entrance", no all-checked line.
+        assertEquals(0, compose.onAllNodesWithText(Wording.nearest(noun, null), substring = true).fetchSemanticsNodes().size)
+        assertGone(Wording.choose(noun))
+        assertGone(Wording.allChecked(noun))
         tap("List")
         waitFor("To check")
         WoodbineBackend.DOORS.forEach { compose.onNodeWithText(it.name).assertExists() }
