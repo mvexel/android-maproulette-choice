@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.isRoot
@@ -186,7 +187,8 @@ class WoodbineJourneyTest {
         waitFor(Wording.NEEDS_LOOK)
         tap("Main door")
         waitFor("Someone reported this entrance isn't here.")
-        tap(BACK)
+        // Not answered: back with the top bar's arrow.
+        compose.onNodeWithContentDescription(BACK).performClick()
         tap("Food hall door")
         waitFor("Someone reported this entrance moved, about 40 m.")
     }
