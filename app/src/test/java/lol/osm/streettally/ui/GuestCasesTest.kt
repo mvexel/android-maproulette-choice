@@ -62,6 +62,7 @@ class GuestCasesTest {
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
         assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
+        compose.onNodeWithText(Wording.choose(noun)).assertExists()
         tap("List")
         waitFor("To check")
         WoodbineBackend.DOORS.forEach { compose.onNodeWithText(it.name).assertExists() }

@@ -325,7 +325,8 @@ fun CampaignScreen(
                     }
                 }
                 if (shutOut) GuestNeedsAccount(noun, onSignIn = signInHere)
-                val nearest = open.firstOrNull()
+                // A shut-out guest gets the sign-in block instead of a way into a place (iOS d71afe3).
+                val nearest = open.firstOrNull().takeUnless { shutOut }
                 if (nearest != null && origin == null) {
                     // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
                     Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
@@ -340,7 +341,7 @@ fun CampaignScreen(
                     Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                     }
-                } else if (tally.total > 0) {
+                } else if (tally.total > 0 && !shutOut) {
                     Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                 }
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {

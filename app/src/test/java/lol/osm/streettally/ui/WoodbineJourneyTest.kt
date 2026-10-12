@@ -150,6 +150,9 @@ class WoodbineJourneyTest {
         ).assertExists()
         compose.onNodeWithText("Sign in with OpenStreetMap").assertExists()
         compose.onNodeWithText("The tally: 0 of 4 entrances checked").assertExists()
+        // The sign-in block replaces the way into a place.
+        assertGone(Wording.choose(Noun("entrance", "entrances")))
+        assertGone(Wording.UPDATE_LOCATION)
         tap("List")
         compose.onNodeWithText("Main door").assertExists()
     }
