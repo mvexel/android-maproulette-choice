@@ -61,6 +61,7 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.MovedSpot
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
+import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
@@ -101,6 +102,8 @@ fun PlaceScreen(
     onExitPreview: () -> Unit = {},
     /** True the first time a guest's answer is saved on this phone: opens the "put them on the map" card once. */
     firstSavedForLater: () -> Boolean = { false },
+    /** Other people's not-here and moved reports, by task id (parity row 4; empty until the server read). */
+    reports: Map<Long, TaskReport> = emptyMap(),
 ) {
     val previewing = previewSaved != null
     val state by session.state.collectAsState()
@@ -166,7 +169,7 @@ fun PlaceScreen(
         val done = screen as? TaskScreen.Done
         if (done != null && !done.byOther && !counted) {
             counted = true
-            checked.record(campaignId, done.task.id.value, look = done.action.needsLook)
+            checked.record(campaignId, done.task.id.value, look = done.action.needsLook, report = TaskReport.of(done.action))
             // Once, after the first saved answer; later from the campaign's banner.
             if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
         }
@@ -177,7 +180,7 @@ fun PlaceScreen(
 
     val here: LatLon? = loadedTask(screen)?.let { Places.position(it) }
         ?: candidates.firstOrNull { it.id == taskId }?.position
-    val next = Places.nearest(here, candidates, visited + checked.done(campaignId) + checked.reported(campaignId))
+    val next = Places.nearest(here, candidates, visited + checked.done(campaignId) + checked.reported(campaignId) + reports.keys)
 
     fun open(place: LocatedTask) {
         if (c.busy) return
@@ -228,6 +231,11 @@ fun PlaceScreen(
                     }
                     Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
+                    // Someone else's report (not-here-moved.md §4). Whoever reported it here sees their own saved line instead.
+                    val id = task.id.value
+                    if (LocatedTask.of(task).isOpen && id !in checked.done(campaignId) && id !in checked.reported(campaignId)) {
+                        TaskReport.banner(reports[id], Places.position(task), noun)?.let { Banner(it) }
+                    }
                 }
                 if (screen !is TaskScreen.Loading) switchNotice?.let { Banner(it) }
                 if (accountNote) AccountNote(state)

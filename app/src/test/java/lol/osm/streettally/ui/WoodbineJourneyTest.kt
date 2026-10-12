@@ -28,6 +28,8 @@ import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Noun
+import lol.osm.streettally.campaign.ReportSource
+import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.campaign.Wording
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -162,21 +164,64 @@ class WoodbineJourneyTest {
         assertEquals(setOf(ChallengeId(WoodbineBackend.CAMPAIGN)), needing(WoodbineBackend.DOORS.map { it.copy(live = false) }))
     }
 
+    /** Someone else's reports (parity row 4, behind the serverReports flag): those places need another
+     * look, don't change the tally, and say what was reported when opened. */
+    @Test fun otherPeoplesReportsNeedAnotherLook() {
+        val food = WoodbineBackend.DOORS.single { it.id == 102L }.position
+        val stub = ReportSource { _, _ ->
+            mapOf(101L to TaskReport.NotHere, 102L to TaskReport.Moved(LatLon(food.lat + 40 / 111_320.0, food.lon)))
+        }
+        val session = AppSession(WoodbineBackend.CONFIG.copy(serverReports = true), InMemoryCredentialStore(), WoodbineBackend())
+        runBlocking { session.restore() }
+        compose.setContent {
+            StreetTallyTheme(dark = false) { App(session, CampaignPrefs(RuntimeEnvironment.getApplication()), CheckedLog(), stub) }
+        }
+        waitFor("Let's go")
+        tap("Let's go")
+        waitFor("The tally: 0 of 4 entrances checked")
+        tap("List")
+        waitFor(Wording.NEEDS_LOOK)
+        tap("Main door")
+        waitFor("Someone reported this entrance isn't here.")
+        tap(BACK)
+        tap("Food hall door")
+        waitFor("Someone reported this entrance moved, about 40 m.")
+    }
+
+    /** Without the serverReports flag, a report source is not read. */
+    @Test fun reportsStayOffWithoutTheFlag() {
+        val stub = ReportSource { _, _ -> mapOf(101L to TaskReport.NotHere) }
+        val session = AppSession(WoodbineBackend.CONFIG, InMemoryCredentialStore(), WoodbineBackend())
+        runBlocking { session.restore() }
+        compose.setContent {
+            StreetTallyTheme(dark = false) { App(session, CampaignPrefs(RuntimeEnvironment.getApplication()), CheckedLog(), stub) }
+        }
+        waitFor("Let's go")
+        tap("Let's go")
+        tap("List")
+        waitFor("To check")
+        assertGone(Wording.NEEDS_LOOK)
+        tap("Main door")
+        waitFor("How does this door open?")
+        assertGone("Someone reported this entrance isn't here.")
+    }
+
     /** Campaign → place, as MainActivity: the campaign keeps its saveable state (the list) while a
      * place is open. Every map is a placeholder. */
     @Composable
-    private fun App(session: AppSession, prefs: CampaignPrefs, checked: CheckedLog) {
+    private fun App(session: AppSession, prefs: CampaignPrefs, checked: CheckedLog, reports: ReportSource = ReportSource.NONE) {
         val saved = rememberSaveableStateHolder()
         var place by remember { mutableStateOf<Pair<LocatedTask, CampaignPlaces>?>(null) }
         CompositionLocalProvider(
             LocalMapPlaceholder provides { _, modifier, onPick -> Box(modifier.testTag(MAP).clickable { onPick(MOVED_TO) }) },
+            LocalReportSource provides reports,
         ) {
             val open = place
             if (open != null) {
                 PlaceScreen(
                     session = session, checked = checked, campaignId = WoodbineBackend.CAMPAIGN,
                     firstTaskId = open.first.id, candidates = open.second.tasks, noun = open.second.noun,
-                    origin = null, onSignIn = {}, onBack = { place = null },
+                    origin = null, onSignIn = {}, onBack = { place = null }, reports = open.second.reports,
                 )
             } else {
                 saved.SaveableStateProvider("campaign") {

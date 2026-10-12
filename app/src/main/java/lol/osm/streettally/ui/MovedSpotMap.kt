@@ -49,6 +49,10 @@ private const val GRAY = "#6B7280"
 
 /** Draws in place of every map when set. Robolectric tests set it: MapLibre's view doesn't render
  * there. Gets the picked spot (or null), the map's modifier, and what a tap on the map picks. */
+/** Where other people's reports come from (parity row 4). Nothing until the backend can list them;
+ * tests provide one. Read only where the build's serverReports flag is on. */
+internal val LocalReportSource = staticCompositionLocalOf { lol.osm.streettally.campaign.ReportSource.NONE }
+
 internal val LocalMapPlaceholder =
     staticCompositionLocalOf<(@Composable (LatLon?, Modifier, (LatLon) -> Unit) -> Unit)?> { null }
 

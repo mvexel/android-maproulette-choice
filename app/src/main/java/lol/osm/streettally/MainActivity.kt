@@ -21,13 +21,16 @@ import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.campaign.Noun
+import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.ui.CampaignScreen
 import lol.osm.streettally.ui.PickerScreen
 import lol.osm.streettally.ui.PlaceScreen
 import lol.osm.streettally.ui.StreetTallyTheme
 
 /** The place being answered and the campaign context it was opened from. */
-private class OpenPlace(val taskId: Long, val candidates: List<LocatedTask>, val noun: Noun, val origin: LatLon?)
+private class OpenPlace(
+    val taskId: Long, val candidates: List<LocatedTask>, val noun: Noun, val origin: LatLon?, val reports: Map<Long, TaskReport>,
+)
 
 class MainActivity : ComponentActivity() {
     /** A campaign a link asked to open, and whether it asked for preview, until the UI takes it. */
@@ -98,6 +101,7 @@ class MainActivity : ComponentActivity() {
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
                             firstSavedForLater = { app.prefs.takePutOnMapCard() },
+                            reports = open.reports,
                         )
                     }
                     else -> saved.SaveableStateProvider("campaign-$id-$previewing-$visit") {
@@ -108,7 +112,7 @@ class MainActivity : ComponentActivity() {
                             checkedLog = app.checked,
                             campaignId = id,
                             onBack = { exitPreview() },
-                            onPlace = { task, places, origin -> place = OpenPlace(task.id, places.tasks, places.noun, origin) },
+                            onPlace = { task, places, origin -> place = OpenPlace(task.id, places.tasks, places.noun, origin, places.reports) },
                             preview = previewing,
                             onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
                             onOpenForReal = { alreadyPublished ->

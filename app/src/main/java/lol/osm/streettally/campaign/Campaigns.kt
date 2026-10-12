@@ -23,6 +23,8 @@ data class CampaignPlaces(
     val tasks: List<LocatedTask>,
     val noun: Noun,
     val truncated: Boolean,
+    /** Other people's reports, for the place screen's banner (parity row 4). */
+    val reports: Map<Long, TaskReport> = emptyMap(),
 )
 
 object Campaigns {

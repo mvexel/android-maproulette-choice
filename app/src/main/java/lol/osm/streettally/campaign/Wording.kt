@@ -144,6 +144,11 @@ object Wording {
     const val NEEDS_ACCOUNT_BADGE = "Needs an OpenStreetMap account"
     const val CAMPAIGN_NEEDS_ACCOUNT = "This campaign needs an OpenStreetMap account."
 
+    /** Someone else's report on the place being opened (iOS Wording.someoneReported*). */
+    fun someoneReportedNotHere(noun: Noun): String = "Someone reported this ${noun.one} isn't here."
+    fun someoneReportedMoved(meters: Double, noun: Noun): String =
+        "Someone reported this ${noun.one} moved, about ${MovedSpot.roundedMeters(meters)} m."
+
     fun cannotAnswer(noun: Noun): String = "This ${noun.one} can't be answered in the app."
     fun checkFailed(noun: Noun): String =
         "Couldn't check this ${noun.one} right now. Check your connection and try again."

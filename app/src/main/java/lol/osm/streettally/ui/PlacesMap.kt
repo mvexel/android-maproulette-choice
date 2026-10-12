@@ -13,6 +13,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
@@ -26,11 +27,14 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
 
@@ -45,6 +49,8 @@ fun PlacesMap(
     pending: Set<Long> = emptySet(),
     /** Reported places: "Needs another look" ([Pin.LOOK]). */
     look: Set<Long> = emptySet(),
+    /** Where moved places were reported to be: a small gray dot, joined to the pin by a dashed line. */
+    movedTo: Map<Long, LatLon> = emptyMap(),
     locationPermitted: Boolean,
     onPlace: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -80,7 +86,7 @@ fun PlacesMap(
         }
     }
     AndroidView(factory = { holder.view }, modifier = modifier, update = {
-        holder.show(places, done, pending, look)
+        holder.show(places, done, pending, look, movedTo)
         holder.syncLocation()
     })
 }
@@ -91,6 +97,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     var onBackground: () -> Unit = {}
     private var map: MapLibreMap? = null
     private var source: GeoJsonSource? = null
+    private var movedSource: GeoJsonSource? = null
     private var waiting: Shown? = null
     private var framed = false
 
@@ -102,6 +109,25 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             this.map = map
             map.uiSettings.isRotateGesturesEnabled = false
             map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
+                // Under the pins: the dashed line from a moved place to its reported spot, then the dot.
+                val moved = GeoJsonSource(MOVED_SOURCE)
+                style.addSource(moved)
+                style.addLayer(
+                    LineLayer(MOVED_LINES, MOVED_SOURCE).withProperties(
+                        PropertyFactory.lineColor(MOVED_GRAY),
+                        PropertyFactory.lineWidth(1.5f),
+                        PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+                    ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("LineString"))) },
+                )
+                style.addLayer(
+                    CircleLayer(MOVED_DOTS, MOVED_SOURCE).withProperties(
+                        PropertyFactory.circleColor(MOVED_GRAY),
+                        PropertyFactory.circleRadius(4f),
+                        PropertyFactory.circleStrokeColor("#FFFFFF"),
+                        PropertyFactory.circleStrokeWidth(1f),
+                    ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("Point"))) },
+                )
+                movedSource = moved
                 val source = GeoJsonSource(SOURCE)
                 style.addSource(source)
                 val density = view.resources.displayMetrics.density
@@ -115,7 +141,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 )
                 this.source = source
                 syncLocation()
-                waiting?.let { show(it.places, it.done, it.pending, it.look) }
+                waiting?.let { show(it.places, it.done, it.pending, it.look, it.movedTo) }
             }
             map.addOnMapClickListener { latLng ->
                 val point = map.projection.toScreenLocation(latLng)
@@ -156,14 +182,24 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         if (!component.isLocationComponentEnabled) component.isLocationComponentEnabled = true
     }
 
-    fun show(places: List<LocatedTask>, done: Set<Long>, pending: Set<Long>, look: Set<Long>) {
+    fun show(places: List<LocatedTask>, done: Set<Long>, pending: Set<Long>, look: Set<Long>, movedTo: Map<Long, LatLon>) {
         val source = source
         if (source == null) {
-            waiting = Shown(places, done, pending, look)
+            waiting = Shown(places, done, pending, look, movedTo)
             return
         }
         waiting = null
         val located = places.filter { it.position != null }
+        movedSource?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                located.filter { it.id in look }.flatMap { place ->
+                    val spot = movedTo[place.id] ?: return@flatMap emptyList()
+                    val from = Point.fromLngLat(place.position!!.lon, place.position.lat)
+                    val to = Point.fromLngLat(spot.lon, spot.lat)
+                    listOf(Feature.fromGeometry(LineString.fromLngLats(listOf(from, to))), Feature.fromGeometry(to))
+                },
+            ),
+        )
         source.setGeoJson(
             FeatureCollection.fromFeatures(
                 located.map { place ->
@@ -200,7 +236,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     private companion object {
         const val SOURCE = "places"
         const val LAYER = "places-pins"
+        const val MOVED_SOURCE = "moved"
+        const val MOVED_LINES = "moved-lines"
+        const val MOVED_DOTS = "moved-dots"
+        const val MOVED_GRAY = "#8A8F98"
     }
 }
 
-private data class Shown(val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>)
+private data class Shown(
+    val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val movedTo: Map<Long, LatLon>,
+)
