@@ -17,6 +17,8 @@ data class AppConfig(
     val campaignLinkHost: String,
     /** Participants may answer before signing in (deferred sign-up), where this build takes writes. */
     val guests: Boolean = false,
+    /** Show other people's not-here and moved reports (parity row 4), once the backend can list them. */
+    val serverReports: Boolean = false,
 ) {
     init {
         require(origin(baseUrl) == baseUrl) { "baseUrl must be an https origin without a path: $baseUrl" }
@@ -45,6 +47,7 @@ data class AppConfig(
             mapStyleUrl = BuildConfig.MAP_STYLE_URL,
             campaignLinkHost = BuildConfig.CAMPAIGN_LINK_HOST,
             guests = BuildConfig.MAPROULETTE_GUESTS,
+            serverReports = BuildConfig.SERVER_REPORTS,
         )
 
         /** `https://host[:port]` of [url], or null when it is not a plain https origin. */

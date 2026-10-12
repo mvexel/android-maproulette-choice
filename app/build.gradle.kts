@@ -16,6 +16,9 @@ val allowLiveWrites = prop("maprouletteAllowLiveWrites", "false").toBoolean()
 // true lets participants answer before signing in (deferred sign-up, like iOS MAPROULETTE_GUESTS).
 // Guests save only where this build takes writes. Off by default.
 val guests = prop("maprouletteGuests", "false").toBoolean()
+// true shows other people's not-here and moved reports (parity row 4). Off until the backend's
+// reports read (E1/E2) exists; until then nothing feeds it but tests.
+val serverReports = prop("maprouletteServerReports", "false").toBoolean()
 
 android {
     namespace = "lol.osm.streettally"
@@ -33,6 +36,7 @@ android {
         buildConfigField("String", "MAPROULETTE_OAUTH_CALLBACK_SCHEME", quoted(callbackScheme))
         buildConfigField("boolean", "MAPROULETTE_ALLOW_LIVE_WRITES", allowLiveWrites.toString())
         buildConfigField("boolean", "MAPROULETTE_GUESTS", guests.toString())
+        buildConfigField("boolean", "SERVER_REPORTS", serverReports.toString())
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
     }
@@ -91,7 +95,11 @@ android {
     // property makes Roborazzi write the PNGs (without its Gradle plugin it records nothing).
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            // Full failure messages in the CI log: a UI test's timeout names the text it waited for.
+            it.testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

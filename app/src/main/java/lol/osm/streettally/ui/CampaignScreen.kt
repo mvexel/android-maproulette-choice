@@ -65,6 +65,7 @@ import lol.osm.streettally.campaign.HeldTasks
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
+import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.task.takesGuestAnswers
 import lol.osm.streettally.campaign.errorMessage
@@ -100,6 +101,9 @@ fun CampaignScreen(
     var places by remember { mutableStateOf<CampaignPlaces?>(null) }
     // Open places a guest's saved answer holds: counted as checked, not shown or offered.
     var held by remember { mutableStateOf(emptySet<Long>()) }
+    // Other people's not-here and moved reports (parity row 4), where this build reads them.
+    var serverReports by remember { mutableStateOf(emptyMap<Long, TaskReport>()) }
+    val reportSource = LocalReportSource.current
     var status by remember { mutableStateOf("Loading…") }
     var failed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
@@ -181,6 +185,13 @@ fun CampaignScreen(
             val heldNow = if (preview) emptySet() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
+            serverReports = if (preview || !session.config.serverReports) emptyMap() else try {
+                reportSource.reports(session.client(), ChallengeId(campaignId))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyMap() // The places still work without them.
+            }
             status = when {
                 Campaigns.shown(loaded.tasks).isNotEmpty() -> ""
                 preview -> Wording.previewNoPlaces(loaded.noun)
@@ -205,7 +216,11 @@ fun CampaignScreen(
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
-    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet()
+    // Reported here or by someone else: either way the place needs another look and isn't offered.
+    val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys
+    // Where a moved place was reported to be: a gray dot on the map, joined to its pin.
+    val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
+        .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
     val tally = remember(current, held, justDone, reported, state.guest) {
         CampaignProgress(current?.tasks.orEmpty(), held, justDone, guest = state.guest, reported = reported)
     }
@@ -221,7 +236,7 @@ fun CampaignScreen(
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
-        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }), origin) }
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held }, reports = serverReports), origin) }
     }
 
     Scaffold(
@@ -353,6 +368,7 @@ fun CampaignScreen(
                             done = done,
                             pending = tally.pending,
                             look = tally.look,
+                            movedTo = movedTo,
                             locationPermitted = locationPermitted,
                             // A tap shows the place's name first, as iOS's callout; the card opens it.
                             onPlace = { id -> selected = id },
