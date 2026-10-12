@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
@@ -51,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -245,7 +249,7 @@ fun CampaignScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(current?.challenge?.name ?: "Campaign", maxLines = 1) },
+                title = { Text(current?.challenge?.name ?: "Campaign", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -270,81 +274,88 @@ fun CampaignScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (previewing) {
-                PreviewBanner(
-                    published = phase == PreviewPhase.PUBLISHED_NOW,
-                    onExit = onBack,
-                    onOpenForReal = { onOpenForReal(false) },
-                )
-            }
-            when (phase) {
-                PreviewPhase.SIGN_IN_NEEDED -> {
-                    PreviewCard(Wording.PREVIEW_SIGN_IN_TITLE, Wording.PREVIEW_SIGN_IN_TEXT,
-                        Wording.PREVIEW_SIGN_IN to onSignIn, Wording.CANCEL to onBack)
-                    return@Column
-                }
-                PreviewPhase.NO_ACCESS -> {
-                    val account = Wording.account(state.account?.userId, state.account?.displayName)
-                    PreviewCard(Wording.PREVIEW_NO_ACCESS_TITLE, Wording.previewNoAccessText(account),
-                        Wording.SWITCH_ACCOUNT to onSignIn, Wording.CLOSE to onBack)
-                    return@Column
-                }
-                else -> Unit
-            }
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                notice?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (accountNote) AccountNote(state)
-                // Tally and progress are hidden in preview: nothing changes them (§4.2).
-                if (tally.total > 0 && !preview) {
-                    Text(
-                        Wording.progress(tally.checked, tally.total, noun),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // At large text sizes the block above the map can outgrow the screen: it scrolls within
+            // [headerMax] so the map/list keeps the rest instead of being squeezed out.
+            val headerMax = maxHeight * 0.6f
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (previewing) {
+                    PreviewBanner(
+                        published = phase == PreviewPhase.PUBLISHED_NOW,
+                        onExit = onBack,
+                        onOpenForReal = { onOpenForReal(false) },
                     )
-                    LinearProgressIndicator(
-                        progress = { tally.checked.toFloat() / tally.total },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    val today = checkedLog.today(campaignId)
-                    if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
-                    val saved = guestInfo.status
-                    if (state.guest && saved != null) {
-                        GuestSavedSection(saved, noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
+                }
+                when (phase) {
+                    PreviewPhase.SIGN_IN_NEEDED -> {
+                        PreviewCard(Wording.PREVIEW_SIGN_IN_TITLE, Wording.PREVIEW_SIGN_IN_TEXT,
+                            Wording.PREVIEW_SIGN_IN to onSignIn, Wording.CANCEL to onBack)
+                        return@Column
                     }
-                } else if (tally.total == 0 || loading || failed) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (loading) CircularProgressIndicator()
-                        Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
+                    PreviewPhase.NO_ACCESS -> {
+                        val account = Wording.account(state.account?.userId, state.account?.displayName)
+                        PreviewCard(Wording.PREVIEW_NO_ACCESS_TITLE, Wording.previewNoAccessText(account),
+                            Wording.SWITCH_ACCOUNT to onSignIn, Wording.CLOSE to onBack)
+                        return@Column
+                    }
+                    else -> Unit
+                }
+                Column(
+                    modifier = Modifier.heightIn(max = headerMax).verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    notice?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (accountNote) AccountNote(state)
+                    // Tally and progress are hidden in preview: nothing changes them (§4.2).
+                    if (tally.total > 0 && !preview) {
+                        Text(
+                            Wording.progress(tally.checked, tally.total, noun),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LinearProgressIndicator(
+                            progress = { tally.checked.toFloat() / tally.total },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val today = checkedLog.today(campaignId)
+                        if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
+                        val saved = guestInfo.status
+                        if (state.guest && saved != null) {
+                            GuestSavedSection(saved, noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
+                        }
+                    } else if (tally.total == 0 || loading || failed) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (loading) CircularProgressIndicator()
+                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
+                        }
+                    }
+                    if (shutOut) GuestNeedsAccount(noun, onSignIn = signInHere)
+                    // A shut-out guest gets the sign-in block instead of a way into a place (iOS d71afe3).
+                    val nearest = open.firstOrNull().takeUnless { shutOut }
+                    if (nearest != null && origin == null) {
+                        // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
+                        Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = { showList = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(Wording.choose(noun))
+                        }
+                        // A denied or timed-out location can be retried here (iOS: More > Update my location).
+                        TextButton(onClick = { askLocation() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(Wording.UPDATE_LOCATION)
+                        }
+                    } else if (nearest != null) {
+                        Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
+                        }
+                    } else if (tally.total > 0 && !shutOut) {
+                        Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                if (shutOut) GuestNeedsAccount(noun, onSignIn = signInHere)
-                // A shut-out guest gets the sign-in block instead of a way into a place (iOS d71afe3).
-                val nearest = open.firstOrNull().takeUnless { shutOut }
-                if (nearest != null && origin == null) {
-                    // Without a location the list is in id order: nothing is "nearest" (Iris fix 4).
-                    Text(Wording.noLocation(noun, locationPermitted), style = MaterialTheme.typography.bodyMedium)
-                    Button(onClick = { showList = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(Wording.choose(noun))
-                    }
-                    // A denied or timed-out location can be retried here (iOS: More > Update my location).
-                    TextButton(onClick = { askLocation() }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(Wording.UPDATE_LOCATION)
-                    }
-                } else if (nearest != null) {
-                    Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
-                    }
-                } else if (tally.total > 0 && !shutOut) {
-                    Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
-                }
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                // Below the scrolling block so it stays reachable at the largest text sizes.
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
                     SegmentedButton(
                         selected = !showList, onClick = { showList = false },
                         shape = SegmentedButtonDefaults.itemShape(0, 2),
@@ -354,46 +365,46 @@ fun CampaignScreen(
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                     ) { Text("List") }
                 }
-            }
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                if (showList) {
-                    PullToRefreshBox(
-                        isRefreshing = loading && places != null,
-                        onRefresh = { reload++ },
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        PlacesMap(
-                            styleUrl = session.config.mapStyleUrl,
-                            places = shown,
-                            done = done,
-                            pending = tally.pending,
-                            look = tally.look,
-                            movedTo = movedTo,
-                            locationPermitted = locationPermitted,
-                            // A tap shows the place's name first, as iOS's callout; the card opens it.
-                            onPlace = { id -> selected = id },
-                            onBackground = { selected = null },
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    if (showList) {
+                        PullToRefreshBox(
+                            isRefreshing = loading && places != null,
+                            onRefresh = { reload++ },
                             modifier = Modifier.fillMaxSize(),
-                        )
-                        shown.firstOrNull { it.id == selected }?.let { place ->
-                            val opens = place.isOpen && place.id !in done
-                            val subtitle = when {
-                                place.id in tally.look -> Wording.NEEDS_LOOK
-                                place.id in tally.pending -> Wording.SAVED_NOT_ON_MAP
-                                place.id in done -> "Already checked"
-                                else -> Wording.TAP_TO_ANSWER
-                            }
-                            PlaceCallout(
-                                name = Wording.placeName(place.task, noun),
-                                subtitle = subtitle,
-                                distance = Places.rowText(origin, place.position),
-                                onOpen = if (opens) ({ selected = null; open(place) }) else null,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                        ) {
+                            PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            PlacesMap(
+                                styleUrl = session.config.mapStyleUrl,
+                                places = shown,
+                                done = done,
+                                pending = tally.pending,
+                                look = tally.look,
+                                movedTo = movedTo,
+                                locationPermitted = locationPermitted,
+                                // A tap shows the place's name first, as iOS's callout; the card opens it.
+                                onPlace = { id -> selected = id },
+                                onBackground = { selected = null },
+                                modifier = Modifier.fillMaxSize(),
                             )
+                            shown.firstOrNull { it.id == selected }?.let { place ->
+                                val opens = place.isOpen && place.id !in done
+                                val subtitle = when {
+                                    place.id in tally.look -> Wording.NEEDS_LOOK
+                                    place.id in tally.pending -> Wording.SAVED_NOT_ON_MAP
+                                    place.id in done -> "Already checked"
+                                    else -> Wording.TAP_TO_ANSWER
+                                }
+                                PlaceCallout(
+                                    name = Wording.placeName(place.task, noun),
+                                    subtitle = subtitle,
+                                    distance = Places.rowText(origin, place.position),
+                                    onOpen = if (opens) ({ selected = null; open(place) }) else null,
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                                )
+                            }
                         }
                     }
                 }
