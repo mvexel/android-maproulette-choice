@@ -165,7 +165,7 @@ class GuestCasesTest {
         waitFor(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         compose.onNodeWithText(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT).performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("Sign in with OpenStreetMap") and hasClickAction()).performScrollTo().assertIsDisplayed()
-        compose.onNode(hasText("List") and hasClickAction()).performScrollTo().performClick()
+        compose.onNode(hasText("List") and hasClickAction()).assertIsDisplayed().performClick()
         waitFor("To check")
         compose.onAllNodesWithText(WoodbineBackend.DOORS.first().name)[0].assertIsDisplayed()
     }

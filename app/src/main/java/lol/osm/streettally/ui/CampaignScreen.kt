@@ -353,16 +353,17 @@ fun CampaignScreen(
                     } else if (tally.total > 0 && !shutOut) {
                         Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                     }
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        SegmentedButton(
-                            selected = !showList, onClick = { showList = false },
-                            shape = SegmentedButtonDefaults.itemShape(0, 2),
-                        ) { Text("Map") }
-                        SegmentedButton(
-                            selected = showList, onClick = { showList = true },
-                            shape = SegmentedButtonDefaults.itemShape(1, 2),
-                        ) { Text("List") }
-                    }
+                }
+                // Below the scrolling block so it stays reachable at the largest text sizes.
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                    SegmentedButton(
+                        selected = !showList, onClick = { showList = false },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2),
+                    ) { Text("Map") }
+                    SegmentedButton(
+                        selected = showList, onClick = { showList = true },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2),
+                    ) { Text("List") }
                 }
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     if (showList) {
