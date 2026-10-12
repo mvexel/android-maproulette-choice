@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -17,6 +18,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import kotlinx.coroutines.runBlocking
@@ -237,8 +240,13 @@ class WoodbineJourneyTest {
     private fun assertGone(text: String) =
         assertEquals(0, compose.onAllNodesWithText(text).fetchSemanticsNodes().size)
 
-    private fun waitFor(text: String) = compose.waitUntil(10_000) {
-        compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    /** Waits for [text]; on timeout, fails with the text and what the screen shows instead. */
+    private fun waitFor(text: String) {
+        try {
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: ComposeTimeoutException) {
+            throw AssertionError("No “$text” on screen:\n" + compose.onAllNodes(isRoot(), useUnmergedTree = true).printToString(), e)
+        }
     }
 
     /** Scrolls [node] into view when it is in a scrolling column, then taps it. */

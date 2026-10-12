@@ -95,7 +95,11 @@ android {
     // property makes Roborazzi write the PNGs (without its Gradle plugin it records nothing).
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            // Full failure messages in the CI log: a UI test's timeout names the text it waited for.
+            it.testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
