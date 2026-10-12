@@ -278,6 +278,9 @@ object Wording {
         }
     }
 
+    /** Polling stopped while the job still runs (copy-fixes-2026-10-11.md, matches iOS claimStillGoing). */
+    const val CLAIM_STILL_GOING = "Your answers are still going on the map. You can carry on; this finishes on its own."
+
     /** The guest is gone: expired, deleted, or claimed by another account. */
     fun claimGone(displayName: String?): String = "${signedInAs(displayName)} We couldn't find your saved answers. " +
         "They may have expired, or they're linked to a different OpenStreetMap account."

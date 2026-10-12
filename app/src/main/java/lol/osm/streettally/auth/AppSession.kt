@@ -210,6 +210,8 @@ class AppSession(
             mutableState.update { it.copy(message = note, messageCalm = status.failed == 0) }
             if (status.state in setOf(ClaimState.DONE, ClaimState.FAILED, ClaimState.WAITING)) return
         }
+        // Stopped following while the job still runs: don't leave a "…" line that looks live.
+        if (state.value.generation == generation) mutableState.update { it.copy(message = Wording.CLAIM_STILL_GOING, messageCalm = true) }
     }
 
     private inline fun <T> quietly(block: () -> T): T? = try {
