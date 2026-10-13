@@ -72,6 +72,7 @@ class PlacesTest {
         assertEquals("1.5 km", Places.distance(1520.0, Locale.GERMANY))
         assertEquals("400 ft", Places.distance(122.0, Locale.US))
         assertEquals("1.0 mi", Places.distance(1609.0, Locale.US))
+        assertEquals("130 m", Places.distance(127.0, Locale.UK))
     }
 
     @Test fun rowTextNeedsBothPoints() {

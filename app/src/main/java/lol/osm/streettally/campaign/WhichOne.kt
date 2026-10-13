@@ -29,7 +29,8 @@ object WhichOne {
 
     enum class Units { IMPERIAL, METRIC }
 
-    /** Feet in the US, Liberia and Myanmar; meters elsewhere, the UK included (Iris, parity notes). */
+    /** Feet in the US, Liberia and Myanmar; meters elsewhere, the UK included (Iris, parity notes).
+     * Every distance line follows this, [Places.distance] too. */
     fun units(locale: Locale = Locale.getDefault()): Units = if (locale.country in FEET) Units.IMPERIAL else Units.METRIC
 
     private val FEET = setOf("US", "LR", "MM")
