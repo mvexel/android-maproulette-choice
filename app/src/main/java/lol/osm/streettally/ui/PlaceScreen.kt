@@ -63,6 +63,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.MovedSpot
@@ -255,7 +256,7 @@ fun PlaceScreen(
                                 modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
                                 aerial = aerial,
                                 onAerial = { aerial = it },
-                                footprint = WhichOne.footprint(task),
+                                kind = Footprint.kind(task),
                             )
                         }
                         key(task.id.value) { DirectionLine(sensed, position, noun) }

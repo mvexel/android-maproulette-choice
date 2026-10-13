@@ -38,6 +38,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.R
+import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.WhichOne
 import lol.osm.streettally.campaign.Wording.AERIAL_CREDIT
@@ -71,9 +72,14 @@ import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.android.style.sources.TileSet
+import org.maplibre.android.style.sources.VectorSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiLineString
+import org.maplibre.geojson.MultiPolygon
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
 
 /** What the task map has sensed, read by the direction line once a second. Written on the main
  * thread by the map; null until known. */
@@ -101,8 +107,9 @@ internal fun TaskMap(
     /** The aerial photo under the dots (spec D); off by default, kept by the caller across places. */
     aerial: Boolean = false,
     onAerial: (Boolean) -> Unit = {},
-    /** The target's outline or line ([WhichOne.footprint]), drawn under the pin (spec E). */
-    footprint: String? = null,
+    /** Buildings draw their outline and crossings a bar across the street, found in the map's own
+     * tiles (which-one-sprint.md §3 E); points stay pins and dots. */
+    kind: Footprint.Kind = Footprint.Kind.POINT,
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier.clearAndSetSemantics { contentDescription = label }) {}
@@ -110,7 +117,7 @@ internal fun TaskMap(
     }
     val context = LocalContext.current
     var moved by remember { mutableStateOf(false) }
-    val holder = remember { TaskMapHolder(context, styleUrl, target, sensed, footprint) }
+    val holder = remember { TaskMapHolder(context, styleUrl, target, sensed, kind) }
     holder.onMoved = { moved = it }
     holder.onNeighboursInFrame = onNeighboursInFrame
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -182,7 +189,7 @@ private class TaskMapHolder(
     styleUrl: String,
     private val target: LatLon,
     private val sensed: Sensed,
-    private val footprint: String?,
+    private val kind: Footprint.Kind,
 ) {
     val view: MapView
     var onMoved: (Boolean) -> Unit = {}
@@ -256,7 +263,10 @@ private class TaskMapHolder(
                     onMoved(true)
                 }
             }
-            map.addOnCameraIdleListener { if (!movedByUser) countInFrame() }
+            map.addOnCameraIdleListener {
+                if (!movedByUser) countInFrame()
+                lookForFootprints()
+            }
             map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                 val neighbours = GeoJsonSource(NEIGHBOURS)
                 style.addSource(neighbours)
@@ -264,22 +274,6 @@ private class TaskMapHolder(
                 style.addLayer(dots(OPEN_LAYER, WhichOne.Kind.OPEN, 5f, GRAY, "#FFFFFF", 1.5f))
                 style.addLayer(dots(LOOK_LAYER, WhichOne.Kind.LOOK, 5f, GRAY, AMBER, 2f))
                 style.addLayer(dots(DONE_LAYER, WhichOne.Kind.DONE, 4f, GREEN, GREEN, 0f))
-                // The target's own shape, over its neighbours and under its pin (spec E).
-                footprint?.let { shape ->
-                    style.addSource(GeoJsonSource(FOOTPRINT, shape))
-                    style.addLayer(
-                        FillLayer(FOOTPRINT_FILL, FOOTPRINT).withProperties(
-                            PropertyFactory.fillColor(AMBER),
-                            PropertyFactory.fillOpacity(0.25f),
-                        ).apply { setFilter(Expression.eq(Expression.get("area"), Expression.literal(true))) },
-                    )
-                    style.addLayer(
-                        LineLayer(FOOTPRINT_LINE, FOOTPRINT).withProperties(
-                            PropertyFactory.lineColor(NAVY),
-                            PropertyFactory.lineWidth(2.5f),
-                        ),
-                    )
-                }
                 val density = view.resources.displayMetrics.density
                 style.addImage(Pin.TODO.id, Pin.TODO.bitmap(density))
                 style.addSource(GeoJsonSource(TARGET, Feature.fromGeometry(Point.fromLngLat(target.lon, target.lat))))
@@ -324,9 +318,10 @@ private class TaskMapHolder(
             ),
         )
         if (!movedByUser) countInFrame()
+        if (kind != Footprint.Kind.POINT) drawFootprints()
     }
 
-    /** The aerial photo above the base map and below the dots and pin. Its tiles load only once
+    /** The aerial photo over the street map's fills, under its labels, the footprints, dots and pin. Its tiles load only once
      * it is first shown. */
     fun showAerial(on: Boolean) {
         aerialWanted = on
@@ -339,10 +334,127 @@ private class TaskMapHolder(
                 attribution = AERIAL_CREDIT
             }
             style.addSource(RasterSource(IMAGERY, tiles, WhichOne.IMAGERY_TILE_SIZE))
-            style.addLayerBelow(RasterLayer(IMAGERY, IMAGERY), OPEN_LAYER)
+            // Under the street map's first label layer, as on iOS: street names stay on top, and
+            // the footprints and dots stay above the photo.
+            val labels = style.layers.firstOrNull { it is SymbolLayer && !it.id.startsWith("which-") }?.id
+            style.addLayerBelow(RasterLayer(IMAGERY, IMAGERY), labels ?: OPEN_LAYER)
             return
         }
         layer.setProperties(PropertyFactory.visibility(if (on) Property.VISIBLE else Property.NONE))
+    }
+
+    /** Footprints found in the loaded tiles: the target's, and the neighbours' by id. Places
+     * already looked for are not looked for again. */
+    private var targetFootprint: List<LatLon>? = null
+    private var lookedForTarget = false
+    private val footprints = mutableMapOf<Long, List<LatLon>?>()
+    private var drawnFootprints: List<Pair<String, List<LatLon>>>? = null
+
+    /** Once the tiles in view are loaded, looks up footprints for the target and for the
+     * neighbours in view not looked up yet. */
+    private fun lookForFootprints() {
+        if (kind == Footprint.Kind.POINT) return
+        val map = map ?: return
+        val style = style ?: return
+        val bounds = map.projection.visibleRegion.latLngBounds
+        val todo = shown.orEmpty().filter { it.id !in footprints && bounds.contains(LatLng(it.position.lat, it.position.lon)) }
+        if (lookedForTarget && todo.isEmpty()) return
+        val shapes = tileLines(style, if (kind == Footprint.Kind.BUILDING) "building" else "transportation")
+        if (shapes.isEmpty()) return
+        fun find(point: LatLon) =
+            if (kind == Footprint.Kind.BUILDING) Footprint.outline(point, shapes) else Footprint.bar(point, shapes)
+        if (!lookedForTarget) {
+            lookedForTarget = true
+            targetFootprint = find(target)
+        }
+        todo.forEach { footprints[it.id] = find(it.position) }
+        drawFootprints()
+    }
+
+    /** Building rings or street lines from the style's vector tiles, in the loaded tiles only. */
+    private fun tileLines(style: Style, sourceLayer: String): List<List<LatLon>> {
+        val source = style.sources.filterIsInstance<VectorSource>().firstOrNull() ?: return emptyList()
+        fun ring(points: List<Point>) = points.map { LatLon(it.latitude(), it.longitude()) }
+        return source.querySourceFeatures(arrayOf(sourceLayer), Expression.literal(true)).flatMap { feature ->
+            if (sourceLayer == "transportation" && (if (feature.hasProperty("class")) feature.getStringProperty("class") else null) !in STREETS) return@flatMap emptyList()
+            when (val g = feature.geometry()) {
+                is Polygon -> listOfNotNull(g.coordinates().firstOrNull()?.let(::ring))
+                is MultiPolygon -> g.coordinates().mapNotNull { it.firstOrNull()?.let(::ring) }
+                is LineString -> listOf(ring(g.coordinates()))
+                is MultiLineString -> g.coordinates().map(::ring)
+                else -> emptyList()
+            }
+        }
+    }
+
+    /** Outlines (fill and line) or bars (a wide cased line), coloured like the pins and dots: the
+     * target navy, open gray, checked green, needs another look amber. Under the dots and the pin. */
+    private fun drawFootprints() {
+        val style = style ?: return
+        val state = shown.orEmpty().associate { it.id to it.kind.name }
+        val shapes = buildList {
+            targetFootprint?.let { add("TARGET" to it) }
+            footprints.toSortedMap().forEach { (id, shape) ->
+                val s = state[id]
+                if (shape != null && s != null) add(s to shape)
+            }
+        }
+        if (shapes == drawnFootprints) return
+        drawnFootprints = shapes
+        val building = kind == Footprint.Kind.BUILDING
+        val collection = FeatureCollection.fromFeatures(
+            shapes.map { (s, points) ->
+                val geometry = points.map { Point.fromLngLat(it.lon, it.lat) }
+                (if (building) Feature.fromGeometry(Polygon.fromLngLats(listOf(geometry))) else Feature.fromGeometry(LineString.fromLngLats(geometry)))
+                    .apply { addStringProperty("state", s) }
+            },
+        )
+        (style.getSource(FOOTPRINTS) as? GeoJsonSource)?.let {
+            it.setGeoJson(collection)
+            return
+        }
+        style.addSource(GeoJsonSource(FOOTPRINTS, collection))
+        val colors = listOf(
+            WhichOne.Kind.OPEN.name to GRAY, WhichOne.Kind.DONE.name to GREEN,
+            WhichOne.Kind.LOOK.name to AMBER, "TARGET" to NAVY,
+        )
+        for ((s, color) in colors) {
+            val target = s == "TARGET"
+            val filter = Expression.eq(Expression.get("state"), Expression.literal(s))
+            val id = "$FOOTPRINTS-$s"
+            if (building) {
+                style.addLayerBelow(
+                    FillLayer("$id-fill", FOOTPRINTS).withProperties(
+                        PropertyFactory.fillColor(color),
+                        PropertyFactory.fillOpacity(if (target) 0.25f else 0.12f),
+                    ).apply { setFilter(filter) },
+                    OPEN_LAYER,
+                )
+                style.addLayerBelow(
+                    LineLayer("$id-line", FOOTPRINTS).withProperties(
+                        PropertyFactory.lineColor(color),
+                        PropertyFactory.lineWidth(if (target) 3f else 1.5f),
+                    ).apply { setFilter(filter) },
+                    OPEN_LAYER,
+                )
+            } else {
+                style.addLayerBelow(
+                    LineLayer("$id-casing", FOOTPRINTS).withProperties(
+                        PropertyFactory.lineColor(color),
+                        PropertyFactory.lineWidth(if (target) 12f else 8f),
+                    ).apply { setFilter(filter) },
+                    OPEN_LAYER,
+                )
+                style.addLayerBelow(
+                    LineLayer("$id-stripes", FOOTPRINTS).withProperties(
+                        PropertyFactory.lineColor("#FFFFFF"),
+                        PropertyFactory.lineWidth(if (target) 8f else 5f),
+                        PropertyFactory.lineDasharray(arrayOf(0.4f, 0.4f)),
+                    ).apply { setFilter(filter) },
+                    OPEN_LAYER,
+                )
+            }
+        }
     }
 
     private fun countInFrame() {
@@ -425,9 +537,9 @@ private class TaskMapHolder(
         const val NEIGHBOURS = "which-neighbours"
         const val OPEN_LAYER = "which-open"
         const val IMAGERY = "which-imagery"
-        const val FOOTPRINT = "which-footprint"
-        const val FOOTPRINT_FILL = "which-footprint-fill"
-        const val FOOTPRINT_LINE = "which-footprint-line"
+        const val FOOTPRINTS = "which-footprints"
+        /** Streets cars use: a crossing sits on one (OpenMapTiles `transportation` classes). */
+        val STREETS = setOf("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service")
         const val NAVY = "#14213D"
         const val LOOK_LAYER = "which-look"
         const val DONE_LAYER = "which-done"
