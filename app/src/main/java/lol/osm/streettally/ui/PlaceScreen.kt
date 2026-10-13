@@ -42,6 +42,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -136,6 +137,8 @@ fun PlaceScreen(
     var cantTell by remember { mutableStateOf(false) }
     // What the task map senses, for the direction line; and how many neighbours its first frame shows.
     val sensed = remember { Sensed() }
+    // The aerial photo stays on from place to place until turned off (spec D).
+    var aerial by rememberSaveable { mutableStateOf(false) }
     var inFrame by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     fun resetReport() {
@@ -250,6 +253,8 @@ fun PlaceScreen(
                                 Wording.taskMapLabel(Wording.placeName(task, noun), noun), sensed,
                                 onNeighboursInFrame = { inFrame = it },
                                 modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
+                                aerial = aerial,
+                                onAerial = { aerial = it },
                             )
                         }
                         key(task.id.value) { DirectionLine(sensed, position, noun) }

@@ -105,6 +105,10 @@ object Wording {
     fun otherDots(noun: Noun): String = "Grey dots are other ${noun.many} in this campaign."
     fun taskMapLabel(placeName: String, noun: Noun): String = "Map of $placeName, with other ${noun.many} nearby"
     const val RECENTER = "Show me and the big pin"
+    /** The aerial photo toggle (which-one-spec D): the label says what a tap shows. */
+    const val SHOW_AERIAL = "Aerial photo"
+    const val SHOW_MAP = "Map"
+    const val AERIAL_CREDIT = "Imagery: USGS The National Map / USDA NAIP"
 
     // "Something's wrong here" (design/not-here-moved.md §2, §7), as in the iOS app.
     const val SKIP_EXPLAINED = "Leave it for someone else."

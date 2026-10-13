@@ -21,6 +21,12 @@ object WhichOne {
      * the line every second. */
     const val HYSTERESIS_DEG = 10.0
 
+    /** The aerial photo (spec D, design/imagery-licence-check.md): USGS The National Map, mostly
+     * NAIP, public domain and keyless. Note the y/x order. Cached to z16; the map overzooms past it. */
+    const val IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
+    const val IMAGERY_MAX_ZOOM = 16f
+    const val IMAGERY_TILE_SIZE = 256
+
     enum class Units { IMPERIAL, METRIC }
 
     /** Feet in the US, Liberia and Myanmar; meters elsewhere, the UK included (Iris, parity notes). */

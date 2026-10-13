@@ -4,7 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.SensorManager
 import android.os.Looper
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +40,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.R
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.WhichOne
+import lol.osm.streettally.campaign.Wording.AERIAL_CREDIT
 import lol.osm.streettally.campaign.Wording.RECENTER
+import lol.osm.streettally.campaign.Wording.SHOW_AERIAL
+import lol.osm.streettally.campaign.Wording.SHOW_MAP
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -53,9 +62,13 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
@@ -83,6 +96,9 @@ internal fun TaskMap(
     sensed: Sensed,
     onNeighboursInFrame: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** The aerial photo under the dots (spec D); off by default, kept by the caller across places. */
+    aerial: Boolean = false,
+    onAerial: (Boolean) -> Unit = {},
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier.clearAndSetSemantics { contentDescription = label }) {}
@@ -117,8 +133,31 @@ internal fun TaskMap(
         AndroidView(
             factory = { holder.view },
             modifier = Modifier.matchParentSize().clearAndSetSemantics { contentDescription = label },
-            update = { holder.showNeighbours(neighbours) },
+            update = {
+                holder.showNeighbours(neighbours)
+                holder.showAerial(aerial)
+            },
         )
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 2.dp,
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
+            TextButton(onClick = { onAerial(!aerial) }, modifier = Modifier.heightIn(min = 44.dp)) {
+                Text(if (aerial) SHOW_MAP else SHOW_AERIAL)
+            }
+        }
+        if (aerial) {
+            Text(
+                AERIAL_CREDIT,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
         if (moved) {
             Surface(
                 shape = CircleShape,
@@ -145,6 +184,9 @@ private class TaskMapHolder(
     var onNeighboursInFrame: (Int) -> Unit = {}
     private var map: MapLibreMap? = null
     private var neighbourSource: GeoJsonSource? = null
+    private var style: Style? = null
+    /** Asked for before the style loaded. */
+    private var aerialWanted = false
     private var waiting: List<WhichOne.Neighbour>? = null
     private var shown: List<WhichOne.Neighbour>? = null
     /** The person moved the map: their view stays until they tap recenter. */
@@ -228,7 +270,9 @@ private class TaskMapHolder(
                     ),
                 )
                 neighbourSource = neighbours
+                this.style = style
                 waiting?.let { showNeighbours(it) }
+                if (aerialWanted) showAerial(true)
                 showLocation(style)
             }
         }
@@ -259,6 +303,25 @@ private class TaskMapHolder(
             ),
         )
         if (!movedByUser) countInFrame()
+    }
+
+    /** The aerial photo above the base map and below the dots and pin. Its tiles load only once
+     * it is first shown. */
+    fun showAerial(on: Boolean) {
+        aerialWanted = on
+        val style = style ?: return
+        val layer = style.getLayer(IMAGERY)
+        if (layer == null) {
+            if (!on) return
+            val tiles = TileSet("2.1.0", WhichOne.IMAGERY_TILES).apply {
+                setMaxZoom(WhichOne.IMAGERY_MAX_ZOOM)
+                setAttribution(AERIAL_CREDIT)
+            }
+            style.addSource(RasterSource(IMAGERY, tiles, WhichOne.IMAGERY_TILE_SIZE))
+            style.addLayerBelow(RasterLayer(IMAGERY, IMAGERY), OPEN_LAYER)
+            return
+        }
+        layer.setProperties(PropertyFactory.visibility(if (on) Property.VISIBLE else Property.NONE))
     }
 
     private fun countInFrame() {
@@ -340,6 +403,7 @@ private class TaskMapHolder(
         const val UPDATE_MS = 1_000L
         const val NEIGHBOURS = "which-neighbours"
         const val OPEN_LAYER = "which-open"
+        const val IMAGERY = "which-imagery"
         const val LOOK_LAYER = "which-look"
         const val DONE_LAYER = "which-done"
         const val TARGET = "which-target"
