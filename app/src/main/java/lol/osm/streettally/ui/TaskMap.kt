@@ -62,6 +62,8 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.PropertyFactory
@@ -99,6 +101,8 @@ internal fun TaskMap(
     /** The aerial photo under the dots (spec D); off by default, kept by the caller across places. */
     aerial: Boolean = false,
     onAerial: (Boolean) -> Unit = {},
+    /** The target's outline or line ([WhichOne.footprint]), drawn under the pin (spec E). */
+    footprint: String? = null,
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier.clearAndSetSemantics { contentDescription = label }) {}
@@ -106,7 +110,7 @@ internal fun TaskMap(
     }
     val context = LocalContext.current
     var moved by remember { mutableStateOf(false) }
-    val holder = remember { TaskMapHolder(context, styleUrl, target, sensed) }
+    val holder = remember { TaskMapHolder(context, styleUrl, target, sensed, footprint) }
     holder.onMoved = { moved = it }
     holder.onNeighboursInFrame = onNeighboursInFrame
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -178,6 +182,7 @@ private class TaskMapHolder(
     styleUrl: String,
     private val target: LatLon,
     private val sensed: Sensed,
+    private val footprint: String?,
 ) {
     val view: MapView
     var onMoved: (Boolean) -> Unit = {}
@@ -259,6 +264,22 @@ private class TaskMapHolder(
                 style.addLayer(dots(OPEN_LAYER, WhichOne.Kind.OPEN, 5f, GRAY, "#FFFFFF", 1.5f))
                 style.addLayer(dots(LOOK_LAYER, WhichOne.Kind.LOOK, 5f, GRAY, AMBER, 2f))
                 style.addLayer(dots(DONE_LAYER, WhichOne.Kind.DONE, 4f, GREEN, GREEN, 0f))
+                // The target's own shape, over its neighbours and under its pin (spec E).
+                footprint?.let { shape ->
+                    style.addSource(GeoJsonSource(FOOTPRINT, shape))
+                    style.addLayer(
+                        FillLayer(FOOTPRINT_FILL, FOOTPRINT).withProperties(
+                            PropertyFactory.fillColor(AMBER),
+                            PropertyFactory.fillOpacity(0.25f),
+                        ).apply { setFilter(Expression.eq(Expression.get("area"), Expression.literal(true))) },
+                    )
+                    style.addLayer(
+                        LineLayer(FOOTPRINT_LINE, FOOTPRINT).withProperties(
+                            PropertyFactory.lineColor(NAVY),
+                            PropertyFactory.lineWidth(2.5f),
+                        ),
+                    )
+                }
                 val density = view.resources.displayMetrics.density
                 style.addImage(Pin.TODO.id, Pin.TODO.bitmap(density))
                 style.addSource(GeoJsonSource(TARGET, Feature.fromGeometry(Point.fromLngLat(target.lon, target.lat))))
@@ -404,6 +425,10 @@ private class TaskMapHolder(
         const val NEIGHBOURS = "which-neighbours"
         const val OPEN_LAYER = "which-open"
         const val IMAGERY = "which-imagery"
+        const val FOOTPRINT = "which-footprint"
+        const val FOOTPRINT_FILL = "which-footprint-fill"
+        const val FOOTPRINT_LINE = "which-footprint-line"
+        const val NAVY = "#14213D"
         const val LOOK_LAYER = "which-look"
         const val DONE_LAYER = "which-done"
         const val TARGET = "which-target"

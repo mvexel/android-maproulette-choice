@@ -1,6 +1,12 @@
 package lol.osm.streettally.campaign
 
 import java.util.Locale
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import org.maproulette.sdk.Task
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -156,6 +162,30 @@ object WhichOne {
     private const val NEEDS_LOOK = 6
     /** Created and skipped: still to check. */
     private val OPEN = setOf(0, 3)
+
+    /** The target's own shape (spec E): its outline when it is a building or area, its line when it
+     * is a way such as a crossing, as a GeoJSON FeatureCollection; null when the task is only points,
+     * which the pin already shows. */
+    fun footprint(task: Task): String? {
+        val features = task.geometry["features"] as? JsonArray ?: return null
+        val shapes = features.mapNotNull { f ->
+            val geometry = (f as? JsonObject)?.get("geometry") as? JsonObject ?: return@mapNotNull null
+            val type = (geometry["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (type !in SHAPES || geometry["coordinates"] !is JsonArray) return@mapNotNull null
+            buildJsonObject {
+                put("type", "Feature")
+                put("geometry", geometry)
+                put("properties", buildJsonObject { put("area", type!!.endsWith("Polygon")) })
+            }
+        }
+        if (shapes.isEmpty()) return null
+        return buildJsonObject {
+            put("type", "FeatureCollection")
+            put("features", JsonArray(shapes))
+        }.toString()
+    }
+
+    private val SHAPES = setOf("Polygon", "MultiPolygon", "LineString", "MultiLineString")
 
     /** The first frame (spec A): you and the target, or the target alone at [TARGET_ZOOM] when
      * your position is unknown or farther than [FAR_M]. */

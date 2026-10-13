@@ -5,7 +5,9 @@ import lol.osm.streettally.campaign.WhichOne.Kind
 import lol.osm.streettally.campaign.WhichOne.Side
 import lol.osm.streettally.campaign.WhichOne.Units
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -104,6 +106,30 @@ class WhichOneTest {
         assertEquals(listOf(near, target), WhichOne.frame(near, target))
         assertEquals(listOf(target), WhichOne.frame(from(90.0, 200.0), target))
         assertEquals(listOf(target), WhichOne.frame(null, target))
+    }
+
+    private fun shaped(vararg geometries: String) = Task(
+        TaskId(1), ChallengeId(3), "t", null, TaskStatus(0),
+        Json.parseToJsonElement(
+            geometries.joinToString(",", """{"type":"FeatureCollection","features":[""", "]}") {
+                """{"type":"Feature","geometry":$it,"properties":{}}"""
+            },
+        ).jsonObject,
+        null, null,
+    )
+
+    @Test fun aBuildingDrawsItsOutlineAndACrossingItsLine() {
+        val building = """{"type":"Polygon","coordinates":[[[-111.9,40.75],[-111.9,40.7501],[-111.8999,40.7501],[-111.9,40.75]]]}"""
+        val crossing = """{"type":"LineString","coordinates":[[-111.9,40.75],[-111.9,40.7502]]}"""
+        val point = """{"type":"Point","coordinates":[-111.9,40.75]}"""
+        val drawn = Json.parseToJsonElement(WhichOne.footprint(shaped(building, point, crossing))!!).jsonObject
+        val features = drawn["features"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("Polygon", "LineString"), features.map { it["geometry"]!!.jsonObject["type"]!!.jsonPrimitive.content })
+        assertEquals(listOf("true", "false"), features.map { it["properties"]!!.jsonObject["area"]!!.jsonPrimitive.content })
+    }
+
+    @Test fun aPointNeedsNoFootprint() {
+        assertNull(WhichOne.footprint(shaped("""{"type":"Point","coordinates":[-111.9,40.75]}""")))
     }
 
     @Test fun neighboursAreDrawnByState() {

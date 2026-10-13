@@ -255,6 +255,7 @@ fun PlaceScreen(
                                 modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
                                 aerial = aerial,
                                 onAerial = { aerial = it },
+                                footprint = WhichOne.footprint(task),
                             )
                         }
                         key(task.id.value) { DirectionLine(sensed, position, noun) }
