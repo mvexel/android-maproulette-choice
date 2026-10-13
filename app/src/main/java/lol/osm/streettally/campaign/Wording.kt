@@ -30,6 +30,7 @@ data class Noun(val one: String, val many: String) {
         /** Key and value of the identity tag; a null value matches any (Woodbine's entrance=main|yes). */
         private val known = listOf<Triple<String, String?, Noun>>(
             Triple("highway", "bus_stop", Noun("stop", "stops")),
+            Triple("highway", "crossing", Noun("crossing", "crossings")),
             Triple("public_transport", "platform", Noun("stop", "stops")),
             Triple("railway", "platform", Noun("platform", "platforms")),
             Triple("amenity", "bench", Noun("bench", "benches")),
