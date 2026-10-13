@@ -40,6 +40,7 @@ data class Noun(val one: String, val many: String) {
             Triple("amenity", "shelter", Noun("shelter", "shelters")),
             Triple("leisure", "playground", Noun("playground", "playgrounds")),
             Triple("leisure", "park", Noun("park", "parks")),
+            Triple("natural", "tree", Noun("tree", "trees")),
             Triple("entrance", null, Noun("entrance", "entrances")),
         )
 

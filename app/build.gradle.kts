@@ -39,6 +39,7 @@ android {
         buildConfigField("boolean", "SERVER_REPORTS", serverReports.toString())
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
+        buildConfigField("boolean", "DEMO", "false")
     }
     // A shared debug key (standard public debug credentials, not a secret), so APKs from
     // different CI runs and machines install over each other and keep the sign-in.
@@ -80,6 +81,15 @@ android {
             dimension = "backend"
             versionNameSuffix = "-stage"
             buildConfigField("String", "MAPROULETTE_BASE_URL", quoted(prop("maprouletteStageBaseUrl", "https://mr-stage.osm.lol")))
+        }
+        // No backend: "Woodbine trees" served in-process (DemoBackend), for design review and field
+        // checks on an emulator. Guest answers stay in memory; nothing is sent anywhere.
+        create("demo") {
+            dimension = "backend"
+            versionNameSuffix = "-demo"
+            buildConfigField("String", "MAPROULETTE_BASE_URL", quoted("https://demo.invalid"))
+            buildConfigField("boolean", "MAPROULETTE_GUESTS", "true")
+            buildConfigField("boolean", "DEMO", "true")
         }
         // The pilot backend (openstreetmap.org). Answers only with -PmaprouletteAllowLiveWrites=true.
         create("prod") {

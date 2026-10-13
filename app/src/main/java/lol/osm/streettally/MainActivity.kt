@@ -22,6 +22,7 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.TaskReport
+import lol.osm.streettally.demo.DemoBackend
 import lol.osm.streettally.ui.CampaignScreen
 import lol.osm.streettally.ui.PickerScreen
 import lol.osm.streettally.ui.PlaceScreen
@@ -35,11 +36,16 @@ private class OpenPlace(
 class MainActivity : ComponentActivity() {
     /** A campaign a link asked to open, and whether it asked for preview, until the UI takes it. */
     private var linked by mutableStateOf<Pair<Long, Boolean>?>(null)
+    /** The demo build's place to open once its campaign loads (the `task` extra). */
+    private var demoTask by mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) linked = campaignFrom(intent)
+        if (savedInstanceState == null) {
+            linked = campaignFrom(intent)
+            demoFrom(intent)
+        }
         val app = application as StreetTallyApp
         val authenticate: suspend (String) -> String = { url -> BrowserSignIn.authenticate(this, url) }
         setContent {
@@ -121,6 +127,8 @@ class MainActivity : ComponentActivity() {
                                 campaignNotice = if (alreadyPublished) Wording.PREVIEW_ALREADY_PUBLISHED else null
                             },
                             notice = campaignNotice,
+                            openTask = demoTask,
+                            onOpenTask = { demoTask = null },
                         )
                     }
                 }
@@ -131,6 +139,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         campaignFrom(intent)?.let { linked = it }
+        demoFrom(intent)
     }
 
     override fun onPause() {
@@ -143,8 +152,21 @@ class MainActivity : ComponentActivity() {
         BrowserSignIn.onHostResumed()
     }
 
+    /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es task 1092`
+     * opens the trees campaign at that place (a task id, 1001 onwards, or a tree's node id). */
+    private fun demoFrom(intent: Intent?) {
+        if (!BuildConfig.DEMO) return
+        val task = intent?.getStringExtra(DEMO_TASK)?.toLongOrNull()
+            ?: intent?.getLongExtra(DEMO_TASK, -1L)?.takeIf { it > 0 }
+            ?: return
+        linked = DemoBackend.CAMPAIGN to false
+        demoTask = task
+    }
+
     private fun campaignFrom(intent: Intent?): Pair<Long, Boolean>? {
         val link = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return null
         return CampaignLink.challenge(link)?.let { it to CampaignLink.isPreview(link) }
     }
 }
+
+private const val DEMO_TASK = "task"

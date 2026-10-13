@@ -99,6 +99,9 @@ fun CampaignScreen(
     onOpenForReal: (alreadyPublished: Boolean) -> Unit = {},
     /** A one-time note above the tally. */
     notice: String? = null,
+    /** Demo build: a place to open once the places load (its task id, or its node id); then [onOpenTask]. */
+    openTask: Long? = null,
+    onOpenTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
@@ -244,6 +247,14 @@ fun CampaignScreen(
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
         current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids }, reports = serverReports), origin) }
+    }
+
+    LaunchedEffect(current, openTask) {
+        val wanted = openTask ?: return@LaunchedEffect
+        val task = current?.tasks?.firstOrNull { it.id == wanted || it.task.name == "node/$wanted" } ?: return@LaunchedEffect
+        sheet = null
+        onOpenTask()
+        open(task)
     }
 
     Scaffold(

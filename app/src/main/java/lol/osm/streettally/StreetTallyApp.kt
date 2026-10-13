@@ -8,6 +8,7 @@ import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.auth.KeystoreCredentialStore
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.demo.DemoBackend
 import org.maproulette.sdk.OkHttpTransport
 
 /** Holds the process-wide session, so sign-in survives activity recreation. */
@@ -28,7 +29,7 @@ class StreetTallyApp : Application() {
         session = AppSession(
             config,
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
-            OkHttpTransport(),
+            if (config.demo) DemoBackend(assets.open(DemoBackend.ASSET).bufferedReader().use { it.readText() }) else OkHttpTransport(),
         )
         scope.launch {
             session.restore()
