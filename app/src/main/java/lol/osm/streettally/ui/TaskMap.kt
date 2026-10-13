@@ -75,7 +75,7 @@ internal class Sensed {
  * recenter button brings that frame back after the person moves the map. [onNeighboursInFrame]
  * gets how many neighbours the first frame shows. */
 @Composable
-fun TaskMap(
+internal fun TaskMap(
     styleUrl: String,
     target: LatLon,
     neighbours: List<WhichOne.Neighbour>,
