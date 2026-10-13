@@ -183,7 +183,9 @@ private class TaskMapHolder(
         }
 
         override fun onCompassAccuracyChange(compassStatus: Int) {
-            unreliable = compassStatus == SensorManager.SENSOR_STATUS_UNRELIABLE
+            // The spec trusts a heading within ±45°. Android reports a status, not degrees:
+            // medium and high count as known, low and unreliable as unknown.
+            unreliable = compassStatus <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
             if (unreliable) {
                 sensed.heading = null
                 map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.renderMode = RenderMode.NORMAL

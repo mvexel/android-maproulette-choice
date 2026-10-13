@@ -252,11 +252,11 @@ fun PlaceScreen(
                                 modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
                             )
                         }
+                        key(task.id.value) { DirectionLine(sensed, position, noun) }
                         if (inFrame > 0) {
                             Text(Wording.otherDots(noun), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        key(task.id.value) { DirectionLine(sensed, position, noun) }
                     }
                     // The live line replaces the "from you" line once location is on.
                     val fromYou = if (task.id.value == firstTaskId && !(live && Locator.permitted(context))) {
@@ -591,7 +591,8 @@ private const val MAP_SHARE = 0.45f
 private val MIN_MAP_HEIGHT = 260.dp
 
 /** Where the place is from you, under the task map (which-one-spec.md C): recomputed once a second
- * from what the map senses; TalkBack hears it at most every 5 s. Nothing while location is off. */
+ * from what the map senses. TalkBack hears it again only when its category changes (the rule, side or
+ * compass point, not the number), at most every 5 s. Nothing while location is off. */
 @Composable
 private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
     val context = LocalContext.current
@@ -601,11 +602,13 @@ private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
     LaunchedEffect(Unit) {
         if (!Locator.permitted(context)) return@LaunchedEffect
         var lastAnnounced = 0L
+        var category: String? = null
         while (isActive) {
             val next = WhichOne.line(sensed.you, sensed.accuracyM, sensed.heading, target, noun, units, line?.side)
             if (next != line) line = next
             val now = System.currentTimeMillis()
-            if (next != null && next.text != announced && now - lastAnnounced >= ANNOUNCE_MS) {
+            if (next != null && next.category != category && now - lastAnnounced >= ANNOUNCE_MS) {
+                category = next.category
                 announced = next.text
                 lastAnnounced = now
             }

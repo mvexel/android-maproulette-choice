@@ -7,6 +7,7 @@ import lol.osm.streettally.campaign.WhichOne.Units
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.maproulette.sdk.ChallengeId
@@ -31,6 +32,7 @@ class WhichOneTest {
         assertEquals(Units.IMPERIAL, WhichOne.units(Locale.US))
         assertEquals(Units.METRIC, WhichOne.units(Locale.GERMANY))
         assertEquals(Units.METRIC, WhichOne.units(Locale.CANADA))
+        assertEquals(Units.METRIC, WhichOne.units(Locale.UK))
     }
 
     @Test fun feetRoundToFiveUnderAHundredThenTen() {
@@ -78,6 +80,15 @@ class WhichOneTest {
     @Test fun withoutAHeadingTheLineUsesTheCompass() {
         val you = from(225.0, 8.0) // southwest of the target
         assertEquals("25 ft northeast of you", WhichOne.line(you, 4f, null, target, tree, Units.IMPERIAL)?.text)
+    }
+
+    @Test fun theCategoryIgnoresTheNumber() {
+        fun at(meters: Double, heading: Double?) =
+            WhichOne.line(from(180.0, meters), 4f, heading, target, tree, Units.METRIC)?.category
+        assertEquals(at(8.0, 0.0), at(20.0, 0.0))
+        assertEquals(at(8.0, null), at(20.0, null))
+        assertNotEquals(at(8.0, 0.0), at(8.0, 90.0))
+        assertNotEquals(at(8.0, 0.0), at(8.0, null))
     }
 
     @Test fun aSideHoldsUntilTheAngleIsWellPastTheBoundary() {

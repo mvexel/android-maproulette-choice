@@ -23,10 +23,10 @@ object WhichOne {
 
     enum class Units { IMPERIAL, METRIC }
 
-    /** Feet and miles where roads are measured in miles, as the other distance lines ([Places.distance]). */
-    fun units(locale: Locale = Locale.getDefault()): Units = if (locale.country in MILES) Units.IMPERIAL else Units.METRIC
+    /** Feet in the US, Liberia and Myanmar; meters elsewhere, the UK included (Iris, parity notes). */
+    fun units(locale: Locale = Locale.getDefault()): Units = if (locale.country in FEET) Units.IMPERIAL else Units.METRIC
 
-    private val MILES = setOf("US", "GB", "LR", "MM")
+    private val FEET = setOf("US", "LR", "MM")
 
     /** Close-range distance (spec C): feet to 5 under 100 ft, else to 10, then miles to one decimal;
      * meters to 1 under 10 m, 5 under 100, else 10, then km to one decimal. */
@@ -92,8 +92,10 @@ object WhichOne {
         return if (d > 180) d - 360 else d
     }
 
-    /** The line and the side it used, kept for the next update's hysteresis. */
-    data class Line(val text: String, val side: Side? = null)
+    /** The line, the side it used (kept for the next update's hysteresis) and its [category]: the
+     * rule that made it plus its side or compass point. TalkBack hears the line again only when the
+     * category changes, never for a new number alone. */
+    data class Line(val text: String, val side: Side? = null, val category: String = text)
 
     /** The direction line (spec C), first matching rule; null when location is off or not known yet.
      * [heading]: degrees from north, null without a compass reading. */
@@ -112,9 +114,12 @@ object WhichOne {
         if (meters < AT_IT_M || (accuracyM != null && meters < accuracyM)) return Line(atIt(noun))
         val d = distance(meters, units)
         val bearing = Places.bearing(you, target)
-        if (heading == null) return Line("$d ${Places.compass(bearing)} of you")
+        if (heading == null) {
+            val point = Places.compass(bearing)
+            return Line("$d $point of you", category = "compass $point")
+        }
         val side = side(bearing - heading, previous)
-        return Line(side.text(d), side)
+        return Line(side.text(d), side, "side ${side.name}")
     }
 
     const val ROUGH = "Your location is rough right now. Use the map to find the big pin."
