@@ -315,7 +315,7 @@ private class TaskMapHolder(
             if (!on) return
             val tiles = TileSet("2.1.0", WhichOne.IMAGERY_TILES).apply {
                 setMaxZoom(WhichOne.IMAGERY_MAX_ZOOM)
-                setAttribution(AERIAL_CREDIT)
+                attribution = AERIAL_CREDIT
             }
             style.addSource(RasterSource(IMAGERY, tiles, WhichOne.IMAGERY_TILE_SIZE))
             style.addLayerBelow(RasterLayer(IMAGERY, IMAGERY), OPEN_LAYER)
