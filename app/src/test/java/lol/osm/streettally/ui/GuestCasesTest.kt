@@ -35,6 +35,7 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -106,6 +107,23 @@ class GuestCasesTest {
 
     /** T-002: another guest's saved report (here "There's no door") holds a place: it needs another
      * look on this phone, doesn't count, and isn't offered. */
+    /** which-one-spec.md F: the way out records "I can't check this" and the place needs another look. */
+    @Test fun iCantTellWhichOneNeedsAnotherLook() {
+        val backend = WoodbineBackend()
+        open(backend)
+        tap("Let's go")
+        tap("List")
+        tap("Main door")
+        waitFor("How does this door open?")
+        tap(Wording.cantTell(noun))
+        waitFor(Wording.cantTellThanks(noun))
+        assertTrue(backend.pending[101L].orEmpty().contains("\"outcome\":\"too-hard\""))
+        backTo()
+        waitFor(Wording.progress(0, 4, noun))
+        tap("List")
+        waitFor(Wording.NEEDS_LOOK)
+    }
+
     @Test fun anotherGuestsSavedReportNeedsAnotherLook() {
         val backend = WoodbineBackend()
         backend.pending[102L] = """{"outcome":"no-door"}"""

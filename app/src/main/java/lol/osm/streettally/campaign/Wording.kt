@@ -96,6 +96,15 @@ object Wording {
     const val DONE = "Done"
     fun cantCheck(noun: Noun): String = "I can't check this ${noun.one}"
 
+    // "Which one?" (design/which-one-spec.md F and G).
+    /** The way out on the question: records the can't-check outcome (status 6). */
+    fun cantTell(noun: Noun): String = "I can't tell which ${noun.one}"
+    fun cantTellThanks(noun: Noun): String = "Thanks. Someone will take another look at this ${noun.one}."
+    /** Under the task map, when the first frame shows a neighbour. */
+    fun otherDots(noun: Noun): String = "Grey dots are other ${noun.many} in this campaign."
+    fun taskMapLabel(placeName: String, noun: Noun): String = "Map of $placeName, with other ${noun.many} nearby"
+    const val RECENTER = "Show me and the big pin"
+
     // "Something's wrong here" (design/not-here-moved.md §2, §7), as in the iOS app.
     const val SKIP_EXPLAINED = "Leave it for someone else."
     const val CANT_CHECK_EXPLAINED = "You're near it but can't see or reach it."

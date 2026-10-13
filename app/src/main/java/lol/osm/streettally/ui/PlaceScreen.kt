@@ -47,6 +47,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +68,7 @@ import lol.osm.streettally.campaign.MovedSpot
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.TaskReport
+import lol.osm.streettally.campaign.WhichOne
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
@@ -125,6 +132,12 @@ fun PlaceScreen(
     var picked by remember { mutableStateOf<LatLon?>(null) }
     var pickedFromHere by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<ChoiceAction?>(null) }
+    // "I can't tell which one" (which-one-spec.md F): its own thanks line once saved.
+    var cantTell by remember { mutableStateOf(false) }
+    // What the task map senses, for the direction line; and how many neighbours its first frame shows.
+    val sensed = remember { Sensed() }
+    var inFrame by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
     fun resetReport() {
         picking = false
         picked = null
@@ -188,6 +201,8 @@ fun PlaceScreen(
         taskId = place.id
         visited += place.id
         counted = false
+        cantTell = false
+        inFrame = 0
         step = 0
         notSure = emptySet()
         resetReport()
@@ -217,19 +232,37 @@ fun PlaceScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 loadedTask(screen)?.let { task ->
-                    // A small map of the place above its name, as iOS (parity row 5). The moved flow
-                    // and its review draw their own map, so it steps aside there.
+                    // The close-up map of the place and its neighbours, then the live direction line
+                    // (design/which-one-spec.md A to C). The moved flow and its review draw their own
+                    // map, so it steps aside there.
                     val position = Places.position(task)
-                    if (position != null && !picking && report == null) {
-                        // Keyed: the map keeps its first position, and Next nearest reuses this screen.
+                    val live = position != null && !picking && report == null
+                    if (live && position != null) {
+                        val neighbours = WhichOne.neighbours(
+                            task.id.value, candidates, checked.done(campaignId),
+                            checked.reported(campaignId) + reports.keys,
+                        )
+                        val height = maxOf(MIN_MAP_HEIGHT, (LocalConfiguration.current.screenHeightDp * MAP_SHARE).dp)
+                        // Keyed: Next nearest reuses this screen with a new map.
                         key(task.id.value) {
-                            MovedSpotMap(
-                                session.config.mapStyleUrl, position, picked = null, onTheMapLabel = "", interactive = false,
-                                onPick = {}, modifier = Modifier.fillMaxWidth().height(150.dp),
+                            TaskMap(
+                                session.config.mapStyleUrl, position, neighbours,
+                                Wording.taskMapLabel(Wording.placeName(task, noun), noun), sensed,
+                                onNeighboursInFrame = { inFrame = it },
+                                modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
                             )
                         }
+                        if (inFrame > 0) {
+                            Text(Wording.otherDots(noun), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        key(task.id.value) { DirectionLine(sensed, position, noun) }
                     }
-                    Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
+                    // The live line replaces the "from you" line once location is on.
+                    val fromYou = if (task.id.value == firstTaskId && !(live && Locator.permitted(context))) {
+                        Places.fromYouText(origin, position)
+                    } else null
+                    Header(task, noun, fromYou)
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                     // Someone else's report (not-here-moved.md §4). Whoever reported it here sees their own saved line instead.
                     val id = task.id.value
@@ -304,6 +337,9 @@ fun PlaceScreen(
                         } else {
                             val questions = s.form.work.questions
                             if (step < questions.size) {
+                                // "I can't tell which one": the can't-check outcome, offered on every question.
+                                val tooHard = s.form.outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }
+                                    ?.let { ChoiceAction.Outcome(it) }?.takeIf { c.offers(s.task, s.form, it) }
                                 Question(
                                     questions[step], step, questions.size,
                                     selected = s.form.answers[questions[step].id], notSure = questions[step].id in notSure,
@@ -314,6 +350,13 @@ fun PlaceScreen(
                                         step += 1
                                     },
                                     onPrevious = { step -= 1 },
+                                    cantTell = tooHard?.let { action ->
+                                        Wording.cantTell(noun) to {
+                                            switchNotice = null
+                                            cantTell = true
+                                            c.perform(action)
+                                        }
+                                    },
                                 )
                             } else {
                                 Review(c, s.task, s.form, noun, previewing, onEdit = { step = it })
@@ -358,6 +401,8 @@ fun PlaceScreen(
                             Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
                         } else if (s.action.isReport) {
                             ReportSaved(moved = s.action is ChoiceAction.Moved)
+                        } else if (cantTell) {
+                            Text(Wording.cantTellThanks(noun), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                         } else {
                             // Counted once the effect above has recorded it; reading [counted] recomposes then.
                             val today = checked.today(campaignId) + if (counted) 0 else 1
@@ -522,6 +567,8 @@ private fun Question(
     notSure: Boolean,
     onAnswer: (String?) -> Unit,
     onPrevious: () -> Unit,
+    /** "I can't tell which one" and what it does; null where the outcome isn't offered. */
+    cantTell: Pair<String, () -> Unit>? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.semantics(mergeDescendants = true) {}) {
         Text("Question ${index + 1} of $count", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -533,8 +580,51 @@ private fun Question(
         AnswerButton(option.label, option.description, selected == option.id) { onAnswer(option.id) }
     }
     AnswerButton(Wording.NOT_SURE, null, notSure) { onAnswer(null) }
+    cantTell?.let { (label, onClick) ->
+        TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
+    }
     if (index > 0) TextButton(onClick = onPrevious) { Text("‹ Previous question") }
 }
+
+/** The task map takes this share of the screen height, and at least [MIN_MAP_HEIGHT] (spec A). */
+private const val MAP_SHARE = 0.45f
+private val MIN_MAP_HEIGHT = 260.dp
+
+/** Where the place is from you, under the task map (which-one-spec.md C): recomputed once a second
+ * from what the map senses; TalkBack hears it at most every 5 s. Nothing while location is off. */
+@Composable
+private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
+    val context = LocalContext.current
+    val units = remember { WhichOne.units() }
+    var line by remember { mutableStateOf<WhichOne.Line?>(null) }
+    var announced by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        if (!Locator.permitted(context)) return@LaunchedEffect
+        var lastAnnounced = 0L
+        while (isActive) {
+            val next = WhichOne.line(sensed.you, sensed.accuracyM, sensed.heading, target, noun, units, line?.side)
+            if (next != line) line = next
+            val now = System.currentTimeMillis()
+            if (next != null && next.text != announced && now - lastAnnounced >= ANNOUNCE_MS) {
+                announced = next.text
+                lastAnnounced = now
+            }
+            delay(LINE_MS)
+        }
+    }
+    val text = line?.text ?: return
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = announced.ifEmpty { text }
+            liveRegion = LiveRegionMode.Polite
+        },
+    )
+}
+
+private const val LINE_MS = 1_000L
+private const val ANNOUNCE_MS = 5_000L
 
 @Composable
 private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: Noun, previewing: Boolean, onEdit: (Int) -> Unit) {
