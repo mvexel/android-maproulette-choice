@@ -18,37 +18,62 @@ import org.maproulette.sdk.HttpResponse
 import org.maproulette.sdk.Transport
 
 /**
- * The demo build's backend (the `demo` flavor): "Woodbine trees" served in-process from a survey file
- * (backend/woodbine-micro/woodbine-trees-500m-139.json in the project files), as on iOS `-demoTrees`.
- * Nothing goes over the network: every request is answered here, guest answers are kept in memory
- * ([pending]) and anything else is a 404.
+ * The demo build's backend (the `demo` flavor): a Woodbine micro campaign served in-process from
+ * its survey file (backend/woodbine-micro in the project files), as on iOS `-demoTrees`,
+ * `-demoCrossings` and `-demoBuildings`. Nothing goes over the network: every request is answered
+ * here, guest answers are kept in memory ([pending]) and anything else is a 404.
  *
- * Campaign [CAMPAIGN]; trees are tasks 1001 onwards in file order, named `node/<id>`. 1090 and 1094
- * are checked and another guest holds 1095 with a report, so the cluster around 1092 shows every
- * neighbour dot.
+ * Campaign [CAMPAIGN]; the file's features are tasks 1001 onwards in file order, named after their
+ * OSM element (`node/<id>`, `way/<id>`). [surveys] maps a demo name (trees, crossings, buildings) to
+ * its file; [use] switches campaign and starts afresh. In trees, 1090 and 1094 are checked and
+ * another guest holds 1095 with a report, so the cluster around 1092 shows every neighbour dot.
  */
-class DemoBackend(survey: String) : Transport {
-    private class Tree(val id: Long, val element: String, val lat: Double, val lon: Double)
+class DemoBackend(private val surveys: Map<String, String>) : Transport {
+    constructor(survey: String) : this(mapOf(TREES to survey))
 
-    private val file = Json.parseToJsonElement(survey).jsonObject
-    private val challenge = file["challenge"]!!.jsonObject
-    private val trees = file["features"]!!.jsonObject["features"]!!.jsonArray.mapIndexed { i, f ->
-        val coordinates = f.jsonObject["geometry"]!!.jsonObject["coordinates"]!!.jsonArray
-        Tree(
-            FIRST_TASK + i,
-            f.jsonObject["properties"]!!.jsonObject["@id"]!!.jsonPrimitive.content,
-            coordinates[1].jsonPrimitive.double,
-            coordinates[0].jsonPrimitive.double,
-        )
+    private class Tree(val id: Long, val element: String, val lat: Double, val lon: Double, val properties: JsonObject)
+
+    private class Campaign(survey: String, seeded: Boolean) {
+        val file = Json.parseToJsonElement(survey).jsonObject
+        val challenge = file["challenge"]!!.jsonObject
+        val trees = file["features"]!!.jsonObject["features"]!!.jsonArray.mapIndexed { i, f ->
+            val coordinates = f.jsonObject["geometry"]!!.jsonObject["coordinates"]!!.jsonArray
+            val properties = f.jsonObject["properties"]!!.jsonObject
+            Tree(
+                FIRST_TASK + i,
+                properties["@id"]!!.jsonPrimitive.content,
+                coordinates[1].jsonPrimitive.double,
+                coordinates[0].jsonPrimitive.double,
+                JsonObject(properties - "@id"),
+            )
+        }
+        val status = trees.associate { it.id to 0 }.toMutableMap().apply {
+            if (seeded) {
+                put(1090, 1)
+                put(1094, 1)
+            }
+        }
+        val othersHolds = if (seeded) mapOf(1095L to "report") else emptyMap()
     }
-    private val status = trees.associate { it.id to 0 }.toMutableMap().apply {
-        put(1090, 1)
-        put(1094, 1)
-    }
-    private val othersHolds = mapOf(1095L to "report")
+
+    @Volatile private var campaign = Campaign(surveys.getValue(surveys.keys.first()), seeded = surveys.keys.first() == TREES)
 
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
+
+    /** Serves the [name]d campaign from now on, with no answers saved; false when there's none. */
+    fun use(name: String): Boolean {
+        val survey = surveys[name] ?: return false
+        campaign = Campaign(survey, seeded = name == TREES)
+        pending.clear()
+        return true
+    }
+
+    private val file get() = campaign.file
+    private val challenge get() = campaign.challenge
+    private val trees get() = campaign.trees
+    private val status get() = campaign.status
+    private val othersHolds get() = campaign.othersHolds
 
     override suspend fun execute(request: HttpRequest): HttpResponse {
         val uri = URI(request.url)
@@ -117,23 +142,32 @@ class DemoBackend(survey: String) : Transport {
         put("status", status[tree.id] ?: 0)
         put("geometries", Json.parseToJsonElement(
             """{"type":"FeatureCollection","features":[{"type":"Feature","id":"${tree.element}",""" +
-                """"geometry":${point(tree)},"properties":{"natural":"tree"}}]}""",
+                """"geometry":${point(tree)},"properties":${tree.properties}}]}""",
         ))
         put("location", point(tree))
         put("cooperativeWork", work(tree))
     }
 
-    /** The task's choice payload: the survey's questions and outcomes for this tree's node. */
+    /** The task's choice payload: the survey's questions and outcomes for this feature. A survey that
+     * matches by key only (`matchKeys`, buildings) gets each feature's own values, as the survey
+     * builder writes them. */
     private fun work(tree: Tree) = JsonObject(
         mapOf(
             "meta" to Json.parseToJsonElement("""{"version":2,"type":3,"choiceVersion":1}"""),
             "element" to JsonPrimitive(tree.element),
-            "match" to file["match"]!!,
+            "match" to match(tree),
             "liveMissingQuestions" to JsonPrimitive(true),
             "questions" to file["questions"]!!,
             "outcomes" to file["outcomes"]!!,
         ),
     )
+
+    private fun match(tree: Tree): JsonObject {
+        val match = file["match"]!!.jsonObject
+        val keys = (file["matchKeys"] as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+        if (match.isNotEmpty() || keys.isEmpty()) return match
+        return JsonObject(keys.mapNotNull { key -> tree.properties[key]?.let { key to it } }.toMap())
+    }
 
     /** A bounds-search row; held by this guest's saved answer or report, or by another guest's. */
     private fun summary(tree: Tree): String {
@@ -153,5 +187,8 @@ class DemoBackend(survey: String) : Transport {
         const val ORIGIN = "https://demo.invalid"
         /** The bundled survey file, in the demo flavor's assets. */
         const val ASSET = "demo/woodbine-trees.json"
+        const val TREES = "trees"
+        /** The demo campaigns, by the name the `demo` launch extra takes, and their bundled files. */
+        val ASSETS = linkedMapOf(TREES to ASSET, "crossings" to "demo/woodbine-crossings.json", "buildings" to "demo/woodbine-buildings.json")
     }
 }

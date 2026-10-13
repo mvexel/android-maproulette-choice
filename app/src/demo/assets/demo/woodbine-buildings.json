@@ -1,0 +1,1715 @@
+{
+ "version": 1,
+ "challenge": {
+  "name": "Woodbine buildings",
+  "description": "Help map the buildings around Woodbine Food Hall. For each building, count its floors and check the shape of its roof, so maps can show the neighborhood in 3D.",
+  "instruction": "Survey the building at the mapped way. Sets building:levels=* and roof:shape=* only when missing. Floors count above ground, not counting the roof or attic. No geometry changes.",
+  "checkinComment": "Street Tally: buildings near Woodbine Food Hall #StreetTallyWoodbine",
+  "checkinSource": "survey"
+ },
+ "match": {},
+ "matchKeys": [
+  "building"
+ ],
+ "questions": [
+  {
+   "id": "levels",
+   "prompt": "How many floors does it have?",
+   "description": "Count floors above the ground. Don't count the roof or an attic. For a tall building, count rows of windows.",
+   "expect": {
+    "building:levels": null
+   },
+   "options": [
+    {
+     "id": "1",
+     "label": "1 floor",
+     "setTags": {
+      "building:levels": "1"
+     }
+    },
+    {
+     "id": "2",
+     "label": "2 floors",
+     "setTags": {
+      "building:levels": "2"
+     }
+    },
+    {
+     "id": "3",
+     "label": "3 floors",
+     "setTags": {
+      "building:levels": "3"
+     }
+    },
+    {
+     "id": "4",
+     "label": "4 floors",
+     "setTags": {
+      "building:levels": "4"
+     }
+    },
+    {
+     "id": "5",
+     "label": "5 floors",
+     "setTags": {
+      "building:levels": "5"
+     }
+    },
+    {
+     "id": "6",
+     "label": "6 floors",
+     "setTags": {
+      "building:levels": "6"
+     }
+    },
+    {
+     "id": "7",
+     "label": "7 floors",
+     "setTags": {
+      "building:levels": "7"
+     }
+    },
+    {
+     "id": "8",
+     "label": "8 floors",
+     "setTags": {
+      "building:levels": "8"
+     }
+    },
+    {
+     "id": "9",
+     "label": "9 floors",
+     "setTags": {
+      "building:levels": "9"
+     }
+    },
+    {
+     "id": "10",
+     "label": "10 floors",
+     "setTags": {
+      "building:levels": "10"
+     }
+    }
+   ]
+  },
+  {
+   "id": "roof-shape",
+   "prompt": "What shape is the roof?",
+   "description": "Look from across the street if you can.",
+   "expect": {
+    "roof:shape": null
+   },
+   "options": [
+    {
+     "id": "flat",
+     "label": "Flat",
+     "setTags": {
+      "roof:shape": "flat"
+     }
+    },
+    {
+     "id": "gabled",
+     "label": "Two slopes, like a tent",
+     "setTags": {
+      "roof:shape": "gabled"
+     }
+    },
+    {
+     "id": "hipped",
+     "label": "Four slopes",
+     "setTags": {
+      "roof:shape": "hipped"
+     }
+    },
+    {
+     "id": "skillion",
+     "label": "One slope",
+     "setTags": {
+      "roof:shape": "skillion"
+     }
+    },
+    {
+     "id": "pyramidal",
+     "label": "Pointed, four sides",
+     "setTags": {
+      "roof:shape": "pyramidal"
+     }
+    },
+    {
+     "id": "gambrel",
+     "label": "Barn-shaped",
+     "setTags": {
+      "roof:shape": "gambrel"
+     }
+    },
+    {
+     "id": "round",
+     "label": "Curved",
+     "setTags": {
+      "roof:shape": "round"
+     }
+    }
+   ]
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "no-building",
+   "label": "There's no building here",
+   "description": "It's been torn down or was never there.",
+   "status": 6
+  }
+ ],
+ "features": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9059517,
+      40.7580902
+     ]
+    },
+    "properties": {
+     "@id": "way/35962668",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9043737,
+      40.7566132
+     ]
+    },
+    "properties": {
+     "@id": "way/35969138",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9040233,
+      40.753079
+     ]
+    },
+    "properties": {
+     "@id": "way/41893712",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9032761,
+      40.7548537
+     ]
+    },
+    "properties": {
+     "@id": "way/388179763",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "660",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "building": "commercial",
+     "name": "Granary Campus"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9032194,
+      40.7553458
+     ]
+    },
+    "properties": {
+     "@id": "way/388179764",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "630",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "building": "apartments",
+     "name": "Journeyman",
+     "website": "https://journeymanslc.com/"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9018245,
+      40.7546098
+     ]
+    },
+    "properties": {
+     "@id": "way/415607031",
+     "building": "industrial"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9021705,
+      40.7537303
+     ]
+    },
+    "properties": {
+     "@id": "way/415811496",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "385",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9018052,
+      40.753748
+     ]
+    },
+    "properties": {
+     "@id": "way/415811497",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "355",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "building": "yes",
+     "name": "Classic Cars International Museum",
+     "source": "esri/USA_NAD_Addresses",
+     "tourism": "museum"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9013333,
+      40.7538525
+     ]
+    },
+    "properties": {
+     "@id": "way/415811499",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "345",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9011055,
+      40.7537779
+     ]
+    },
+    "properties": {
+     "@id": "way/415811500",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "333",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9009916,
+      40.7537007
+     ]
+    },
+    "properties": {
+     "@id": "way/415811501",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9066902,
+      40.7544911
+     ]
+    },
+    "properties": {
+     "@id": "way/655735186",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "550",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "building": "commercial",
+     "description": "Day center/drop-in services + case management to homeless with serious mental illness, may also have substance use disorder. Laundry, Showers/restrooms, Hygiene products, Clothing, Computer/internet access, Referrals, Library",
+     "image": "https://valleycares.com/images/econa-article-images/75/full/1400/safe-haven-1.jpeg",
+     "name": "Safe Haven I/Storefront",
+     "operator": "Valley Behavioral Health",
+     "phone": "+1-888-949-4864",
+     "website": "https://valleycares.com/treatment-and-services/for-adults/housing-and-homeless-programs-and-services"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9046826,
+      40.757737
+     ]
+    },
+    "properties": {
+     "@id": "way/1054313761",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "525",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 500 West",
+     "building": "apartments",
+     "building:flats": "100",
+     "building:levels": "5",
+     "description": "Permanent Supportive Housing Subsidized Studio Single/Individual Disabled Homeless",
+     "image": "https://haslcutah.org/wp-content/uploads/2022/06/Pamelas-Place.jpg",
+     "name": "Pamela's Place",
+     "owner": "Housing Authority of Salt Lake City (HASLC)",
+     "website": "https://haslcutah.org/pamelas-place/",
+     "wheelchair": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9047077,
+      40.7574941
+     ]
+    },
+    "properties": {
+     "@id": "way/1054313762",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "543",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 500 West",
+     "building": "apartments",
+     "building:levels": "6",
+     "name": "Box 500 Apartments",
+     "source": "esri/USA_NAD_Addresses",
+     "website": "https://www.box500apartments.com/"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.906529,
+      40.7559052
+     ]
+    },
+    "properties": {
+     "@id": "way/1122864968",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "537",
+     "addr:state": "UT",
+     "addr:street": "West 600 South",
+     "addr:street:prefix": "West",
+     "building": "office"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9044679,
+      40.753733
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883196",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9057241,
+      40.7537943
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883200",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9065337,
+      40.75364
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883201",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "535",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "addr:street:prefix": "West",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9068692,
+      40.7552191
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883205",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "650",
+     "addr:state": "UT",
+     "addr:street": "South 500 West",
+     "building": "yes",
+     "name": "Industry Campus"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9060275,
+      40.7569746
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693358",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "580",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 500 West",
+     "building": "apartments",
+     "building:flats": "100",
+     "building:levels": "4",
+     "name": "Sunrise Metro",
+     "owner": "Housing Authority of Salt Lake City (HASLC)",
+     "website": "https://haslcutah.org/sunrise-metro/"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9059718,
+      40.7575142
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693359",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9059738,
+      40.7577118
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693360",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9065375,
+      40.7581942
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693361",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9067141,
+      40.7582072
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693362",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9020812,
+      40.7538208
+     ]
+    },
+    "properties": {
+     "@id": "way/1273940550",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9040655,
+      40.7550642
+     ]
+    },
+    "properties": {
+     "@id": "way/1459114217",
+     "amenity": "parking",
+     "building": "yes",
+     "parking": "multi-storey"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9048612,
+      40.7557034
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397615",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9050204,
+      40.7559594
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397616",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9069163,
+      40.7505265
+     ]
+    },
+    "properties": {
+     "@id": "way/35969048",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9034869,
+      40.7516481
+     ]
+    },
+    "properties": {
+     "@id": "way/217872454",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "423",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "apartments",
+     "name": "Artspace Commons - Building A"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9031236,
+      40.751353
+     ]
+    },
+    "properties": {
+     "@id": "way/217872455",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "824",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "addr:street:prefix": "South",
+     "building": "apartments",
+     "name": "Artspace Commons - Building B"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.902123,
+      40.7534783
+     ]
+    },
+    "properties": {
+     "@id": "way/415811504",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "733",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9021031,
+      40.7523079
+     ]
+    },
+    "properties": {
+     "@id": "way/415811508",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "380",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9018313,
+      40.7523078
+     ]
+    },
+    "properties": {
+     "@id": "way/415811509",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "364",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9011974,
+      40.7524302
+     ]
+    },
+    "properties": {
+     "@id": "way/415811516",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "344",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.901461,
+      40.7521951
+     ]
+    },
+    "properties": {
+     "@id": "way/415811517",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "362",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9016447,
+      40.7524604
+     ]
+    },
+    "properties": {
+     "@id": "way/415811518",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9044839,
+      40.7506651
+     ]
+    },
+    "properties": {
+     "@id": "way/415814716",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9045343,
+      40.7510776
+     ]
+    },
+    "properties": {
+     "@id": "way/415814717",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9048086,
+      40.7513754
+     ]
+    },
+    "properties": {
+     "@id": "way/415814718",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.903439,
+      40.7501575
+     ]
+    },
+    "properties": {
+     "@id": "way/849839882",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "422A",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 900 South",
+     "addr:street:prefix": "West",
+     "building": "commercial"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9036338,
+      40.7500748
+     ]
+    },
+    "properties": {
+     "@id": "way/849839883",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "422B",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "West 900 South",
+     "addr:street:prefix": "West",
+     "building": "commercial"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9048875,
+      40.7516825
+     ]
+    },
+    "properties": {
+     "@id": "way/1013202024",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "471",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "amenity": "restaurant",
+     "building": "yes",
+     "cuisine": "salvadoran",
+     "name": "El Virole\u00f1o",
+     "phone": "+1 801-595-7021"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9045308,
+      40.7523097
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883192",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9029567,
+      40.7522872
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883193",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9032933,
+      40.7522221
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883194",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9034972,
+      40.7523521
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883195",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9057853,
+      40.7534758
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883199",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9065977,
+      40.7521948
+     ]
+    },
+    "properties": {
+     "@id": "way/1125266190",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "526",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "addr:street:prefix": "West",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9033118,
+      40.7506794
+     ]
+    },
+    "properties": {
+     "@id": "way/1177664634",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "850",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9010194,
+      40.7533607
+     ]
+    },
+    "properties": {
+     "@id": "way/1273940537",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "726",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South Kilby Court",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9011024,
+      40.7528763
+     ]
+    },
+    "properties": {
+     "@id": "way/1273940543",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "742",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South Kilby Court",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9010604,
+      40.7527518
+     ]
+    },
+    "properties": {
+     "@id": "way/1273940549",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.906075,
+      40.7513729
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994678",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9060265,
+      40.7508927
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994679",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.90571,
+      40.7507929
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994680",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9057436,
+      40.7504575
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994681",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.904631,
+      40.7516253
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994682",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9043365,
+      40.751682
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994683",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9048459,
+      40.7515205
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994684",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9040992,
+      40.7516144
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994685",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9039776,
+      40.7503494
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994686",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.903776,
+      40.7501443
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994687",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9046694,
+      40.7501424
+     ]
+    },
+    "properties": {
+     "@id": "way/1273994688",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9062693,
+      40.7524266
+     ]
+    },
+    "properties": {
+     "@id": "way/1275409966",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.905678,
+      40.7529643
+     ]
+    },
+    "properties": {
+     "@id": "way/1275409967",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9039026,
+      40.753411
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397617",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9031138,
+      40.753423
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397618",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "738",
+     "addr:postcode": "84101",
+     "addr:state": "UT",
+     "addr:street": "South 400 West",
+     "building": "yes",
+     "source": "esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9077397,
+      40.751286
+     ]
+    },
+    "properties": {
+     "@id": "way/35969083",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9074349,
+      40.7530042
+     ]
+    },
+    "properties": {
+     "@id": "way/35969097",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9123744,
+      40.7538522
+     ]
+    },
+    "properties": {
+     "@id": "way/39283470",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "743",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "brand": "Deseret Industries",
+     "building": "yes",
+     "name": "Deseret Industries",
+     "opening_hours": "Mo-Fr 09:00-18:00",
+     "operator": "Church of Jesus Christ of Latter Day Saints",
+     "phone": "+1 801 240 7202",
+     "service:bicycle:repair": "no",
+     "service:bicycle:second_hand": "yes",
+     "shop": "second_hand",
+     "website": "https://www.deseretindustries.org/"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9121048,
+      40.7523548
+     ]
+    },
+    "properties": {
+     "@id": "way/39283565",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "730",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "industrial",
+     "description": "Cannery",
+     "man_made": "works",
+     "name": "Deseret Cannery",
+     "operator": "The Church of Jesus Christ of Latter Day Saints",
+     "operator:type": "religious",
+     "phone": "+1 801-240-7370",
+     "product": "food"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9123388,
+      40.7529965
+     ]
+    },
+    "properties": {
+     "@id": "way/226288671",
+     "building": "yes",
+     "man_made": "silo"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9115727,
+      40.7515078
+     ]
+    },
+    "properties": {
+     "@id": "way/687457595",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "711",
+     "addr:postcode": "84104",
+     "addr:state": "UT",
+     "addr:street": "West 800 South",
+     "building": "commercial",
+     "source": "microsoft/BuildingFootprints;esri/USA_NAD_Addresses"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9084971,
+      40.752937
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883202",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9068964,
+      40.7537073
+     ]
+    },
+    "properties": {
+     "@id": "way/1125266188",
+     "amenity": "food_court",
+     "building": "commercial",
+     "building:part": "yes",
+     "internet_access": "wlan",
+     "internet_access:fee": "no",
+     "name": "Woodbine Food Hall",
+     "opening_hours": "Mo-We 11:30-21:00; Th-Sa 11:30-22:00; Su off",
+     "outdoor_seating": "yes",
+     "takeaway": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9099857,
+      40.7527028
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190411",
+     "building": "yes",
+     "source": "bing"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9092663,
+      40.7536818
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190413",
+     "building": "yes",
+     "source": "bing"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9081914,
+      40.7511495
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397621",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9074495,
+      40.7516741
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397622",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9085289,
+      40.7546323
+     ]
+    },
+    "properties": {
+     "@id": "way/655728072",
+     "building": "commercial"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9069837,
+      40.754493
+     ]
+    },
+    "properties": {
+     "@id": "way/655735187",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "556",
+     "addr:state": "UT",
+     "addr:street": "West 700 South",
+     "addr:street:prefix": "West",
+     "building": "yes",
+     "image": "https://valleycares.com/images/econa-article-images/113/full/1400/save-haven-2-2.jpeg",
+     "name": "Safe Haven II"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9077942,
+      40.7565513
+     ]
+    },
+    "properties": {
+     "@id": "way/1122864971",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9077883,
+      40.756852
+     ]
+    },
+    "properties": {
+     "@id": "way/1122864972",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9077342,
+      40.7570167
+     ]
+    },
+    "properties": {
+     "@id": "way/1122864973",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9086964,
+      40.7538884
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883203",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9077264,
+      40.7545425
+     ]
+    },
+    "properties": {
+     "@id": "way/1122883204",
+     "addr:city": "Salt Lake City",
+     "addr:housenumber": "681",
+     "addr:state": "UT",
+     "addr:street": "South 600 West",
+     "addr:street:prefix": "South",
+     "building": "yes",
+     "building:levels": "5",
+     "name": "700 Block Storage",
+     "shop": "storage_rental"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9070946,
+      40.7581713
+     ]
+    },
+    "properties": {
+     "@id": "way/1131693363",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9093724,
+      40.7543316
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190401",
+     "building": "yes",
+     "source": "bing"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9110255,
+      40.7560518
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190402",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.910912,
+      40.755502
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190403",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9101029,
+      40.7558605
+     ]
+    },
+    "properties": {
+     "@id": "way/1446190404",
+     "building": "yes"
+    }
+   },
+   {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -111.9070066,
+      40.7572246
+     ]
+    },
+    "properties": {
+     "@id": "way/1507397613",
+     "building": "yes"
+    }
+   }
+  ]
+ }
+}

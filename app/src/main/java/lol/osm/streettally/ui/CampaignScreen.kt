@@ -251,7 +251,7 @@ fun CampaignScreen(
 
     LaunchedEffect(current, openTask) {
         val wanted = openTask ?: return@LaunchedEffect
-        val task = current?.tasks?.firstOrNull { it.id == wanted || it.task.name == "node/$wanted" } ?: return@LaunchedEffect
+        val task = current?.tasks?.firstOrNull { it.id == wanted || it.task.name.substringAfter('/') == "$wanted" } ?: return@LaunchedEffect
         sheet = null
         onOpenTask()
         open(task)

@@ -4,6 +4,7 @@ import java.io.File
 import kotlinx.coroutines.test.runTest
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.campaign.Campaigns
+import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.Noun
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,6 +32,24 @@ class DemoBackendTest {
         assertEquals((1001L..1139L).toList(), places.tasks.map { it.id })
         assertTrue(places.tasks.single { it.id == 1092L }.isOpen)
         assertTrue(places.tasks.single { it.id == 1090L }.isDone)
+    }
+
+    @Test fun crossingsAndBuildingsServeTheirOwnFiles() = runTest {
+        val all = DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> File("src/demo/assets/$asset").readText() })
+        val client = MapRouletteClient(config.environment(), all)
+        assertTrue(all.use("crossings"))
+        val crossings = Campaigns.places(client, ChallengeId(DemoBackend.CAMPAIGN))
+        assertEquals(81, crossings.tasks.size)
+        assertEquals(Noun("crossing", "crossings"), crossings.noun)
+        assertEquals(Footprint.Kind.CROSSING, Footprint.kind(crossings.tasks.first().task))
+        assertTrue(crossings.tasks.none { it.isDone })
+        assertTrue(all.use("buildings"))
+        val buildings = Campaigns.places(client, ChallengeId(DemoBackend.CAMPAIGN))
+        assertEquals(93, buildings.tasks.size)
+        assertEquals(Noun("building", "buildings"), buildings.noun)
+        assertEquals("way/35962668", buildings.tasks.first().task.name)
+        assertEquals(Footprint.Kind.BUILDING, Footprint.kind(buildings.tasks.first().task))
+        assertFalse(all.use("benches"))
     }
 
     @Test fun answersStayInMemory() = runTest {

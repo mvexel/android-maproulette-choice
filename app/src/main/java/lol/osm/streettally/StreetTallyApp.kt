@@ -20,6 +20,9 @@ class StreetTallyApp : Application() {
         private set
     lateinit var prefs: CampaignPrefs
         private set
+    /** The demo build's in-process backend; null in every other build. */
+    var demo: DemoBackend? = null
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -29,7 +32,12 @@ class StreetTallyApp : Application() {
         session = AppSession(
             config,
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
-            if (config.demo) DemoBackend(assets.open(DemoBackend.ASSET).bufferedReader().use { it.readText() }) else OkHttpTransport(),
+            if (config.demo) {
+                DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> assets.open(asset).bufferedReader().use { it.readText() } })
+                    .also { demo = it }
+            } else {
+                OkHttpTransport()
+            },
         )
         scope.launch {
             session.restore()

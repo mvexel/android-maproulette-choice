@@ -152,13 +152,15 @@ class MainActivity : ComponentActivity() {
         BrowserSignIn.onHostResumed()
     }
 
-    /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es task 1092`
-     * opens the trees campaign at that place (a task id, 1001 onwards, or a tree's node id). */
+    /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es demo crossings
+     * --es task 1012` opens that demo campaign (trees, the default; crossings; buildings) at that place
+     * (a task id, 1001 onwards, or the feature's OSM id). */
     private fun demoFrom(intent: Intent?) {
-        if (!BuildConfig.DEMO) return
-        val task = intent?.getStringExtra(DEMO_TASK)?.toLongOrNull()
-            ?: intent?.getLongExtra(DEMO_TASK, -1L)?.takeIf { it > 0 }
-            ?: return
+        if (!BuildConfig.DEMO || intent == null) return
+        val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
+        val task = intent.getStringExtra(DEMO_TASK)?.toLongOrNull()
+            ?: intent.getLongExtra(DEMO_TASK, -1L).takeIf { it > 0 }
+        if (!switched && task == null) return
         linked = DemoBackend.CAMPAIGN to false
         demoTask = task
     }
@@ -170,3 +172,4 @@ class MainActivity : ComponentActivity() {
 }
 
 private const val DEMO_TASK = "task"
+private const val DEMO_CAMPAIGN = "demo"
