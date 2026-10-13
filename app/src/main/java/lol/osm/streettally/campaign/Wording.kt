@@ -111,7 +111,7 @@ object Wording {
     /** The aerial photo toggle (which-one-spec D): the label says what a tap shows. */
     const val SHOW_AERIAL = "Aerial photo"
     const val SHOW_MAP = "Map"
-    const val AERIAL_CREDIT = "Imagery: USGS The National Map / USDA NAIP"
+    const val AERIAL_CREDIT = "Imagery: USDA NAIP 2024"
 
     // "Something's wrong here" (design/not-here-moved.md §2, §7), as in the iOS app.
     const val SKIP_EXPLAINED = "Leave it for someone else."
