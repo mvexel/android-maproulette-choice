@@ -43,6 +43,8 @@ data class Noun(val one: String, val many: String) {
             Triple("leisure", "park", Noun("park", "parks")),
             Triple("natural", "tree", Noun("tree", "trees")),
             Triple("entrance", null, Noun("entrance", "entrances")),
+            // Any building=*, after the specific tags (Iris, E).
+            Triple("building", null, Noun("building", "buildings")),
         )
 
         fun from(match: Map<String, String>): Noun =
