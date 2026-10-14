@@ -29,6 +29,10 @@ class WordingTest {
         assertEquals(Noun.PLACE, Noun.from(emptyList<Task>()))
     }
 
+    @Test fun turnOnLocation() {
+        assertEquals("Turn on location to see which way the tree is.", Wording.turnOnLocation(Noun("tree", "trees")))
+    }
+
     @Test fun nounArticle() {
         assertEquals("an entrance", Noun("entrance", "entrances").aOne)
         assertEquals("a stop", Noun("stop", "stops").aOne)

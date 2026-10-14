@@ -108,6 +108,9 @@ object Wording {
     fun otherDots(noun: Noun): String = "Grey dots are other ${noun.many} in this campaign."
     fun taskMapLabel(placeName: String, noun: Noun): String = "Map of $placeName, with other ${noun.many} nearby"
     const val RECENTER = "Show me and the big pin"
+    /** The direction line's place when location is denied or off (which-one-spec C rule 1). */
+    fun turnOnLocation(noun: Noun): String = "Turn on location to see which way the ${noun.one} is."
+    const val OPEN_SETTINGS = "Open Settings"
     /** The aerial photo toggle (which-one-spec D): the label says what a tap shows. */
     const val SHOW_AERIAL = "Aerial photo"
     const val SHOW_MAP = "Map"

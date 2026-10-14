@@ -1,5 +1,10 @@
 package lol.osm.streettally.ui
 
+import android.content.Context
+import android.content.Intent
+import android.location.LocationManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +65,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.location.LocationManagerCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -612,15 +619,36 @@ private val MIN_MAP_HEIGHT = 220.dp
 
 /** Where the place is from you, under the task map (which-one-spec.md C): recomputed once a second
  * from what the map senses. TalkBack hears it again only when its category changes (the rule, side or
- * compass point, not the number), at most every 5 s. Nothing while location is off. */
+ * compass point, not the number), at most every 5 s. With location denied or off, a line to turn it
+ * on and a link to the app's settings (rule 1); nothing before the first fix. Checked again on
+ * return, so coming back from Settings with location on starts the line. */
 @Composable
 private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
     val context = LocalContext.current
     val units = remember { WhichOne.units() }
     var line by remember { mutableStateOf<WhichOne.Line?>(null) }
     var announced by remember { mutableStateOf("") }
+    var on by remember { mutableStateOf(locationOn(context)) }
+    LifecycleResumeEffect(Unit) {
+        on = locationOn(context)
+        onPauseOrDispose {}
+    }
+    if (!on) {
+        Column {
+            Text(Wording.turnOnLocation(noun), style = MaterialTheme.typography.bodyLarge)
+            TextButton(
+                onClick = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                    )
+                },
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(Wording.OPEN_SETTINGS, textDecoration = TextDecoration.Underline) }
+        }
+        return
+    }
     LaunchedEffect(Unit) {
-        if (!Locator.permitted(context)) return@LaunchedEffect
         var lastAnnounced = 0L
         var category: String? = null
         while (isActive) {
@@ -644,6 +672,12 @@ private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
             liveRegion = LiveRegionMode.Polite
         },
     )
+}
+
+/** Location permitted and the phone's location switched on. */
+private fun locationOn(context: Context): Boolean {
+    val manager = context.getSystemService(LocationManager::class.java)
+    return Locator.permitted(context) && manager != null && LocationManagerCompat.isLocationEnabled(manager)
 }
 
 private const val LINE_MS = 1_000L
