@@ -1,6 +1,7 @@
 package lol.osm.streettally
 
 import android.app.Application
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -33,8 +34,10 @@ class StreetTallyApp : Application() {
             config,
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
             if (config.demo) {
-                DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> assets.open(asset).bufferedReader().use { it.readText() } })
-                    .also { demo = it }
+                DemoBackend(
+                    DemoBackend.ASSETS.mapValues { (_, asset) -> assets.open(asset).bufferedReader().use { it.readText() } },
+                    log = { Log.d("StreetTallyDemo", it) },
+                ).also { demo = it }
             } else {
                 OkHttpTransport()
             },

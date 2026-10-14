@@ -28,7 +28,11 @@ import org.maproulette.sdk.Transport
  * its file; [use] switches campaign and starts afresh. In trees, 1090 and 1094 are checked and
  * another guest holds 1095 with a report, so the cluster around 1092 shows every neighbour dot.
  */
-class DemoBackend(private val surveys: Map<String, String>) : Transport {
+class DemoBackend(
+    private val surveys: Map<String, String>,
+    /** Each request and its status, for logcat in the demo build. */
+    private val log: (String) -> Unit = {},
+) : Transport {
     constructor(survey: String) : this(mapOf(TREES to survey))
 
     private class Tree(val id: Long, val element: String, val lat: Double, val lon: Double, val properties: JsonObject)
@@ -75,7 +79,10 @@ class DemoBackend(private val surveys: Map<String, String>) : Transport {
     private val status get() = campaign.status
     private val othersHolds get() = campaign.othersHolds
 
-    override suspend fun execute(request: HttpRequest): HttpResponse {
+    override suspend fun execute(request: HttpRequest): HttpResponse =
+        answer(request).also { log("${request.method} ${request.url} -> ${it.status}") }
+
+    private fun answer(request: HttpRequest): HttpResponse {
         val uri = URI(request.url)
         val path = uri.path
         val query = uri.rawQuery.orEmpty().split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }

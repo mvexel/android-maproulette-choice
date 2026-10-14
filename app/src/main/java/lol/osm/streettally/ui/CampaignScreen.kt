@@ -1,5 +1,6 @@
 package lol.osm.streettally.ui
 
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -214,6 +215,7 @@ fun CampaignScreen(
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
             }
+            Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = errorMessage(e)
             failed = true
         } finally {
