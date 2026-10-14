@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +58,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -271,6 +273,20 @@ fun PlaceScreen(
                     val fromYou = if (task.id.value == firstTaskId && !(live && Locator.permitted(context))) {
                         Places.fromYouText(origin, position)
                     } else null
+                    // "I can't tell which one" (spec F): the can't-check outcome, offered on every question,
+                    // as a link under the dots note (or the direction line), so it stays above the fold.
+                    (screen as? TaskScreen.Answering)?.takeIf {
+                        report == null && !picking && c.canEditOsm && step < it.form.work.questions.size
+                    }?.let { s ->
+                        s.form.outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }
+                            ?.let { ChoiceAction.Outcome(it) }?.takeIf { c.offers(s.task, s.form, it) }
+                    }?.let { action ->
+                        CantTellLink(Wording.cantTell(noun)) {
+                            switchNotice = null
+                            cantTell = true
+                            c.perform(action)
+                        }
+                    }
                     Header(task, noun, fromYou)
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                     // Someone else's report (not-here-moved.md §4). Whoever reported it here sees their own saved line instead.
@@ -346,9 +362,6 @@ fun PlaceScreen(
                         } else {
                             val questions = s.form.work.questions
                             if (step < questions.size) {
-                                // "I can't tell which one": the can't-check outcome, offered on every question.
-                                val tooHard = s.form.outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }
-                                    ?.let { ChoiceAction.Outcome(it) }?.takeIf { c.offers(s.task, s.form, it) }
                                 Question(
                                     questions[step], step, questions.size,
                                     selected = s.form.answers[questions[step].id], notSure = questions[step].id in notSure,
@@ -359,13 +372,6 @@ fun PlaceScreen(
                                         step += 1
                                     },
                                     onPrevious = { step -= 1 },
-                                    cantTell = tooHard?.let { action ->
-                                        Wording.cantTell(noun) to {
-                                            switchNotice = null
-                                            cantTell = true
-                                            c.perform(action)
-                                        }
-                                    },
                                 )
                             } else {
                                 Review(c, s.task, s.form, noun, previewing, onEdit = { step = it })
@@ -576,8 +582,6 @@ private fun Question(
     notSure: Boolean,
     onAnswer: (String?) -> Unit,
     onPrevious: () -> Unit,
-    /** "I can't tell which one" and what it does; null where the outcome isn't offered. */
-    cantTell: Pair<String, () -> Unit>? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.semantics(mergeDescendants = true) {}) {
         Text("Question ${index + 1} of $count", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -589,10 +593,17 @@ private fun Question(
         AnswerButton(option.label, option.description, selected == option.id) { onAnswer(option.id) }
     }
     AnswerButton(Wording.NOT_SURE, null, notSure) { onAnswer(null) }
-    cantTell?.let { (label, onClick) ->
-        TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
-    }
     if (index > 0) TextButton(onClick = onPrevious) { Text("‹ Previous question") }
+}
+
+/** "I can't tell which one" as a plain link at the start edge, 48 dp tall for touch. */
+@Composable
+private fun CantTellLink(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 0.dp),
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) { Text(label, textDecoration = TextDecoration.Underline) }
 }
 
 /** The task map takes this share of the screen height, and at least [MIN_MAP_HEIGHT] (spec A). */
