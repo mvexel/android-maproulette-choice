@@ -187,8 +187,10 @@ fun PlaceScreen(
         if (done != null && !done.byOther && !counted) {
             counted = true
             checked.record(campaignId, done.task.id.value, look = done.action.needsLook, report = TaskReport.of(done.action))
-            // Once, after the first saved answer; later from the campaign's banner.
-            if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
+            // Once, after the first saved answer (a real one: not "I can't tell" or a report, as
+            // iOS); later from the campaign's banner.
+            val answered = done.action is ChoiceAction.Answers
+            if (done.savedForLater && answered && firstSavedForLater()) showPutOnMap = true
         }
     }
     // Signed in from the sheet here: the sign-in and claim notes show on this screen too.
@@ -594,8 +596,8 @@ private fun Question(
 }
 
 /** The task map takes this share of the screen height, and at least [MIN_MAP_HEIGHT] (spec A). */
-private const val MAP_SHARE = 0.45f
-private val MIN_MAP_HEIGHT = 260.dp
+private const val MAP_SHARE = 0.35f
+private val MIN_MAP_HEIGHT = 220.dp
 
 /** Where the place is from you, under the task map (which-one-spec.md C): recomputed once a second
  * from what the map senses. TalkBack hears it again only when its category changes (the rule, side or

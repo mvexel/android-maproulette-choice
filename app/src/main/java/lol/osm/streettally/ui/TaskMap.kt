@@ -94,7 +94,7 @@ internal class Sensed {
  * as the brand pin over the campaign's other places as small dots; you as the blue dot with a
  * heading cone once the compass reads. Opens on you and the target ([WhichOne.frame]); the
  * recenter button brings that frame back after the person moves the map. [onNeighboursInFrame]
- * gets how many neighbours the first frame shows. */
+ * gets how many neighbours are in view each time the map settles. */
 @Composable
 internal fun TaskMap(
     styleUrl: String,
@@ -264,7 +264,8 @@ private class TaskMapHolder(
                 }
             }
             map.addOnCameraIdleListener {
-                if (!movedByUser) countInFrame()
+                // The dots footnote shows only while dots are in view, moved or not (Iris).
+                countInFrame()
                 lookForFootprints()
             }
             map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
@@ -317,7 +318,7 @@ private class TaskMapHolder(
                 },
             ),
         )
-        if (!movedByUser) countInFrame()
+        countInFrame()
         if (kind != Footprint.Kind.POINT) drawFootprints()
     }
 
