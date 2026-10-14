@@ -249,6 +249,9 @@ private class TaskMapHolder(
         }
     }
 
+    /** The dark map ("Dark map" in which-one-spec.md): navy elements turn white there. */
+    private val dark = MapStyle.isDark(context)
+
     init {
         MapLibre.getInstance(context)
         view = MapView(context)
@@ -272,7 +275,8 @@ private class TaskMapHolder(
             // Footprints once the tiles in view have loaded and drawn, not at the first camera idle,
             // which comes before the tiles: else the target's shape waited for a pan (Tess).
             view.addOnDidBecomeIdleListener { lookForFootprints() }
-            map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
+            map.setStyle(Style.Builder().fromUri(MapStyle.url(styleUrl, dark))) { style ->
+                if (dark) MapStyle.brightenLabels(style)
                 val neighbours = GeoJsonSource(NEIGHBOURS)
                 style.addSource(neighbours)
                 // Needs another look: gray with an amber ring; checked: small green; open: gray, white ring.
@@ -280,7 +284,7 @@ private class TaskMapHolder(
                 style.addLayer(dots(LOOK_LAYER, WhichOne.Kind.LOOK, 5f, GRAY, AMBER, 2f))
                 style.addLayer(dots(DONE_LAYER, WhichOne.Kind.DONE, 4f, GREEN, GREEN, 0f))
                 val density = view.resources.displayMetrics.density
-                style.addImage(Pin.TODO.id, Pin.TODO.bitmap(density))
+                style.addImage(Pin.TODO.id, Pin.TODO.bitmap(density, dark))
                 style.addSource(GeoJsonSource(TARGET, Feature.fromGeometry(Point.fromLngLat(target.lon, target.lat))))
                 style.addLayer(
                     SymbolLayer(TARGET, TARGET).withProperties(
@@ -426,7 +430,8 @@ private class TaskMapHolder(
         style.addSource(GeoJsonSource(FOOTPRINTS, collection))
         val colors = listOf(
             WhichOne.Kind.OPEN.name to GRAY, WhichOne.Kind.DONE.name to GREEN,
-            WhichOne.Kind.LOOK.name to AMBER, "TARGET" to NAVY,
+            // Navy vanishes on the dark map: the target building's outline goes white there.
+            WhichOne.Kind.LOOK.name to AMBER, "TARGET" to if (dark && building) "#FFFFFF" else NAVY,
         )
         for ((s, color) in colors) {
             val target = s == "TARGET"
@@ -448,6 +453,17 @@ private class TaskMapHolder(
                     OPEN_LAYER,
                 )
             } else {
+                // On the dark map the target crossing keeps its navy and white stripes inside a 2 dp
+                // white edge, so it is never the plainer of the two ("Dark map" 3).
+                if (target && dark) {
+                    style.addLayerBelow(
+                        LineLayer("$id-edge", FOOTPRINTS).withProperties(
+                            PropertyFactory.lineColor("#FFFFFF"),
+                            PropertyFactory.lineWidth(16f),
+                        ).apply { setFilter(filter) },
+                        OPEN_LAYER,
+                    )
+                }
                 style.addLayerBelow(
                     LineLayer("$id-casing", FOOTPRINTS).withProperties(
                         PropertyFactory.lineColor(color),

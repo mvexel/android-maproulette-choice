@@ -130,6 +130,7 @@ private class MovedSpotHolder(
 
     init {
         MapLibre.getInstance(context)
+        val dark = MapStyle.isDark(context)
         view = MapView(context)
         view.onCreate(null)
         view.getMapAsync { map ->
@@ -138,7 +139,8 @@ private class MovedSpotHolder(
             map.uiSettings.isTiltGesturesEnabled = false
             if (!interactive) map.uiSettings.setAllGesturesEnabled(false)
             map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(mapped.lat, mapped.lon), 18.0))
-            map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
+            map.setStyle(Style.Builder().fromUri(MapStyle.url(styleUrl, dark))) { style ->
+                if (dark) MapStyle.brightenLabels(style)
                 val mappedSource = GeoJsonSource(MAPPED, Feature.fromGeometry(point(mapped)).apply { addStringProperty("label", label) })
                 val line = GeoJsonSource(LINE)
                 val pin = GeoJsonSource(PIN)
@@ -147,7 +149,8 @@ private class MovedSpotHolder(
                 style.addSource(pin)
                 style.addLayer(
                     LineLayer(LINE, LINE).withProperties(
-                        PropertyFactory.lineColor(NAVY),
+                        // Light gray on the dark map ("Dark map" 1).
+                        PropertyFactory.lineColor(if (dark) MapStyle.LIGHT_GRAY else NAVY),
                         PropertyFactory.lineWidth(2f),
                         PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
                     ),
@@ -165,21 +168,40 @@ private class MovedSpotHolder(
                         PropertyFactory.textField("{label}"),
                         PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                         PropertyFactory.textSize(13f),
-                        PropertyFactory.textColor(GRAY),
-                        PropertyFactory.textHaloColor("#FFFFFF"),
+                        PropertyFactory.textColor(if (dark) MapStyle.LABEL else GRAY),
+                        PropertyFactory.textHaloColor(if (dark) "#000000" else "#FFFFFF"),
                         PropertyFactory.textHaloWidth(1.5f),
                         PropertyFactory.textOffset(arrayOf(0f, 1.6f)),
                         PropertyFactory.textAllowOverlap(true),
                     ),
                 )
-                style.addLayer(
-                    CircleLayer(PIN, PIN).withProperties(
-                        PropertyFactory.circleRadius(10f),
-                        PropertyFactory.circleColor(NAVY),
-                        PropertyFactory.circleStrokeWidth(3f),
-                        PropertyFactory.circleStrokeColor("#FFFFFF"),
-                    ),
-                )
+                if (dark) {
+                    // The moved spot on the dark map ("Dark map" 1): a white disc with a navy centre and
+                    // a 2 dp dark halo, since navy vanishes there.
+                    style.addLayer(
+                        CircleLayer(PIN, PIN).withProperties(
+                            PropertyFactory.circleRadius(11f),
+                            PropertyFactory.circleColor("#FFFFFF"),
+                            PropertyFactory.circleStrokeWidth(2f),
+                            PropertyFactory.circleStrokeColor("#000000"),
+                        ),
+                    )
+                    style.addLayer(
+                        CircleLayer(PIN_GLYPH, PIN).withProperties(
+                            PropertyFactory.circleRadius(5f),
+                            PropertyFactory.circleColor(NAVY),
+                        ),
+                    )
+                } else {
+                    style.addLayer(
+                        CircleLayer(PIN, PIN).withProperties(
+                            PropertyFactory.circleRadius(10f),
+                            PropertyFactory.circleColor(NAVY),
+                            PropertyFactory.circleStrokeWidth(3f),
+                            PropertyFactory.circleStrokeColor("#FFFFFF"),
+                        ),
+                    )
+                }
                 pinSource = pin
                 lineSource = line
                 if (interactive) showLocation(style)
@@ -266,6 +288,7 @@ private class MovedSpotHolder(
         const val MAPPED_LABEL = "moved-mapped-label"
         const val LINE = "moved-line"
         const val PIN = "moved-pin"
+        const val PIN_GLYPH = "moved-pin-glyph"
         const val DRAG_SLOP_DP = 32
     }
 }

@@ -21,7 +21,9 @@ internal enum class Pin(val id: String) {
     LOOK("pin-look"),
     ;
 
-    fun bitmap(density: Float): Bitmap {
+    /** [dark]: for the dark map, where navy vanishes ("Dark map" 2): the to-check ring turns white, and
+     * the needs-another-look diamond gets a white halo. */
+    fun bitmap(density: Float, dark: Boolean = false): Bitmap {
         val size = (SIZE * density).toInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -29,7 +31,7 @@ internal enum class Pin(val id: String) {
         when (this) {
             TODO -> {
                 canvas.drawCircle(14f, 14f, 10.5f, fill(AMBER))
-                canvas.drawCircle(14f, 14f, 10.5f, stroke(NAVY, 3f))
+                canvas.drawCircle(14f, 14f, 10.5f, if (dark) stroke(WHITE, 2f) else stroke(NAVY, 3f))
             }
             DONE -> {
                 canvas.drawCircle(14f, 14f, 12f, fill(GREEN))
@@ -46,6 +48,7 @@ internal enum class Pin(val id: String) {
                 canvas.save()
                 canvas.rotate(45f, 14f, 14f)
                 val diamond = RectF(6f, 6f, 22f, 22f)
+                if (dark) canvas.drawRoundRect(diamond, 2.6f, 2.6f, stroke(WHITE, 6.4f))
                 canvas.drawRoundRect(diamond, 2.6f, 2.6f, fill(AMBER))
                 canvas.drawRoundRect(diamond, 2.6f, 2.6f, stroke(NAVY, 2.4f))
                 canvas.restore()
