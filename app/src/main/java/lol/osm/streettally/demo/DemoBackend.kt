@@ -2,6 +2,8 @@ package lol.osm.streettally.demo
 
 import java.net.URI
 import java.util.Collections
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -60,15 +62,25 @@ class DemoBackend(
         val othersHolds = if (seeded) mapOf(1095L to "report") else emptyMap()
     }
 
-    @Volatile private var campaign = Campaign(surveys.getValue(surveys.keys.first()), seeded = surveys.keys.first() == TREES)
+    /** The campaign being served, by name; parsed on the first request after a switch, off the main thread. */
+    @Volatile private var name = surveys.keys.first()
+    private var parsed: Pair<String, Campaign>? = null
+    private val campaign: Campaign
+        get() = synchronized(this) {
+            parsed?.takeIf { it.first == name }?.second
+                ?: Campaign(surveys.getValue(name), seeded = name == TREES).also { parsed = name to it }
+        }
 
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
 
     /** Serves the [name]d campaign from now on, with no answers saved; false when there's none. */
     fun use(name: String): Boolean {
-        val survey = surveys[name] ?: return false
-        campaign = Campaign(survey, seeded = name == TREES)
+        if (name !in surveys) return false
+        synchronized(this) {
+            this.name = name
+            parsed = null
+        }
         pending.clear()
         return true
     }
@@ -79,8 +91,11 @@ class DemoBackend(
     private val status get() = campaign.status
     private val othersHolds get() = campaign.othersHolds
 
-    override suspend fun execute(request: HttpRequest): HttpResponse =
+    /** Answered on a background thread, as a real transport would: parsing a survey file on the
+     * main thread stalled the emulator into "isn't responding" (Tess). */
+    override suspend fun execute(request: HttpRequest): HttpResponse = withContext(Dispatchers.Default) {
         answer(request).also { log("${request.method} ${request.url} -> ${it.status}") }
+    }
 
     private fun answer(request: HttpRequest): HttpResponse {
         val uri = URI(request.url)
