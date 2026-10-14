@@ -1,5 +1,7 @@
 package lol.osm.streettally.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -44,12 +46,15 @@ class DemoCampaignTest {
         runBlocking { session.restore() }
         var place: Long? = null
         compose.setContent {
-            StreetTallyTheme(dark = false) {
-                CampaignScreen(
-                    session = session, prefs = CampaignPrefs(RuntimeEnvironment.getApplication()), checkedLog = CheckedLog(),
-                    campaignId = DemoBackend.CAMPAIGN, onBack = {}, onPlace = { t, _, _ -> place = t.id },
-                    openTask = task,
-                )
+            // MapLibre has no native library here: the maps are placeholders, as in the journey tests.
+            CompositionLocalProvider(LocalMapPlaceholder provides { _, modifier, _ -> Box(modifier) }) {
+                StreetTallyTheme(dark = false) {
+                    CampaignScreen(
+                        session = session, prefs = CampaignPrefs(RuntimeEnvironment.getApplication()), checkedLog = CheckedLog(),
+                        campaignId = DemoBackend.CAMPAIGN, onBack = {}, onPlace = { t, _, _ -> place = t.id },
+                        openTask = task,
+                    )
+                }
             }
         }
         try {
