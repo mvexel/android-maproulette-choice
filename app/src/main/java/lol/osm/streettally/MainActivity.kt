@@ -158,7 +158,8 @@ class MainActivity : ComponentActivity() {
     private fun demoFrom(intent: Intent?) {
         if (!BuildConfig.DEMO || intent == null) return
         val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
-        val task = intent.getStringExtra(DEMO_TASK)?.toLongOrNull()
+        // A task id, or the feature's OSM element: node/<id>, way/<id> or the bare id.
+        val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
             ?: intent.getLongExtra(DEMO_TASK, -1L).takeIf { it > 0 }
         if (!switched && task == null) return
         linked = DemoBackend.CAMPAIGN to false

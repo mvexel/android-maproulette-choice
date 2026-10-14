@@ -84,7 +84,7 @@ class DemoBackend(private val surveys: Map<String, String>) : Transport {
             path == "/oauth/mobile/guest" && request.method == HttpMethod.POST ->
                 json(201, """{"guestId":"demo-guest","guestSecret":"demo-secret-demo-secret"}""")
             path == "/oauth/mobile/token" && request.method == HttpMethod.POST && !request.body.orEmpty().contains("authorization_code") ->
-                json(200, """{"token_type":"Bearer","access_token":"demo-guest-token","expires_in":86400,"scope":"guest"}""")
+                json(200, """{"token_type":"Bearer","access_token":"demo-guest-token-demo-guest","expires_in":86400,"scope":"guest"}""")
             api == "mobile-guest/me" -> json(200,
                 """{"guestId":"demo-guest","state":"active","email":"none","pending":${pending.size},"published":0,""" +
                     """"expiresAt":"2099-01-01T00:00:00Z"}""")

@@ -3,6 +3,7 @@ package lol.osm.streettally.demo
 import java.io.File
 import kotlinx.coroutines.test.runTest
 import lol.osm.streettally.AppConfig
+import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.Noun
@@ -13,6 +14,7 @@ import org.junit.Test
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.HttpMethod
 import org.maproulette.sdk.HttpRequest
+import org.maproulette.sdk.InMemoryCredentialStore
 import org.maproulette.sdk.MapRouletteClient
 
 /** The demo build's in-process "Woodbine trees" (the demo flavor's bundled survey file). */
@@ -32,6 +34,14 @@ class DemoBackendTest {
         assertEquals((1001L..1139L).toList(), places.tasks.map { it.id })
         assertTrue(places.tasks.single { it.id == 1092L }.isOpen)
         assertTrue(places.tasks.single { it.id == 1090L }.isDone)
+    }
+
+    /** As the app loads it: a guest first, so the SDK's checks on the guest token apply (Tess). */
+    @Test fun aGuestSessionLoadsTheCampaign() = runTest {
+        val session = AppSession(config, InMemoryCredentialStore(), backend)
+        session.restore()
+        assertTrue(session.ensureGuest())
+        assertEquals(139, Campaigns.places(session.client(), ChallengeId(DemoBackend.CAMPAIGN)).tasks.size)
     }
 
     @Test fun crossingsAndBuildingsServeTheirOwnFiles() = runTest {
