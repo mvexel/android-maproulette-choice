@@ -45,7 +45,15 @@ waitfor() {
       # it and bring the app back to the front.
       log "another app's ANR dialog while waiting for '$1'; dismissed"
       tap "$(ui "$OUT/_w.xml" find "Wait")"
-      [ -n "$LAST_DEMO" ] && adb shell am start -n $ACT --es demo "$LAST_DEMO" >/dev/null
+      # Only if it pushed us off the front: relaunching a running app reopens its campaign (and its
+      # welcome), which an ANR repeating every few seconds turned into a loop (run on e3fc68d).
+      sleep 1
+      if [ -n "$LAST_DEMO" ] && ! adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG"; then
+        adb shell am start -n $ACT --es demo "$LAST_DEMO" >/dev/null
+      fi
+    elif grep -q "text=\"Let's go\"" "$OUT/_w.xml" 2>/dev/null; then
+      # The welcome came back (a relaunch above): close it again and keep waiting.
+      tap "$(ui "$OUT/_w.xml" exact "Let's go")"
     fi
     sleep 2
   done
