@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -475,6 +476,13 @@ private class TaskMapHolder(
     /** You and the target with 40 dp padding at zoom 17 to 20, or the target alone at 19. */
     private fun frame() {
         val map = map ?: return
+        // Not laid out yet: fitting the bounds into no space puts the camera far from both. After a
+        // dark mode, font or rotation change the style comes from the cache and a fix can arrive
+        // before layout (Tess: an empty map after each change).
+        if (view.width == 0 || view.height == 0) {
+            view.doOnLayout { frame() }
+            return
+        }
         val points = WhichOne.frame(sensed.you, target)
         if (points.size == 1) {
             map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(target.lat, target.lon), WhichOne.TARGET_ZOOM))
@@ -485,6 +493,7 @@ private class TaskMapHolder(
         map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
         val zoom = map.cameraPosition.zoom.coerceIn(WhichOne.MIN_ZOOM, WhichOne.MAX_ZOOM)
         if (zoom != map.cameraPosition.zoom) map.moveCamera(CameraUpdateFactory.zoomTo(zoom))
+        Log.d(LOG, "Task map framed you and the place at zoom ${"%.1f".format(zoom)} in ${view.width}x${view.height}")
     }
 
     fun recenter() {
@@ -518,6 +527,8 @@ private class TaskMapHolder(
     fun start() {
         view.onStart()
         started = true
+        // Location may have been allowed in Settings while away: turn the blue dot and fixes on now.
+        style?.let { showLocation(it) }
         listen()
     }
 
