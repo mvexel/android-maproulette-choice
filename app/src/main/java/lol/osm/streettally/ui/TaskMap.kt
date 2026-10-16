@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.SensorManager
 import android.os.Looper
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
@@ -363,7 +364,10 @@ private class TaskMapHolder(
         val todo = shown.orEmpty().filter { it.id !in footprints && bounds.contains(LatLng(it.position.lat, it.position.lon)) }
         if (lookedForTarget && todo.isEmpty()) return
         val shapes = tileLines(style, if (kind == Footprint.Kind.BUILDING) "building" else "transportation")
-        if (shapes.isEmpty()) return
+        if (shapes.isEmpty()) {
+            Log.d(LOG, "Footprints ($kind): no shapes in the loaded tiles yet")
+            return
+        }
         fun find(point: LatLon) =
             if (kind == Footprint.Kind.BUILDING) Footprint.outline(point, shapes) else Footprint.bar(point, shapes)
         if (!lookedForTarget) {
@@ -371,6 +375,8 @@ private class TaskMapHolder(
             targetFootprint = find(target)
         }
         todo.forEach { footprints[it.id] = find(it.position) }
+        // For emulator passes: whether the tiles had shapes and which places got one.
+        Log.d(LOG, "Footprints ($kind): ${shapes.size} shapes; target ${targetFootprint != null}; neighbours ${todo.count { footprints[it.id] != null }} of ${todo.size}")
         drawFootprints()
     }
 
@@ -540,6 +546,7 @@ private class TaskMapHolder(
 
     private companion object {
         const val UPDATE_MS = 1_000L
+        const val LOG = "StreetTally"
         const val NEIGHBOURS = "which-neighbours"
         const val OPEN_LAYER = "which-open"
         const val IMAGERY = "which-imagery"
