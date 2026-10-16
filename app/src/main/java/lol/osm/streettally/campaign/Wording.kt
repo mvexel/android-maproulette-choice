@@ -220,7 +220,8 @@ object Wording {
     const val DONE_FOR_TODAY = "I'm done for today"
     const val DELETE_MY_DATA = "Delete my data"
     const val DELETE_MY_DATA_EXPLAINED =
-        "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
+        "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now. " +
+            "Deleting the app doesn't remove them. Use this button instead."
     /** Added to [DELETE_MY_DATA_EXPLAINED] while answers wait on the phone. */
     const val DELETE_MY_DATA_WAITING = "It also removes answers still waiting on this phone."
     const val DELETE_MY_DATA_DONE = "Done. Your saved answers are deleted."
