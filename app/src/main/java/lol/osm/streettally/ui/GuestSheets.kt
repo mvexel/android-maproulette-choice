@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -39,7 +41,7 @@ import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
-import org.maproulette.sdk.GuestStatus
+import org.maproulette.sdk.ChallengeAnswerCounts
 
 /** "Your answers are saved": what happens to a guest's answers (design/handback-copy.md §1).
  * Opened from the campaign's saved-answers banner, never by itself after a save. */
@@ -74,14 +76,17 @@ fun DaySummarySheet(
     done: Int,
     total: Int,
     noun: Noun,
+    answers: ChallengeAnswerCounts,
     onSignIn: () -> Unit,
     onClose: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onClose) {
         SheetColumn {
-            Text(Wording.DAY_SUMMARY_TITLE, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(Wording.daySummaryTitle(checkedToday), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(Wording.daySummary(checkedToday, done, total, noun))
-            Text(Wording.DAY_SUMMARY_SAVED)
+            // "Local mappers will check them" only while some are still waiting (Iris, on the map).
+            if (answers.pending > 0) Text(Wording.DAY_SUMMARY_SAVED)
+            if (answers.onMap > 0) OnTheMap(answers.onMap)
             // Done leads; signing in is a secondary link with no footer (Iris, parity picks).
             Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
             TextButton(onClick = { onSignIn(); onClose() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
@@ -91,16 +96,19 @@ fun DaySummarySheet(
     }
 }
 
-/** Under the tally for a guest, "Your answers": saved and counted. Skipped or rejected answers show
- * nothing, and nothing expires (handback-copy.md §1). "✓ k on the map" follows with per-campaign counts. */
+/** Under the tally for a guest, "Your answers" in this campaign: saved and counted, then "✓ k on the
+ * map" once local mappers have added some. Skipped or rejected answers show nothing, and nothing
+ * expires (handback-copy.md §1). The first line counts waiting and on-the-map answers together, so it
+ * never drops when one goes on the map. */
 @Composable
 internal fun GuestSavedSection(
-    status: GuestStatus,
+    answers: ChallengeAnswerCounts,
     noun: Noun,
     onLink: () -> Unit,
     onDoneForToday: () -> Unit,
 ) {
-    if (status.pendingCount <= 0) return
+    val counted = answers.pending + answers.onMap
+    if (counted <= 0) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -111,10 +119,21 @@ internal fun GuestSavedSection(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(Wording.savedNotOnMap(status.pendingCount, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(Wording.savedNotOnMap(counted, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            if (answers.onMap > 0) OnTheMap(answers.onMap)
         }
     }
     TextButton(onClick = onDoneForToday, modifier = Modifier.heightIn(min = 48.dp)) { Text(Wording.DONE_FOR_TODAY) }
+}
+
+/** "✓ k on the map", read aloud as "k on the map". */
+@Composable
+private fun OnTheMap(count: Int) {
+    Text(
+        Wording.onTheMap(count),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.clearAndSetSemantics { contentDescription = Wording.onTheMapSpoken(count) },
+    )
 }
 
 /** "Delete my data" for a guest, with its confirmation; under the account section. */

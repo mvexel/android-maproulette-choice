@@ -185,11 +185,17 @@ object Wording {
     /** Phone sign-in claims the saved answers (B5), so the original line is back (copy fix 5). */
     const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     fun savedNotOnMap(count: Int, noun: Noun): String = "${noun.count(count)} saved and counted."
+    /** "✓ 3 on the map": this campaign's answers local mappers have added; shown only when there are some. */
+    fun onTheMap(count: Int): String = "\u2713 $count on the map"
+    /** What a screen reader says for [onTheMap], without the check mark. */
+    fun onTheMapSpoken(count: Int): String = "$count on the map"
     /** Once local mappers have added some of this phone's answers; nothing for skipped ones. */
     const val DAY_SUMMARY_TITLE = "Nice work today."
+    /** With nothing checked today (only answers from before, or on the map), no "Nice work today". */
+    fun daySummaryTitle(checked: Int): String = if (checked > 0) DAY_SUMMARY_TITLE else "Your answers"
     /** "You checked 14 stops. The tally: 212 of 410." */
     fun daySummary(checked: Int, done: Int, total: Int, noun: Noun): String =
-        "You checked ${noun.count(checked)}. The tally: $done of $total."
+        if (checked > 0) "You checked ${noun.count(checked)}. The tally: $done of $total." else "The tally: $done of $total."
     const val DAY_SUMMARY_SAVED = "Local mappers will check them and add them to the map."
     /** A guest's saved place on the map and in the list (the pending pin). */
     const val SAVED_NOT_ON_MAP = "Saved, not on the map yet"

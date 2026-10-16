@@ -74,6 +74,9 @@ class DemoBackend(
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
 
+    /** Answers a local mapper has already put on the map, reported in the guest status (the `onmap` extra). */
+    @Volatile var onMap: Int = 0
+
     /** Serves the [name]d campaign from now on, with no answers saved; false when there's none. */
     fun use(name: String): Boolean {
         if (name !in surveys) return false
@@ -116,8 +119,8 @@ class DemoBackend(
             path == "/oauth/mobile/token" && request.method == HttpMethod.POST && !request.body.orEmpty().contains("authorization_code") ->
                 json(200, """{"token_type":"Bearer","access_token":"demo-guest-token-demo-guest","expires_in":86400,"scope":"guest"}""")
             api == "mobile-guest/me" -> json(200,
-                """{"guestId":"demo-guest","state":"active","email":"none","pending":${pending.size},"published":0,""" +
-                    """"expiresAt":"2099-01-01T00:00:00Z"}""")
+                """{"guestId":"demo-guest","state":"active","email":"none","pending":${pending.size},"published":$onMap,""" +
+                    """"expiresAt":"2099-01-01T00:00:00Z","byChallenge":{"$campaignId":{"pending":${pending.size},"onMap":$onMap}}}""")
             api == "mobile-guest" && request.method == HttpMethod.DELETE -> {
                 pending.clear()
                 HttpResponse(204, body = "")
