@@ -100,7 +100,7 @@ fun CampaignScreen(
     onOpenForReal: (alreadyPublished: Boolean) -> Unit = {},
     /** A one-time note above the tally. */
     notice: String? = null,
-    /** Demo build: a place to open once the places load (its task id, or its node id); then [onOpenTask]. */
+    /** A place to open once the places load (its task id, or its node id): the demo build's, or the place open before recreation; then [onOpenTask]. */
     openTask: Long? = null,
     onOpenTask: () -> Unit = {},
 ) {

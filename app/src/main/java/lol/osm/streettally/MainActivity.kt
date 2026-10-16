@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
                 // screen reopens it once its places load (Tess, #36 emulator pass).
                 var placeId by rememberSaveable { mutableStateOf<Long?>(null) }
                 fun closePlace() {
+                    // Answers in progress are kept only while the place is open.
+                    placeId?.let { saved.removeState("place-$it") }
                     place = null
                     placeId = null
                 }
@@ -101,7 +103,7 @@ class MainActivity : ComponentActivity() {
                     )
                     open != null -> {
                         BackHandler { closePlace() }
-                        PlaceScreen(
+                        saved.SaveableStateProvider("place-${open.taskId}") { PlaceScreen(
                             session = app.session,
                             checked = app.checked,
                             campaignId = id,
@@ -115,7 +117,7 @@ class MainActivity : ComponentActivity() {
                             onExitPreview = { exitPreview() },
                             firstSavedForLater = { app.prefs.takePutOnMapCard() },
                             reports = open.reports,
-                        )
+                        ) }
                     }
                     else -> saved.SaveableStateProvider("campaign-$id-$previewing-$visit") {
                         BackHandler { exitPreview() }

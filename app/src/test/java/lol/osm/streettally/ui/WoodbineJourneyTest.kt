@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -132,6 +134,31 @@ class WoodbineJourneyTest {
         assertFalse(backend.paths.any { it.contains("task/104") })
     }
 
+    /** Rotation, dark mode or a font change mid-answer keeps the place, the question and the answers so far (Ada, #36). */
+    @Test fun anAnswerInProgressSurvivesRecreation() {
+        val backend = WoodbineBackend()
+        val session = AppSession(WoodbineBackend.CONFIG, InMemoryCredentialStore(), backend)
+        runBlocking { session.restore() }
+        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication())
+        val checked = CheckedLog()
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { StreetTallyTheme(dark = false) { RecreatedApp(session, prefs, checked) } }
+
+        tap("Let's go")
+        tap("List")
+        tap("Main door")
+        tap("Swings open")
+        waitFor("Does it open by itself?")
+
+        restoration.emulateSavedInstanceStateRestore()
+        waitFor("Does it open by itself?")
+        tap("Yes, with a button")
+        waitFor("Check your answers")
+        tapButton(Wording.DONE)
+        waitFor("✓ Saved. That's 1 entrance today.")
+        assertEquals("""{"answers":{"automatic-opening":"button","door-type":"hinged"}}""", backend.pending[101])
+    }
+
     /** A campaign without a place a guest can answer says so once, and asks to sign in above Nearest. */
     @Test fun aGuestIsAskedToSignInWhereNothingTakesGuestAnswers() {
         val backend = WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) })
@@ -236,6 +263,35 @@ class WoodbineJourneyTest {
                     CampaignScreen(
                         session = session, prefs = prefs, checkedLog = checked, campaignId = WoodbineBackend.CAMPAIGN,
                         onBack = {}, onPlace = { task, places, _ -> place = task to places },
+                    )
+                }
+            }
+        }
+    }
+
+    /** As MainActivity across recreation: only the open place's id is saved; the campaign reopens
+     * it, and the place's own state comes back from its saveable slot. */
+    @Composable
+    private fun RecreatedApp(session: AppSession, prefs: CampaignPrefs, checked: CheckedLog) {
+        val saved = rememberSaveableStateHolder()
+        var place by remember { mutableStateOf<Pair<LocatedTask, CampaignPlaces>?>(null) }
+        var placeId by rememberSaveable { mutableStateOf<Long?>(null) }
+        CompositionLocalProvider(LocalMapPlaceholder provides { _, modifier, _ -> Box(modifier) }) {
+            val open = place
+            if (open != null) {
+                saved.SaveableStateProvider("place-${open.first.id}") {
+                    PlaceScreen(
+                        session = session, checked = checked, campaignId = WoodbineBackend.CAMPAIGN,
+                        firstTaskId = open.first.id, candidates = open.second.tasks, noun = open.second.noun,
+                        origin = null, onSignIn = {}, onBack = { place = null; placeId = null },
+                    )
+                }
+            } else {
+                saved.SaveableStateProvider("campaign") {
+                    CampaignScreen(
+                        session = session, prefs = prefs, checkedLog = checked, campaignId = WoodbineBackend.CAMPAIGN,
+                        onBack = {}, onPlace = { task, places, _ -> place = task to places; placeId = task.id },
+                        openTask = placeId,
                     )
                 }
             }

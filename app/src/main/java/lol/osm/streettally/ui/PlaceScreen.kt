@@ -126,7 +126,9 @@ fun PlaceScreen(
     val previewing = previewSaved != null
     val state by session.state.collectAsState()
     val scope = rememberCoroutineScope()
-    var taskId by remember { mutableStateOf(firstTaskId) }
+    // The place, question and answers on screen survive recreation (rotation, dark mode, font size):
+    // people tilt their phones mid-answer (Ada, #36). The answers are replayed into the new controller.
+    var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
     var showPutOnMap by remember { mutableStateOf(false) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
@@ -134,8 +136,10 @@ fun PlaceScreen(
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
-    var step by remember { mutableIntStateOf(0) }
-    var notSure by remember { mutableStateOf(emptySet<String>()) }
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var notSure by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var answers by rememberSaveable { mutableStateOf(HashMap<String, String>()) }
+    var replayed by remember { mutableStateOf(false) }
     var counted by remember { mutableStateOf(false) }
     var showProblems by remember { mutableStateOf(false) }
     // "It's moved": picking the spot on the map, then the report waiting for Done.
@@ -181,11 +185,20 @@ fun PlaceScreen(
         } else null
         step = 0
         notSure = emptySet()
+        answers = HashMap()
         resetReport()
         controller.load(TaskId(taskId))
     }
     val c = controller
     val screen by c.state.collectAsState()
+    // After recreation: put the saved answers back once this place's questions are on screen.
+    LaunchedEffect(c, screen) {
+        val answering = screen as? TaskScreen.Answering ?: return@LaunchedEffect
+        if (replayed || answering.task.id.value != taskId) return@LaunchedEffect
+        replayed = true
+        answers.forEach { (q, o) -> c.select(q, o) }
+        step = step.coerceAtMost(answering.form.work.questions.size)
+    }
     // A preview save counts only in this visit's preview (§4.4).
     LaunchedEffect(c, screen) {
         (screen as? TaskScreen.PreviewSaved)?.let { previewSaved?.add(it.task.id.value) }
@@ -220,6 +233,7 @@ fun PlaceScreen(
         inFrame = 0
         step = 0
         notSure = emptySet()
+        answers = HashMap()
         resetReport()
         controller = newController(session, scope, noun, previewing)
         controller.load(TaskId(place.id))
@@ -375,6 +389,7 @@ fun PlaceScreen(
                                     onAnswer = { optionId ->
                                         val id = questions[step].id
                                         c.select(id, optionId)
+                                        answers = HashMap(answers).apply { if (optionId == null) remove(id) else put(id, optionId) }
                                         notSure = if (optionId == null) notSure + id else notSure - id
                                         step += 1
                                     },
