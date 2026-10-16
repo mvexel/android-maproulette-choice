@@ -49,7 +49,7 @@ def main():
         after = False
         for n in nodes:
             t = n.get("text", "")
-            if re.match(r"Question \d of \d", t):
+            if re.match(r"Question \d+ of \d+", t):
                 after = True
                 continue
             if (after and n.get("class", "").endswith("TextView") and t and not t.endswith("?")
