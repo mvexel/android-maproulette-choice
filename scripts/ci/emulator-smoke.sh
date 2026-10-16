@@ -75,6 +75,20 @@ grant() {
 }
 launch() { adb shell pm clear $PKG >/dev/null; [ "${2:-}" = grant ] && grant; adb shell am start -n $ACT --es demo "$1" >/dev/null; }
 
+# Close the welcome dialog: tap "Let's go" and check it went; the first tap can land before
+# the dialog takes input. $1 is a dump name that already holds the dialog.
+lets_go() {
+  local f=$1
+  for _ in 1 2 3; do
+    tap "$(ui "$OUT/$f.xml" exact "Let's go")"
+    sleep 2
+    dump _lg
+    grep -q "text=\"Let's go\"" "$OUT/_lg.xml" || return 0
+    f=_lg
+  done
+  log "Let's go still showing after 3 taps"
+}
+
 answer_place() {   # answers every question with its first option, then Done
   for _ in 1 2 3 4; do
     dump _q
@@ -106,11 +120,11 @@ for spec in "trees 40.751643 -111.902912" "crossings 40.7563224 -111.9026154" "b
   launch "$C" grant
   if ! waitfor "Let's go|The tally"; then fail "$C: welcome or campaign screen didn't appear"; shot "$C-stuck"; continue; fi
   shot "$C-welcome"
-  tap "$(ui "$OUT/$C-welcome.xml" find "Let's go")"
+  lets_go "$C-welcome"
   for round in 1 2; do
     if ! waitfor "Nearest "; then fail "$C round $round: no Nearest button (fixes=$(fixes))"; shot "$C-nonearest$round"; break; fi
     shot "$C-campaign$round"
-    tap "$(ui "$OUT/$C-campaign$round.xml" find "Nearest ")"
+    tap "$(ui "$OUT/$C-campaign$round.xml" starts "Nearest ")"
     if ! waitfor "Question [0-9]+ of"; then fail "$C round $round: task didn't open"; shot "$C-notask$round"; break; fi
     answer_place
     if ! waitfor "Saved"; then fail "$C round $round: no 'Saved' confirmation"; shot "$C-notsaved$round"; break; fi
@@ -127,7 +141,7 @@ done
 feed_start 40.7579552 -111.9059517
 launch buildings
 waitfor "Let's go|Allow Street Tally" || fail "fresh launch: no welcome screen"
-dump _f; tap "$(ui "$OUT/_f.xml" find "Let's go")"
+dump _f; lets_go _f
 sleep 3
 if waitfor "Allow Street Tally|While using the app"; then
   shot fresh-prompt; tap "$(ui "$OUT/fresh-prompt.xml" exact "While using the app")"; how=prompt

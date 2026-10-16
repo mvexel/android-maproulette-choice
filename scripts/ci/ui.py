@@ -3,6 +3,7 @@
   ui.py dump.xml find "<text>"   centre "x y" of the first node whose text or content-desc contains <text> (case-insensitive)
   ui.py dump.xml option          centre of the first answer option after "Question N of M"
   ui.py dump.xml exact "<text>"  centre of the first node whose text is exactly <text>
+  ui.py dump.xml starts "<text>" centre of the first node whose text starts with <text> (case-sensitive)
   ui.py dump.xml texts           every node with text or content-desc, for the log
 """
 import re
@@ -37,6 +38,11 @@ def main():
     elif cmd == "exact":
         for n in nodes:
             if n.get("text", "") == sys.argv[3] and bounds(n):
+                print(centre(n))
+                return
+    elif cmd == "starts":
+        for n in nodes:
+            if n.get("text", "").startswith(sys.argv[3]) and bounds(n):
                 print(centre(n))
                 return
     elif cmd == "option":
