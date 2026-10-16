@@ -21,7 +21,11 @@ FAILS=0
 FEEDER=
 
 log() { echo "[smoke] $*"; }
-fail() { echo "[smoke] FAIL: $*"; FAILS=$((FAILS + 1)); }
+# On a failure, also print what the screen showed, so the job log says why without the artifact.
+fail() {
+  echo "[smoke] FAIL: $*"; FAILS=$((FAILS + 1))
+  dump _fail; python3 "$HERE/ui.py" "$OUT/_fail.xml" texts | sed 's/^/[smoke]   screen: /' | head -40
+}
 
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1; }
 shot() { adb exec-out screencap -p >"$OUT/$1.png"; dump "$1"; }
