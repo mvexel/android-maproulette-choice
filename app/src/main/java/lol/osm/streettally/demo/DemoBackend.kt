@@ -25,8 +25,8 @@ import org.maproulette.sdk.Transport
  * `-demoCrossings` and `-demoBuildings`. Nothing goes over the network: every request is answered
  * here, guest answers are kept in memory ([pending]) and anything else is a 404.
  *
- * Campaign [CAMPAIGN]; the file's features are tasks 1001 onwards in file order, named after their
- * OSM element (`node/<id>`, `way/<id>`). [surveys] maps a demo name (trees, crossings, buildings) to
+ * Campaign [campaignId] (its own per demo name, [IDS]); the file's features are tasks 1001 onwards
+ * in file order, named after their OSM element (`node/<id>`, `way/<id>`). [surveys] maps a demo name (trees, crossings, buildings) to
  * its file; [use] switches campaign and starts afresh. In trees, 1090 and 1094 are checked and
  * another guest holds 1095 with a report, so the cluster around 1092 shows every neighbour dot.
  */
@@ -85,6 +85,9 @@ class DemoBackend(
         return true
     }
 
+    /** The served campaign's id: each demo campaign has its own, so its day count and tally are its own. */
+    val campaignId: Long get() = IDS[name] ?: CAMPAIGN
+
     private val file get() = campaign.file
     private val challenge get() = campaign.challenge
     private val trees get() = campaign.trees
@@ -102,6 +105,11 @@ class DemoBackend(
         val path = uri.path
         val query = uri.rawQuery.orEmpty().split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }
         val api = path.removePrefix("/api/v2/")
+        // The app reopens the last campaign by id after a relaunch, when trees is served again.
+        if (api.startsWith("challenge/")) {
+            val id = api.removePrefix("challenge/").substringBefore('/').toLongOrNull()
+            IDS.entries.firstOrNull { it.value == id && it.key in surveys && it.key != name }?.let { use(it.key) }
+        }
         return when {
             path == "/oauth/mobile/guest" && request.method == HttpMethod.POST ->
                 json(201, """{"guestId":"demo-guest","guestSecret":"demo-secret-demo-secret"}""")
@@ -110,9 +118,13 @@ class DemoBackend(
             api == "mobile-guest/me" -> json(200,
                 """{"guestId":"demo-guest","state":"active","email":"none","pending":${pending.size},"published":0,""" +
                     """"expiresAt":"2099-01-01T00:00:00Z"}""")
-            api == "challenge/$CAMPAIGN" -> json(200, campaign().toString())
+            api == "mobile-guest" && request.method == HttpMethod.DELETE -> {
+                pending.clear()
+                HttpResponse(204, body = "")
+            }
+            api == "challenge/$campaignId" -> json(200, campaign().toString())
             api == "challenges/extendedFind" -> json(200, if (query["page"].orEmpty() in setOf("", "0")) "[${campaign(tagged = true)}]" else "[]")
-            api == "challenge/$CAMPAIGN/tasks" -> json(200, page(trees, query).joinToString(",", "[", "]") { task(it).toString() })
+            api == "challenge/$campaignId/tasks" -> json(200, page(trees, query).joinToString(",", "[", "]") { task(it).toString() })
             api.startsWith("tasks/box/") -> {
                 val open = trees.filter { status[it.id] == 0 }
                 json(200, page(open, query).joinToString(",", """{"total":${open.size},"tasks":[""", "]}") { summary(it) })
@@ -123,7 +135,7 @@ class DemoBackend(
                     rest == "/choice/check" -> json(200, """{"eligible":true,"deleteAllowed":false}""")
                     rest == "/choice/pending" && request.method == HttpMethod.POST -> {
                         pending[tree.id] = request.body.orEmpty()
-                        json(200, """{"taskId":${tree.id},"challengeId":$CAMPAIGN,"state":"pending","answeredAt":"2026-10-13T12:00:00Z"}""")
+                        json(200, """{"taskId":${tree.id},"challengeId":$campaignId,"state":"pending","answeredAt":"2026-10-13T12:00:00Z"}""")
                     }
                     else -> null
                 }
@@ -145,7 +157,7 @@ class DemoBackend(
     }
 
     private fun campaign(tagged: Boolean = false) = buildJsonObject {
-        put("id", CAMPAIGN)
+        put("id", campaignId)
         put("parent", 1)
         put("name", challenge["name"]!!)
         put("description", challenge["description"]!!)
@@ -159,7 +171,7 @@ class DemoBackend(
 
     private fun task(tree: Tree) = buildJsonObject {
         put("id", tree.id)
-        put("parent", CAMPAIGN)
+        put("parent", campaignId)
         put("name", tree.element)
         put("status", status[tree.id] ?: 0)
         put("geometries", Json.parseToJsonElement(
@@ -195,7 +207,7 @@ class DemoBackend(
     private fun summary(tree: Tree): String {
         val mine = pending[tree.id]?.let { if (it.contains("\"outcome\"")) "report" else "answer" }
         val kind = mine ?: othersHolds[tree.id]
-        return """{"id":${tree.id},"parentId":$CAMPAIGN,"title":"${tree.element}","status":${status[tree.id]},""" +
+        return """{"id":${tree.id},"parentId":$campaignId,"title":"${tree.element}","status":${status[tree.id]},""" +
             """"point":{"lat":${tree.lat},"lng":${tree.lon}},"pending":${kind != null},""" +
             """"heldKind":${kind?.let { "\"$it\"" } ?: "null"}}"""
     }
@@ -203,7 +215,9 @@ class DemoBackend(
     private fun json(status: Int, body: String) = HttpResponse(status, body = body)
 
     companion object {
+        /** The trees campaign's id; crossings and buildings have their own ([IDS]). */
         const val CAMPAIGN = 3L
+        val IDS = mapOf(TREES to CAMPAIGN, "crossings" to 4L, "buildings" to 5L)
         const val FIRST_TASK = 1001L
         /** The demo build's backend origin. Never resolved: requests stop at [DemoBackend]. */
         const val ORIGIN = "https://demo.invalid"
