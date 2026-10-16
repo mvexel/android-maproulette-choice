@@ -69,6 +69,7 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
                     rest == "" -> json(200, task(door))
                     rest == "/choice/check" -> json(200, """{"eligible":true,"deleteAllowed":false}""")
                     rest == "/choice/pending" && request.method == HttpMethod.POST -> if (!door.live) {
+                        answerPosts += door.id
                         json(422, """{"error":"unsupported_task"}""")
                     } else {
                         answerPosts += door.id
