@@ -41,7 +41,7 @@ import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.GuestStatus
 
 /** "Your answers are saved": what happens to a guest's answers (design/handback-copy.md §1).
- * Shown once after the first saved answer and from the campaign's saved-answers banner. */
+ * Opened from the campaign's saved-answers banner, never by itself after a save. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PutOnMapSheet(session: AppSession, noun: Noun, onSignIn: () -> Unit, onClose: () -> Unit) {
