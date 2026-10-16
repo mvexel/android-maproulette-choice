@@ -165,9 +165,11 @@ class MainActivity : ComponentActivity() {
 
     /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es demo crossings
      * --es task 1012` opens that demo campaign (trees, the default; crossings; buildings) at that place
-     * (a task id, 1001 onwards, or the feature's OSM id). */
+     * (a task id, 1001 onwards, or the feature's OSM id). `--ei onmap 1` has a local mapper already put
+     * that many of the guest's answers on the map. */
     private fun demoFrom(intent: Intent?) {
         if (!BuildConfig.DEMO || intent == null) return
+        if (intent.hasExtra(DEMO_ON_MAP)) (application as StreetTallyApp).demo?.onMap = intent.getIntExtra(DEMO_ON_MAP, 0).coerceAtLeast(0)
         val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
         // A task id, or the feature's OSM element: node/<id>, way/<id> or the bare id.
         val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
@@ -185,3 +187,4 @@ class MainActivity : ComponentActivity() {
 
 private const val DEMO_TASK = "task"
 private const val DEMO_CAMPAIGN = "demo"
+private const val DEMO_ON_MAP = "onmap"

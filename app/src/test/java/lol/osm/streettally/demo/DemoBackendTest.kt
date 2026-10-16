@@ -85,6 +85,15 @@ class DemoBackendTest {
         assertEquals(ChallengeAnswerCounts(1, 0), session.guest.value.status?.answersHere(DemoBackend.CAMPAIGN))
     }
 
+    @Test fun theOnMapFlagPutsAnswersOnTheMap() = runTest {
+        backend.onMap = 1
+        val session = AppSession(config, InMemoryCredentialStore(), backend)
+        session.restore()
+        assertTrue(session.ensureGuest())
+        session.refreshGuestStatus()
+        assertEquals(ChallengeAnswerCounts(0, 1), session.guest.value.status?.answersHere(DemoBackend.CAMPAIGN))
+    }
+
     @Test fun deleteMyDataClearsTheSavedAnswers() = runTest {
         backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}"""))
         val response = backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/mobile-guest", emptyMap(), HttpMethod.DELETE, null))
