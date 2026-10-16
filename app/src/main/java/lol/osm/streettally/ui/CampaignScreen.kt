@@ -204,6 +204,9 @@ fun CampaignScreen(
             val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
+            // With the places, not after the reports below: the welcome never pops up over a tally
+            // already showing.
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
             serverReports = if (preview || !session.config.serverReports) emptyMap() else try {
                 reportSource.reports(session.client(), ChallengeId(campaignId))
             } catch (e: CancellationException) {
@@ -216,7 +219,6 @@ fun CampaignScreen(
                 preview -> Wording.previewNoPlaces(loaded.noun)
                 else -> "Nothing to check in this campaign yet."
             }
-            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
