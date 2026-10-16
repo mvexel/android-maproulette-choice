@@ -173,6 +173,9 @@ object Wording {
     /** A guest's answers: saved, not on the map yet (deferred sign-up copy, never "on the map"). */
     fun savedForLater(todayCount: Int, noun: Noun): String = "Saved. That's ${noun.count(todayCount)} today."
     const val SAVED_FOR_LATER_NOTE = "Saved and counted. Local mappers check answers and add them to the map."
+    /** A guest's answers that couldn't be sent yet: kept on the phone, sent when it's back online. Draft
+     * copy until Iris's (BACKLOG O1). */
+    const val SAVED_ON_PHONE = "Saved on this phone. It sends by itself when you're back online."
     fun pendingLimit(noun: Noun): String =
         "That's as many ${noun.many} as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */

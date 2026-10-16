@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         saved.SaveableStateProvider("place-${open.taskId}") { PlaceScreen(
                             session = app.session,
                             checked = app.checked,
+                            outbox = app.outbox,
                             campaignId = id,
                             firstTaskId = open.taskId,
                             candidates = open.candidates,
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
                             session = app.session,
                             prefs = app.prefs,
                             checkedLog = app.checked,
+                            outbox = app.outbox,
                             campaignId = id,
                             onBack = { exitPreview() },
                             onPlace = { task, places, origin ->
@@ -161,15 +163,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         BrowserSignIn.onHostResumed()
+        (application as StreetTallyApp).sendQueued()
     }
 
     /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es demo crossings
      * --es task 1012` opens that demo campaign (trees, the default; crossings; buildings) at that place
      * (a task id, 1001 onwards, or the feature's OSM id). `--ei onmap 1` has a local mapper already put
-     * that many of the guest's answers on the map. */
+     * that many of the guest's answers on the map. `--ez offline true` makes saving an answer fail as
+     * if there were no connection, until `--ez offline false`, which also sends what's waiting. */
     private fun demoFrom(intent: Intent?) {
         if (!BuildConfig.DEMO || intent == null) return
         if (intent.hasExtra(DEMO_ON_MAP)) (application as StreetTallyApp).demo?.onMap = intent.getIntExtra(DEMO_ON_MAP, 0).coerceAtLeast(0)
+        if (intent.hasExtra(DEMO_OFFLINE)) (application as StreetTallyApp).demo?.offline = intent.getBooleanExtra(DEMO_OFFLINE, false)
         val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
         // A task id, or the feature's OSM element: node/<id>, way/<id> or the bare id.
         val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
@@ -188,3 +193,4 @@ class MainActivity : ComponentActivity() {
 private const val DEMO_TASK = "task"
 private const val DEMO_CAMPAIGN = "demo"
 private const val DEMO_ON_MAP = "onmap"
+private const val DEMO_OFFLINE = "offline"

@@ -79,6 +79,7 @@ import lol.osm.streettally.campaign.answersHere
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
+import lol.osm.streettally.task.GuestOutbox
 import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.ErrorKind
@@ -92,6 +93,8 @@ fun CampaignScreen(
     session: AppSession,
     prefs: CampaignPrefs,
     checkedLog: CheckedLog,
+    /** A guest's answers waiting on this phone: their places count as saved here. */
+    outbox: GuestOutbox? = null,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -231,7 +234,11 @@ fun CampaignScreen(
     val current = places
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
-    val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
+    // ...and so do a guest's answers still waiting on this phone, after a restart too (a guest's only:
+    // once signed in, the guest token can't send them).
+    val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
+    val waiting = if (state.guest) queued.filter { it.campaignId == campaignId }.map { it.taskId } else emptyList()
+    val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet() + waiting
     // Reported here or by someone else: either way the place needs another look and isn't offered.
     // A guest's saved report holding a place (T-002) counts the same way.
     val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys + held.reports

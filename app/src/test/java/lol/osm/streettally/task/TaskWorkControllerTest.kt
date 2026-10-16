@@ -123,8 +123,10 @@ private class FakeOps(val allowElementDeletion: Boolean = false) : TaskOps {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TaskWorkControllerTest {
-    private fun TestScope.controller(ops: FakeOps, writer: Writer? = Writer(ME, canEditOsm = true)): TaskWorkController =
-        TaskWorkController(ops, writer, this, StandardTestDispatcher(testScheduler)).also {
+    private fun TestScope.controller(
+        ops: FakeOps, writer: Writer? = Writer(ME, canEditOsm = true), outbox: GuestOutbox? = null,
+    ): TaskWorkController =
+        TaskWorkController(ops, writer, this, StandardTestDispatcher(testScheduler), outbox = outbox).also {
             it.load(ID)
             advanceUntilIdle()
         }
@@ -739,5 +741,51 @@ class TaskWorkControllerTest {
         c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
         advanceUntilIdle()
         assertTrue(c.state.value is TaskScreen.GuestSignIn)
+    }
+
+    private class MemoryStore(var value: String? = null) : GuestOutbox.Store {
+        override fun read() = value
+        override fun write(value: String?) { this.value = value }
+    }
+
+    @Test
+    fun guestAnswerWithNoConnectionWaitsOnThePhone() = runTest {
+        // Before the server saw it, and after it stored it but the reply was lost (BACKLOG O1).
+        for (error in listOf(MapRouletteException(ErrorKind.NETWORK), MapRouletteException(ErrorKind.PROTOCOL, 200, problem = WriteProblem.OutcomeUnknown))) {
+            val outbox = GuestOutbox(MemoryStore())
+            val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+            ops.pending = { throw error }
+            val c = controller(ops, writer = Writer.GUEST, outbox = outbox)
+            c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+            advanceUntilIdle()
+            val done = c.state.value as TaskScreen.Done
+            assertTrue(done.savedForLater && done.queued)
+            assertEquals(listOf(GuestOutbox.Entry(ID.value, CHALLENGE.id.value, ChoiceSubmission.Answers(mapOf("backrest" to "no")))), outbox.entries.value)
+        }
+    }
+
+    @Test
+    fun aGuestAnswerThatGetsThroughSendsTheWaitingOnes() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        outbox.add(GuestOutbox.Entry(41, CHALLENGE.id.value, ChoiceSubmission.Answers(mapOf("backrest" to "yes"))))
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) }, { task(cooperativeWork = GUEST_BENCH).copy(id = TaskId(41)) })
+        val c = controller(ops, writer = Writer.GUEST, outbox = outbox)
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertFalse((c.state.value as TaskScreen.Done).queued)
+        assertEquals(listOf("get", "challenge", "check", "pending", "get", "pending"), ops.calls)
+        assertTrue(outbox.entries.value.isEmpty())
+    }
+
+    @Test
+    fun otherGuestFailuresStayOnTheScreenWithAnOutbox() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.pending = { throw MapRouletteException(ErrorKind.RATE_LIMIT, 429, reason = "pending_limit") }
+        val c = controller(ops, writer = Writer.GUEST, outbox = outbox)
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertTrue(c.answering.notice!!.startsWith("That's as many places"))
+        assertTrue(outbox.entries.value.isEmpty())
     }
 }

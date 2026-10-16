@@ -153,11 +153,12 @@ sealed interface TaskScreen {
     data class Submitting(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** [task] is the fresh read after the write, or the pre-write task when [readFailed].
      * [byOther]: a check found someone else's result; this user's submission was not recorded.
-     * [savedForLater]: a guest's answers, saved on the server and not on the map yet; the task is unchanged. */
+     * [savedForLater]: a guest's answers, saved on the server and not on the map yet; the task is unchanged.
+     * [queued]: a guest's answers that couldn't be sent yet, kept on this phone ([GuestOutbox]). */
     data class Done(
         val task: Task, val challenge: Challenge, val action: ChoiceAction, val me: Long,
         val changesetId: Long?, val readFailed: Boolean, val byOther: Boolean = false, val checking: Boolean = false,
-        val savedForLater: Boolean = false,
+        val savedForLater: Boolean = false, val queued: Boolean = false,
     ) : TaskScreen
     /** A skip leaves the status unchanged. [uncertain]: the outcome is unknown and it was not resent. */
     data class Skipped(val task: Task, val challenge: Challenge, val uncertain: Boolean) : TaskScreen
@@ -200,6 +201,8 @@ class TaskWorkController(
     /** Campaign preview mode (design/preview-mode.md): every question is asked, with no eligibility
      * check, and nothing is ever sent. There is no writer and the ops refuse writes. */
     val previewing: Boolean = false,
+    /** Where a guest's answers wait when they can't be sent; null keeps them on the screen to retry. */
+    private val outbox: GuestOutbox? = null,
 ) {
     private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
     private val writer: Writer? = if (previewing) null else writer
@@ -412,15 +415,26 @@ class TaskWorkController(
             ensureActive()
             mutableState.value = outcome.fold(
                 onSuccess = {
+                    // The connection is back: anything waiting on this phone goes now too.
+                    if (outbox != null) scope.launch(io) { outbox.send(ops) }
                     TaskScreen.Done(task, challenge, action, me = 0, changesetId = null, readFailed = false, savedForLater = true)
                 },
-                onFailure = { error -> failedForLater(task, challenge, form, action, error as Exception) },
+                onFailure = { error -> failedForLater(task, challenge, form, action, submission, error as Exception) },
             )
         }
     }
 
-    private suspend fun failedForLater(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction, error: Exception): TaskScreen {
+    private suspend fun failedForLater(
+        task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction, submission: ChoiceSubmission, error: Exception,
+    ): TaskScreen {
         fun answering(notice: String) = TaskScreen.Answering(task, challenge, form, notice)
+        // No connection, or the reply was lost after the server may have stored it: keep it on the
+        // phone and send the same request later, rather than say "Couldn't connect" (BACKLOG O1).
+        val unsent = error is MapRouletteException && (error.problem == WriteProblem.OutcomeUnknown || error.kind == ErrorKind.NETWORK)
+        if (outbox != null && unsent) {
+            outbox.add(GuestOutbox.Entry(task.id.value, task.challengeId.value, submission))
+            return TaskScreen.Done(task, challenge, action, me = 0, changesetId = null, readFailed = false, savedForLater = true, queued = true)
+        }
         if (error !is MapRouletteException) return answering("Couldn't save your answers. Try again.")
         if (error.reason == "task_completed") return notAccepted(task, challenge)
         if (error.problem == ChoiceProblem.UnsupportedTask) return TaskScreen.GuestSignIn(task, challenge)
