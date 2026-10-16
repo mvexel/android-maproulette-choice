@@ -104,18 +104,20 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
 
     init {
         MapLibre.getInstance(context)
+        val dark = MapStyle.isDark(context)
         view = MapView(context)
         view.onCreate(null)
         view.getMapAsync { map ->
             this.map = map
             map.uiSettings.isRotateGesturesEnabled = false
-            map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
+            map.setStyle(Style.Builder().fromUri(MapStyle.url(styleUrl, dark))) { style ->
+                if (dark) MapStyle.brightenLabels(style)
                 // Under the pins: the dashed line from a moved place to its reported spot, then the dot.
                 val moved = GeoJsonSource(MOVED_SOURCE)
                 style.addSource(moved)
                 style.addLayer(
                     LineLayer(MOVED_LINES, MOVED_SOURCE).withProperties(
-                        PropertyFactory.lineColor(MOVED_GRAY),
+                        PropertyFactory.lineColor(if (dark) MapStyle.LIGHT_GRAY else MOVED_GRAY),
                         PropertyFactory.lineWidth(1.5f),
                         PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
                     ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("LineString"))) },
@@ -132,7 +134,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 val source = GeoJsonSource(SOURCE)
                 style.addSource(source)
                 val density = view.resources.displayMetrics.density
-                Pin.entries.forEach { style.addImage(it.id, it.bitmap(density)) }
+                Pin.entries.forEach { style.addImage(it.id, it.bitmap(density, dark)) }
                 style.addLayer(
                     SymbolLayer(LAYER, SOURCE).withProperties(
                         PropertyFactory.iconImage(Expression.get("pin")),

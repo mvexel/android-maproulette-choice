@@ -21,7 +21,9 @@ internal enum class Pin(val id: String) {
     LOOK("pin-look"),
     ;
 
-    fun bitmap(density: Float): Bitmap {
+    /** [dark]: for the dark map, where navy vanishes ("Dark map" 2): the to-check ring turns white, and
+     * the needs-another-look diamond gets a white halo. */
+    fun bitmap(density: Float, dark: Boolean = false): Bitmap {
         val size = (SIZE * density).toInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -29,7 +31,14 @@ internal enum class Pin(val id: String) {
         when (this) {
             TODO -> {
                 canvas.drawCircle(14f, 14f, 10.5f, fill(AMBER))
-                canvas.drawCircle(14f, 14f, 10.5f, stroke(NAVY, 3f))
+                if (dark) {
+                    // The 2 dp white ring wholly outside the disc, edged in black so it still shows on
+                    // the close-up's white building outline and crossing bar (Iris, #37).
+                    canvas.drawCircle(14f, 14f, 13f, stroke(BLACK, 1f))
+                    canvas.drawCircle(14f, 14f, 11.5f, stroke(WHITE, 2f))
+                } else {
+                    canvas.drawCircle(14f, 14f, 10.5f, stroke(NAVY, 3f))
+                }
             }
             DONE -> {
                 canvas.drawCircle(14f, 14f, 12f, fill(GREEN))
@@ -46,6 +55,7 @@ internal enum class Pin(val id: String) {
                 canvas.save()
                 canvas.rotate(45f, 14f, 14f)
                 val diamond = RectF(6f, 6f, 22f, 22f)
+                if (dark) canvas.drawRoundRect(diamond, 2.6f, 2.6f, stroke(WHITE, 6.4f))
                 canvas.drawRoundRect(diamond, 2.6f, 2.6f, fill(AMBER))
                 canvas.drawRoundRect(diamond, 2.6f, 2.6f, stroke(NAVY, 2.4f))
                 canvas.restore()
@@ -62,6 +72,7 @@ internal enum class Pin(val id: String) {
         val NAVY = Color.parseColor("#14213D")
         val GREEN = Color.parseColor("#1F7A4D")
         val WHITE = Color.parseColor("#FFFFFF")
+        val BLACK = Color.parseColor("#000000")
         const val TICK = "M8.6 14.3 L12.4 18 L19.6 10.4"
         const val QUESTION = "M11.4 11.6 a2.7 2.7 0 1 1 3.9 2.4 c-0.9 0.45 -1.3 0.9 -1.3 1.9"
 
