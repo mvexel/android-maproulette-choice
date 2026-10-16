@@ -255,7 +255,9 @@ fun CampaignScreen(
     val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
         .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
     val tally = remember(current, held, justDone, reported, state.guest, waiting) {
-        CampaignProgress(current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported, waiting = waiting)
+        CampaignProgress(
+            current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported, waiting = waiting, offered = held.offered,
+        )
     }
     val shown = tally.shown
     val done = tally.done
@@ -263,9 +265,9 @@ fun CampaignScreen(
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
     val unsent = Places.sorted(shown.filter { it.id in tally.waiting }, origin)
-    // Held places are not offered by "Next nearest" either.
+    // Held and gone places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
-        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids }, reports = serverReports), origin) }
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids && t.id !in tally.gone }, reports = serverReports), origin) }
     }
 
     LaunchedEffect(current, openTask) {

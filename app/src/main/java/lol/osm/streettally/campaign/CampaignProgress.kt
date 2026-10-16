@@ -17,7 +17,7 @@ import org.maproulette.sdk.TaskSummary
  * §3.2): shown and counted as checked, never offered. Only the phone that saved one shows it as
  * saved, not on the map yet ([pending]); everywhere else it is plainly checked (T-001). */
 class CampaignProgress(
-    tasks: List<LocatedTask>,
+    all: List<LocatedTask>,
     held: Set<Long>,
     justDone: Set<Long> = emptySet(),
     /** Answering as a guest: [justDone] places are saved, not on the map yet. */
@@ -26,7 +26,16 @@ class CampaignProgress(
     reported: Set<Long> = emptySet(),
     /** A guest's answers still on this phone, not sent yet (offline-copy.md). */
     waiting: Set<Long> = emptySet(),
+    /** Every place the bounds search offers or holds ([Held.offered]); null when unknown. */
+    offered: Set<Long>? = null,
 ) {
+    /** Open by its own status but gone from the bounds search (stale, or its element deleted): left
+     * out of the tally and the map like a place nobody can answer (total = offered + checked). */
+    val gone: Set<Long> = if (offered == null) emptySet() else all.filter {
+        it.isOpen && it.position != null && it.id !in offered && it.id !in justDone && it.id !in waiting
+    }.map { it.id }.toSet()
+    private val tasks = all.filter { it.id !in gone }
+
     /** Answered here but still on this phone: shown, but not counted until the server has it, and
      * not offered. A place the server has since closed is plainly done. */
     val waiting: Set<Long> = tasks.filter { !it.isDone && it.id in waiting }.map { it.id }.toSet()
@@ -57,7 +66,13 @@ class CampaignProgress(
 /** Open tasks a guest's saved submission holds: [ids] all of them, [reports] those held by a report
  * (no door, moved, any status-6 outcome), which need another look rather than count as checked
  * (T-002). [reports] is empty from a backend that doesn't say what holds a task. */
-data class Held(val ids: Set<Long> = emptySet(), val reports: Set<Long> = emptySet())
+data class Held(
+    val ids: Set<Long> = emptySet(),
+    val reports: Set<Long> = emptySet(),
+    /** Every row of the `includePending` search, held or not: the places still offered or held. Null
+     * when unknown (an older backend, a failed or short read). */
+    val offered: Set<Long>? = null,
+)
 
 /** Which open tasks a guest's saved answer or report holds until it goes on the map or expires. */
 object HeldTasks {
@@ -82,7 +97,11 @@ object HeldTasks {
     fun fromFlags(rows: List<TaskSummary>): Held? {
         if (rows.isEmpty() || rows.any { it.pending == null }) return null
         val held = rows.filter { it.pending == true }
-        return Held(held.map { it.id.value }.toSet(), held.filter { it.heldKind == HeldKind.REPORT }.map { it.id.value }.toSet())
+        return Held(
+            held.map { it.id.value }.toSet(),
+            held.filter { it.heldKind == HeldKind.REPORT }.map { it.id.value }.toSet(),
+            rows.map { it.id.value }.toSet(),
+        )
     }
 
     /** The bounds search with `includePending` says so per task (backend #16). A backend without it

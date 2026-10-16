@@ -137,7 +137,7 @@ class DemoBackend(
             api == "challenges/extendedFind" -> json(200, if (query["page"].orEmpty() in setOf("", "0")) "[${campaign(tagged = true)}]" else "[]")
             api == "challenge/$campaignId/tasks" -> json(200, page(trees, query).joinToString(",", "[", "]") { task(it).toString() })
             api.startsWith("tasks/box/") -> {
-                val open = trees.filter { status[it.id] == 0 }
+                val open = trees.filter { status[it.id] in BOX_STATUSES }
                 json(200, page(open, query).joinToString(",", """{"total":${open.size},"tasks":[""", "]}") { summary(it) })
             }
             else -> tree(api)?.let { (tree, rest) ->
@@ -235,6 +235,8 @@ class DemoBackend(
         /** The bundled survey file, in the demo flavor's assets. */
         const val ASSET = "demo/woodbine-trees.json"
         const val TREES = "trees"
+        /** The bounds search's statuses (SDK TaskFilter default): to check, skipped, needs another look. */
+        private val BOX_STATUSES = setOf(0, 3, 6)
         /** The demo campaigns, by the name the `demo` launch extra takes, and their bundled files. */
         val ASSETS = linkedMapOf(TREES to ASSET, "crossings" to "demo/woodbine-crossings.json", "buildings" to "demo/woodbine-buildings.json")
     }
