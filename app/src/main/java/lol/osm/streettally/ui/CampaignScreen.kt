@@ -42,11 +42,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -118,7 +120,9 @@ fun CampaignScreen(
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
     var showList by rememberSaveable { mutableStateOf(false) }
-    var origin by remember { mutableStateOf<LatLon?>(null) }
+    // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
+    // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
+    var origin by rememberSaveable(saver = OriginSaver) { mutableStateOf<LatLon?>(null) }
     var locationPermitted by remember { mutableStateOf(Locator.permitted(context)) }
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf(if (preview) PreviewPhase.OPENING else null) }
@@ -566,3 +570,8 @@ private fun PlaceRow(
     }
 }
 
+/** The last fix, as a pair of doubles, so it survives leaving for a place and coming back. */
+private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
+    save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
+    restore = { mutableStateOf(LatLon(it[0], it[1])) },
+)
