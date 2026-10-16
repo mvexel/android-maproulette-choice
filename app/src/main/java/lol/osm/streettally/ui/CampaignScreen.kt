@@ -268,7 +268,10 @@ fun CampaignScreen(
     val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
     val limitReached = outbox?.limitReached?.collectAsState()?.value == true
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
-    val waiting = if (state.guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
+    // A phone that answered in a dead spot before it could register is a guest too, as far as its
+    // waiting answers go (Tess, #45): they register it when they send.
+    val guest = state.guest || (!preview && queued.isNotEmpty() && session.canAnswerAsGuest)
+    val waiting = if (guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
     // Some sent: reload, so a place sent after a restart shows as saved (the held set says so).
     var lastWaiting by remember { mutableStateOf(waiting) }
@@ -282,9 +285,9 @@ fun CampaignScreen(
     // Where a moved place was reported to be: a gray dot on the map, joined to its pin.
     val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
         .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
-    val tally = remember(current, held, justDone, reported, state.guest, waiting) {
+    val tally = remember(current, held, justDone, reported, guest, waiting) {
         CampaignProgress(
-            current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported, waiting = waiting, offered = held.offered,
+            current?.tasks.orEmpty(), held.ids, justDone, guest = guest, reported = reported, waiting = waiting, offered = held.offered,
         )
     }
     val shown = tally.shown
@@ -373,7 +376,7 @@ fun CampaignScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
-                    if (limitReached && state.guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
+                    if (limitReached && guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
                     if (tally.total > 0 && !preview) {
@@ -389,7 +392,7 @@ fun CampaignScreen(
                         val today = checkedLog.today(campaignId)
                         if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                         val saved = guestInfo.status
-                        if (state.guest && (saved != null || tally.waiting.isNotEmpty())) {
+                        if (guest && (saved != null || tally.waiting.isNotEmpty())) {
                             GuestSavedSection(
                                 saved?.answersHere(campaignId) ?: ChallengeAnswerCounts.ZERO, noun,
                                 onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY },
