@@ -171,7 +171,7 @@ internal fun DeleteMyData(session: AppSession, outbox: GuestOutbox? = null) {
         AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text(Wording.DELETE_MY_DATA) },
-            text = { Text(if (waiting) "${Wording.DELETE_MY_DATA_EXPLAINED} ${Wording.DELETE_MY_DATA_WAITING}" else Wording.DELETE_MY_DATA_EXPLAINED) },
+            text = { Text(Wording.deleteMyDataExplained(waiting)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false

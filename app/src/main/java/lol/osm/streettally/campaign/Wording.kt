@@ -220,10 +220,13 @@ object Wording {
     const val DONE_FOR_TODAY = "I'm done for today"
     const val DELETE_MY_DATA = "Delete my data"
     const val DELETE_MY_DATA_EXPLAINED =
-        "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now. " +
-            "Deleting the app doesn't remove them. Use this button instead."
+        "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
+    /** Last in the explainer, after [DELETE_MY_DATA_WAITING] when shown: ends on the action. */
+    const val DELETE_MY_DATA_NOT_BY_UNINSTALL = "Deleting the app doesn't remove them. Use this button instead."
     /** Added to [DELETE_MY_DATA_EXPLAINED] while answers wait on the phone. */
     const val DELETE_MY_DATA_WAITING = "It also removes answers still waiting on this phone."
+    fun deleteMyDataExplained(waiting: Boolean): String =
+        listOfNotNull(DELETE_MY_DATA_EXPLAINED, DELETE_MY_DATA_WAITING.takeIf { waiting }, DELETE_MY_DATA_NOT_BY_UNINSTALL).joinToString(" ")
     const val DELETE_MY_DATA_DONE = "Done. Your saved answers are deleted."
     const val DELETE_MY_DATA_FAILED = "Couldn't delete right now. Check your connection and try again."
     /** A guest whose answers were claimed on the web, now signed in (§1.5). */

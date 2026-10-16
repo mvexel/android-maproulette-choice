@@ -108,7 +108,11 @@ class WordingTest {
             Wording.stillOnPhone(1, stop),
         )
         assertEquals("It also removes answers still waiting on this phone.", Wording.DELETE_MY_DATA_WAITING)
-        assert(Wording.DELETE_MY_DATA_EXPLAINED.endsWith("Deleting the app doesn't remove them. Use this button instead."))
+        assertEquals(
+            "${Wording.DELETE_MY_DATA_EXPLAINED} It also removes answers still waiting on this phone. Deleting the app doesn't remove them. Use this button instead.",
+            Wording.deleteMyDataExplained(waiting = true),
+        )
+        assertEquals("${Wording.DELETE_MY_DATA_EXPLAINED} Deleting the app doesn't remove them. Use this button instead.", Wording.deleteMyDataExplained(false))
         for (text in listOf(Wording.SAVED_ON_PHONE, Wording.WAITING_TO_SEND, Wording.waitingForSignal(2), Wording.stillOnPhone(2, stop), Wording.DELETE_MY_DATA_WAITING)) {
             for (word in listOf("offline", "queue", "sync", "upload", "counted")) assert(word !in text.lowercase()) { text }
         }
