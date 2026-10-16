@@ -38,8 +38,14 @@ waitfor() {
   while [ "$(date +%s)" -le "$deadline" ]; do
     dump _w
     grep -q -E "$1" "$OUT/_w.xml" 2>/dev/null && return 0
-    if grep -q "isn't responding" "$OUT/_w.xml" 2>/dev/null; then
+    if grep -q "Street Tally isn't responding" "$OUT/_w.xml" 2>/dev/null; then
       fail "ANR dialog while waiting for '$1'"; tap "$(ui "$OUT/_w.xml" find "Wait")"
+    elif grep -q "isn't responding" "$OUT/_w.xml" 2>/dev/null; then
+      # Another app's (the launcher's, just after boot): not ours, and it can hide our start. Dismiss
+      # it and bring the app back to the front.
+      log "another app's ANR dialog while waiting for '$1'; dismissed"
+      tap "$(ui "$OUT/_w.xml" find "Wait")"
+      [ -n "$LAST_DEMO" ] && adb shell am start -n $ACT --es demo "$LAST_DEMO" >/dev/null
     fi
     sleep 2
   done
@@ -73,7 +79,8 @@ grant() {
   adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
   adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
 }
-launch() { adb shell pm clear $PKG >/dev/null; [ "${2:-}" = grant ] && grant; adb shell am start -n $ACT --es demo "$1" >/dev/null; }
+LAST_DEMO=
+launch() { LAST_DEMO=$1; adb shell pm clear $PKG >/dev/null; [ "${2:-}" = grant ] && grant; adb shell am start -n $ACT --es demo "$1" >/dev/null; }
 
 # Close the welcome dialog: tap "Let's go" and check it went; the first tap can land before
 # the dialog takes input. $1 is a dump name that already holds the dialog.
