@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -155,7 +157,8 @@ internal fun TaskMap(
             shape = RoundedCornerShape(22.dp),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp,
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                .onGloballyPositioned { holder.clearTop(it.boundsInParent().bottom.toInt()) },
         ) {
             TextButton(onClick = { onAerial(!aerial) }, modifier = Modifier.heightIn(min = 44.dp)) {
                 Text(if (aerial) SHOW_MAP else SHOW_AERIAL)
@@ -489,7 +492,18 @@ private class TaskMapHolder(
         onNeighboursInFrame(shown.orEmpty().count { bounds.contains(LatLng(it.position.lat, it.position.lon)) })
     }
 
-    /** You and the target with 40 dp padding at zoom 17 to 20, or the target alone at 19. */
+    /** How far down the Aerial chip reaches, in px: framing keeps you and the target below it
+     * (at the largest font it covered the end of a crossing bar; Tess, I12). */
+    private var chipBottomPx = 0
+
+    fun clearTop(px: Int) {
+        if (px == chipBottomPx) return
+        chipBottomPx = px
+        if (framedWithYou && !movedByUser) frame()
+    }
+
+    /** You and the target with 40 dp padding (more at the top, under the Aerial chip) at zoom 17
+     * to 20, or the target alone at 19. */
     private fun frame() {
         val map = map ?: return
         // Not laid out yet: fitting the bounds into no space puts the camera far from both. After a
@@ -506,7 +520,8 @@ private class TaskMapHolder(
         }
         val padding = (40 * view.resources.displayMetrics.density).toInt()
         val bounds = LatLngBounds.Builder().apply { points.forEach { include(LatLng(it.lat, it.lon)) } }.build()
-        map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+        val top = maxOf(padding, chipBottomPx + padding / 5)
+        map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding, top, padding, padding))
         val zoom = map.cameraPosition.zoom.coerceIn(WhichOne.MIN_ZOOM, WhichOne.MAX_ZOOM)
         if (zoom != map.cameraPosition.zoom) map.moveCamera(CameraUpdateFactory.zoomTo(zoom))
         Log.d(LOG, "Task map framed you and the place at zoom ${"%.1f".format(zoom)} in ${view.width}x${view.height}")
