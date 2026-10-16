@@ -253,7 +253,7 @@ fun CampaignScreen(
                 return@LaunchedEffect
             }
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
-            if (places == null) status = errorMessage(e)
+            if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
         } finally {
             loading = false
@@ -369,7 +369,7 @@ fun CampaignScreen(
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     keptFrom?.let {
-                        Text(Wording.keptCopy(it, System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall,
+                        Text(Wording.keptCopy(keptTime(context, it)), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
@@ -645,4 +645,14 @@ private fun PlaceRow(
 private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
     save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
     restore = { mutableStateOf(LatLon(it[0], it[1])) },
+)
+
+/** [Wording.keptTime] with the device's own clock and date formats. */
+private fun keptTime(context: android.content.Context, savedAt: Long): String = Wording.keptTime(
+    savedAt, System.currentTimeMillis(), java.time.ZoneId.systemDefault(),
+    clock = { android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it)) },
+    day = {
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "MMMd")
+        java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(it))
+    },
 )

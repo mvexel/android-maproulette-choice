@@ -93,11 +93,19 @@ class WordingTest {
     }
 
     @Test fun keptCopySaysHowOld() {
-        val now = 10L * 24 * 60 * 60_000
-        assertEquals("No signal. Showing this campaign as of just now.", Wording.keptCopy(now - 30_000, now))
-        assertEquals("No signal. Showing this campaign as of 12 min ago.", Wording.keptCopy(now - 12 * 60_000, now))
-        assertEquals("No signal. Showing this campaign as of 3 h ago.", Wording.keptCopy(now - 3 * 60 * 60_000 - 5, now))
-        assertEquals("No signal. Showing this campaign as of 2 days ago.", Wording.keptCopy(now - 2L * 24 * 60 * 60_000, now))
+        val zone = java.time.ZoneId.of("America/Toronto")
+        val now = java.time.ZonedDateTime.of(2026, 10, 16, 18, 0, 0, 0, zone).toInstant().toEpochMilli()
+        val at = { h: Int, d: Int -> java.time.ZonedDateTime.of(2026, 10, d, h, 30, 0, 0, zone).toInstant().toEpochMilli() }
+        fun time(savedAt: Long) = Wording.keptTime(savedAt, now, zone, clock = { "clock" }, day = { "day" })
+        assertEquals("just now", time(now - 30_000))
+        assertEquals("12 min ago", time(now - 12 * 60_000))
+        assertEquals("clock", time(at(9, 16)))
+        assertEquals("yesterday", time(at(23, 15)))
+        assertEquals("day", time(at(9, 14)))
+        assertEquals("No signal. Showing the list from 12 min ago. Some may be done already.", Wording.keptCopy("12 min ago"))
+        assertEquals(
+            "No signal, and this campaign isn't on your phone yet. Try again when you have signal.", Wording.NOT_KEPT_NO_SIGNAL,
+        )
     }
 
     /** design/offline-copy.md: never "offline", "queue", "sync" or "upload". */

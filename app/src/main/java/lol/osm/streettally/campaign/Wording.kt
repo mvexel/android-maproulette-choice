@@ -223,18 +223,24 @@ object Wording {
         "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
     /** Last in the explainer, after [DELETE_MY_DATA_WAITING] when shown: ends on the action. */
     const val DELETE_MY_DATA_NOT_BY_UNINSTALL = "Deleting the app doesn't remove them. Use this button instead."
-    /** The campaign shown from the phone's copy, with no connection (BACKLOG O2). Draft copy until
-     * Iris's. [savedAt] and [now] in epoch milliseconds. */
-    fun keptCopy(savedAt: Long, now: Long): String {
-        val minutes = ((now - savedAt) / 60_000).coerceAtLeast(0)
-        val ago = when {
+    /** The campaign shown from the phone's copy, with no connection (offline-copy.md, O2); [time] from [keptTime]. */
+    fun keptCopy(time: String) = "No signal. Showing the list from $time. Some may be done already."
+    /** When the kept copy was saved, for [keptCopy]: minutes within the hour, the device's clock
+     * ([clock]) the same day, "yesterday", then the device's month and day ([day]). */
+    fun keptTime(savedAt: Long, now: Long, zone: java.time.ZoneId, clock: (Long) -> String, day: (Long) -> String): String {
+        val minutes = (now - savedAt).coerceAtLeast(0) / 60_000
+        val saved = java.time.Instant.ofEpochMilli(savedAt).atZone(zone).toLocalDate()
+        val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        return when {
             minutes < 1 -> "just now"
             minutes < 60 -> "$minutes min ago"
-            minutes < 24 * 60 -> "${minutes / 60} h ago"
-            else -> "${minutes / (24 * 60)} days ago"
+            saved == today -> clock(savedAt)
+            saved == today.minusDays(1) -> "yesterday"
+            else -> day(savedAt)
         }
-        return "No signal. Showing this campaign as of $ago."
     }
+    /** A campaign opened with no signal that the phone has no copy of; shown with Retry. */
+    const val NOT_KEPT_NO_SIGNAL = "No signal, and this campaign isn't on your phone yet. Try again when you have signal."
     /** Added to [DELETE_MY_DATA_EXPLAINED] while answers wait on the phone. */
     const val DELETE_MY_DATA_WAITING = "It also removes answers still waiting on this phone."
     fun deleteMyDataExplained(waiting: Boolean): String =
