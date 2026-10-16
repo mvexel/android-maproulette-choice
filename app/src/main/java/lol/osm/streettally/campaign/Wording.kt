@@ -186,7 +186,6 @@ object Wording {
     const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     fun savedNotOnMap(count: Int, noun: Noun): String = "${noun.count(count)} saved and counted."
     /** Once local mappers have added some of this phone's answers; nothing for skipped ones. */
-    fun onTheMap(count: Int): String = "✓ $count on the map"
     const val DAY_SUMMARY_TITLE = "Nice work today."
     /** "You checked 14 stops. The tally: 212 of 410." */
     fun daySummary(checked: Int, done: Int, total: Int, noun: Noun): String =

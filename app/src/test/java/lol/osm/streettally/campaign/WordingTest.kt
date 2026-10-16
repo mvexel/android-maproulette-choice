@@ -61,7 +61,6 @@ class WordingTest {
     @Test fun handbackCopy() {
         val stop = Noun("stop", "stops")
         assertEquals("3 stops saved and counted.", Wording.savedNotOnMap(3, stop))
-        assertEquals("✓ 2 on the map", Wording.onTheMap(2))
         assertEquals("You checked 14 stops. The tally: 212 of 410.", Wording.daySummary(14, 212, 410, stop))
         assertEquals("Local mappers will check them and add them to the map.", Wording.DAY_SUMMARY_SAVED)
         assertEquals("No account needed. Local mappers check your answers and add them to the map.", Wording.NO_ACCOUNT_NEEDED)

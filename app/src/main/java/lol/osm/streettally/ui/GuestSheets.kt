@@ -77,13 +77,11 @@ fun DaySummarySheet(
     onSignIn: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val info by session.guest.collectAsState()
     ModalBottomSheet(onDismissRequest = onClose) {
         SheetColumn {
             Text(Wording.DAY_SUMMARY_TITLE, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(Wording.daySummary(checkedToday, done, total, noun))
             Text(Wording.DAY_SUMMARY_SAVED)
-            info.status?.publishedCount?.takeIf { it > 0 }?.let { Text(Wording.onTheMap(it)) }
             // Done leads; signing in is a secondary link with no footer (Iris, parity picks).
             Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
             TextButton(onClick = { onSignIn(); onClose() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
@@ -93,8 +91,8 @@ fun DaySummarySheet(
     }
 }
 
-/** Under the tally for a guest, "Your answers": saved and counted, and how many local mappers have
- * put on the map. Skipped or rejected answers show nothing, and nothing expires (handback-copy.md §1). */
+/** Under the tally for a guest, "Your answers": saved and counted. Skipped or rejected answers show
+ * nothing, and nothing expires (handback-copy.md §1). "✓ k on the map" follows with per-campaign counts. */
 @Composable
 internal fun GuestSavedSection(
     status: GuestStatus,
@@ -102,7 +100,7 @@ internal fun GuestSavedSection(
     onLink: () -> Unit,
     onDoneForToday: () -> Unit,
 ) {
-    if (status.pendingCount <= 0 && status.publishedCount <= 0) return
+    if (status.pendingCount <= 0) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -113,10 +111,7 @@ internal fun GuestSavedSection(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            if (status.pendingCount > 0) {
-                Text(Wording.savedNotOnMap(status.pendingCount, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            }
-            if (status.publishedCount > 0) Text(Wording.onTheMap(status.publishedCount), style = MaterialTheme.typography.bodyMedium)
+            Text(Wording.savedNotOnMap(status.pendingCount, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
     }
     TextButton(onClick = onDoneForToday, modifier = Modifier.heightIn(min = 48.dp)) { Text(Wording.DONE_FOR_TODAY) }
