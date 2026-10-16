@@ -173,9 +173,17 @@ object Wording {
     /** A guest's answers: saved, not on the map yet (deferred sign-up copy, never "on the map"). */
     fun savedForLater(todayCount: Int, noun: Noun): String = "Saved. That's ${noun.count(todayCount)} today."
     const val SAVED_FOR_LATER_NOTE = "Saved and counted. Local mappers check answers and add them to the map."
-    /** A guest's answers that couldn't be sent yet: kept on the phone, sent when it's back online. Draft
-     * copy until Iris's (BACKLOG O1). */
-    const val SAVED_ON_PHONE = "Saved on this phone. It sends by itself when you're back online."
+    /** A guest's answer that couldn't be sent yet, kept on the phone (design/offline-copy.md). Shown every
+     * time, in place of the save note. Never "offline", "queue" or "sync". */
+    const val SAVED_ON_PHONE = "Kept on this phone for now. It sends by itself when you have signal."
+    /** The pin and list row of a place whose answer waits on the phone. */
+    const val WAITING_TO_SEND = "Waiting to send"
+    /** Your answers row, first line, while any wait on the phone. */
+    fun waitingForSignal(count: Int): String = "$count waiting for signal"
+    /** Day summary, after the tally line, while any wait on the phone. */
+    fun stillOnPhone(count: Int, noun: Noun): String =
+        if (count == 1) "1 ${noun.one} is still on this phone. It sends by itself when you have signal, so keep Street Tally installed until then."
+        else "$count ${noun.many} are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then."
     fun pendingLimit(noun: Noun): String =
         "That's as many ${noun.many} as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
@@ -206,6 +214,8 @@ object Wording {
     const val DELETE_MY_DATA = "Delete my data"
     const val DELETE_MY_DATA_EXPLAINED =
         "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
+    /** Added to [DELETE_MY_DATA_EXPLAINED] while answers wait on the phone. */
+    const val DELETE_MY_DATA_WAITING = "It also removes answers still waiting on this phone."
     const val DELETE_MY_DATA_DONE = "Done. Your saved answers are deleted."
     const val DELETE_MY_DATA_FAILED = "Couldn't delete right now. Check your connection and try again."
     /** A guest whose answers were claimed on the web, now signed in (§1.5). */

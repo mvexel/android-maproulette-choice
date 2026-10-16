@@ -45,6 +45,16 @@ class GuestOutbox(private val store: Store) {
     private val mutableEntries = MutableStateFlow(decode(store.read()))
     val entries: StateFlow<List<Entry>> = mutableEntries
     private val sending = Mutex()
+    private val mutableLimitReached = MutableStateFlow(false)
+    /** A waiting answer was refused because this phone reached its answer limit without an account:
+     * shown once as the pending-limit line (offline-copy.md), then [limitShown]. */
+    val limitReached: StateFlow<Boolean> = mutableLimitReached
+
+    fun limitShown() { mutableLimitReached.value = false }
+
+    /** Forgets every waiting answer ("Delete my data"). */
+    @Synchronized
+    fun clear() = save(emptyList())
 
     /** Queues [entry], replacing an earlier one for the same task (the server would replace it too). */
     @Synchronized
@@ -54,11 +64,10 @@ class GuestOutbox(private val store: Store) {
     @Synchronized
     private fun remove(entry: Entry) = save(mutableEntries.value.filter { it != entry })
 
-
     /** Sends what's queued, oldest first, through [ops]. Stops at the first answer that still can't
      * get through, keeping it and the rest. An answer the server refuses for good (the place was
-     * checked meanwhile, the campaign closed) is dropped: it can never be saved. Returns how many
-     * were saved. */
+     * checked meanwhile, the campaign closed, the phone's answer limit) is dropped: it can never be
+     * saved, and its place goes back to open. Returns how many were saved. */
     suspend fun send(ops: TaskOps): Int = sending.withLock {
         var saved = 0
         for (entry in mutableEntries.value) {
@@ -71,6 +80,7 @@ class GuestOutbox(private val store: Store) {
                 throw e
             } catch (e: Exception) {
                 if (retryLater(e)) break
+                if (e is MapRouletteException && e.kind == ErrorKind.RATE_LIMIT) mutableLimitReached.value = true
                 remove(entry)
             }
         }

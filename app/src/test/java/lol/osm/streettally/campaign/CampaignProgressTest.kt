@@ -80,6 +80,24 @@ class CampaignProgressTest {
         assertEquals(setOf(2L), CampaignProgress(tasks, emptySet(), justDone = setOf(2L, 4L), guest = true).pending)
     }
 
+    @Test fun answersStillOnThePhoneAreShownButNotCountedOrOffered() {
+        // 1 and 2 open, 3 open and waiting on this phone, 4 fixed and still waiting (the server closed it).
+        val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 1))
+        val tally = CampaignProgress(tasks, held = emptySet(), justDone = setOf(3L), guest = true, waiting = setOf(3L, 4L))
+        assertEquals(setOf(3L), tally.waiting)
+        assertEquals(setOf(4L), tally.done)
+        assertEquals(1, tally.checked)
+        assertEquals(4, tally.total)
+        assertEquals(listOf(1L, 2L, 3L, 4L), tally.shown.map { it.id })
+        assertEquals(listOf(1L, 2L), tally.open.map { it.id })
+        assertEquals(emptySet<Long>(), tally.pending)
+        assertEquals(emptySet<Long>(), tally.look)
+        // Sent: it counts, as a saved one.
+        val sent = CampaignProgress(tasks, held = setOf(3L), justDone = setOf(3L), guest = true)
+        assertEquals(2, sent.checked)
+        assertEquals(setOf(3L), sent.pending)
+    }
+
     @Test fun flagsAreUsedOnlyWhenEveryRowHasOne() {
         fun row(id: Long, pending: Boolean?, kind: HeldKind? = null) =
             TaskSummary(TaskId(id), ChallengeId(3), "t$id", TaskStatus(0), null, pending, kind)

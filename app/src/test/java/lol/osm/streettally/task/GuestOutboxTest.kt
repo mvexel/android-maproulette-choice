@@ -106,6 +106,25 @@ class GuestOutboxTest {
         assertTrue(outbox.entries.value.isEmpty())
     }
 
+    @Test fun thePhonesAnswerLimitDropsTheAnswerAndSaysSoOnce() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        outbox.add(GuestOutbox.Entry(1, 3, answers))
+        assertEquals(0, outbox.send(Ops { throw MapRouletteException(ErrorKind.RATE_LIMIT, 429, reason = "pending_limit") }))
+        assertTrue(outbox.entries.value.isEmpty())
+        assertTrue(outbox.limitReached.value)
+        outbox.limitShown()
+        assertFalse(outbox.limitReached.value)
+    }
+
+    @Test fun deletingMyDataEmptiesTheQueue() {
+        val store = MemoryStore()
+        val outbox = GuestOutbox(store)
+        outbox.add(GuestOutbox.Entry(1, 3, answers))
+        outbox.clear()
+        assertTrue(outbox.entries.value.isEmpty())
+        assertEquals(null, store.value)
+    }
+
     @Test fun whatIsWorthRetrying() {
         assertTrue(GuestOutbox.retryLater(MapRouletteException(ErrorKind.AUTHENTICATION, 401)))
         assertTrue(GuestOutbox.retryLater(MapRouletteException(ErrorKind.RATE_LIMIT, 429)))

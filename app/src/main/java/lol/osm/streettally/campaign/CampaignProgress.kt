@@ -24,25 +24,34 @@ class CampaignProgress(
     guest: Boolean = false,
     /** Reported here as needing another look (status 6, not-here-moved.md §3.3). */
     reported: Set<Long> = emptySet(),
+    /** A guest's answers still on this phone, not sent yet (offline-copy.md). */
+    waiting: Set<Long> = emptySet(),
 ) {
+    /** Answered here but still on this phone: shown, but not counted until the server has it, and
+     * not offered. A place the server has since closed is plainly done. */
+    val waiting: Set<Long> = tasks.filter { !it.isDone && it.id in waiting }.map { it.id }.toSet()
     /** Checked: done on the server, saved on this phone since launch ([justDone]), or held (unless
-     * reported here: a report needs another look, even once a guest's saved report holds it). */
-    val done: Set<Long> =
-        tasks.filter { it.isDone || it.id in justDone || (it.isOpen && it.id in held && it.id !in reported) }.map { it.id }.toSet()
+     * reported here: a report needs another look, even once a guest's saved report holds it). Never
+     * a [waiting] one. */
+    val done: Set<Long> = tasks.filter {
+        it.id !in this.waiting && (it.isDone || it.id in justDone || (it.isOpen && it.id in held && it.id !in reported))
+    }.map { it.id }.toSet()
     /** The tally's "N". */
     val checked: Int = done.size
     /** The campaign's size: open places (held ones included) and checked ones. */
-    val total: Int = tasks.count { it.isOpen || it.id in done }
-    /** Open places and checked ones; the rest are left off the map and list. */
-    val shown: List<LocatedTask> = tasks.filter { it.isOpen || it.id in done }
+    val total: Int = tasks.count { it.isOpen || it.id in done || it.id in this.waiting }
+    /** Open places, checked ones and waiting ones; the rest are left off the map and list. */
+    val shown: List<LocatedTask> = tasks.filter { it.isOpen || it.id in done || it.id in this.waiting }
     /** Needs another look: reported here and still open. Shown, but neither checked nor offered. */
-    val look: Set<Long> = tasks.filter { it.isOpen && it.id in reported && it.id !in done }.map { it.id }.toSet()
-    /** Still to check: open, not saved or reported here, not held. In task order. */
-    val open: List<LocatedTask> = tasks.filter { it.isOpen && it.id !in justDone && it.id !in reported && it.id !in held }
+    val look: Set<Long> = tasks.filter { it.isOpen && it.id in reported && it.id !in done && it.id !in this.waiting }.map { it.id }.toSet()
+    /** Still to check: open, not saved, waiting or reported here, not held. In task order. */
+    val open: List<LocatedTask> = tasks.filter {
+        it.isOpen && it.id !in justDone && it.id !in reported && it.id !in held && it.id !in this.waiting
+    }
 
     /** A guest's own saved answers: checked here, but not on the map until they finish signing up. */
     val pending: Set<Long> =
-        if (guest) tasks.filter { !it.isDone && it.id in justDone }.map { it.id }.toSet() else emptySet()
+        if (guest) tasks.filter { !it.isDone && it.id in justDone && it.id !in this.waiting }.map { it.id }.toSet() else emptySet()
 }
 
 /** Open tasks a guest's saved submission holds: [ids] all of them, [reports] those held by a report

@@ -94,7 +94,8 @@ class MainActivity : ComponentActivity() {
                     id == null -> PickerScreen(
                         session = app.session,
                         appScope = app.scope,
-                        authenticate = authenticate,
+                        outbox = app.outbox,
+                        signIn = { app.signIn(authenticate) },
                         onCampaign = {
                             previewing = false
                             campaignNotice = null
@@ -112,7 +113,7 @@ class MainActivity : ComponentActivity() {
                             candidates = open.candidates,
                             noun = open.noun,
                             origin = open.origin,
-                            onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
+                            onSignIn = { app.scope.launch { app.signIn(authenticate) } },
                             onBack = { closePlace() },
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
@@ -133,7 +134,7 @@ class MainActivity : ComponentActivity() {
                                 placeId = task.id
                             },
                             preview = previewing,
-                            onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
+                            onSignIn = { app.scope.launch { app.signIn(authenticate) } },
                             onOpenForReal = { alreadyPublished ->
                                 previewing = false
                                 visit += 1

@@ -19,6 +19,9 @@ internal enum class Pin(val id: String) {
     PENDING("pin-pending"),
     /** Needs another look: amber diamond, navy edge, navy "?". */
     LOOK("pin-look"),
+    /** A guest's answer still on this phone, not sent yet: white rounded square, dashed grey edge,
+     * three dots, no tick (offline-copy.md). */
+    WAITING("pin-waiting"),
     ;
 
     /** [dark]: for the dark map, where navy vanishes ("Dark map" 2): the to-check ring turns white, and
@@ -62,6 +65,13 @@ internal enum class Pin(val id: String) {
                 canvas.drawPath(PathParser.createPathFromPathData(QUESTION), stroke(NAVY, 2.1f))
                 canvas.drawCircle(14f, 18.6f, 1.25f, fill(NAVY))
             }
+            WAITING -> {
+                val square = RectF(3f, 3f, 25f, 25f)
+                val grey = if (dark) GREY_DARK else GREY
+                canvas.drawRoundRect(square, 6f, 6f, fill(if (dark) INK else WHITE))
+                canvas.drawRoundRect(square, 6f, 6f, stroke(grey, 2.5f).apply { pathEffect = DashPathEffect(floatArrayOf(4.2f, 2.6f), 0f) })
+                for (x in floatArrayOf(9.5f, 14f, 18.5f)) canvas.drawCircle(x, 14f, 1.6f, fill(grey))
+            }
         }
         return bitmap
     }
@@ -73,6 +83,9 @@ internal enum class Pin(val id: String) {
         val GREEN = Color.parseColor("#1F7A4D")
         val WHITE = Color.parseColor("#FFFFFF")
         val BLACK = Color.parseColor("#000000")
+        val GREY = Color.parseColor("#8A93A6")
+        val GREY_DARK = Color.parseColor("#6B7486")
+        val INK = Color.parseColor("#0B1220")
         const val TICK = "M8.6 14.3 L12.4 18 L19.6 10.4"
         const val QUESTION = "M11.4 11.6 a2.7 2.7 0 1 1 3.9 2.4 c-0.9 0.45 -1.3 0.9 -1.3 1.9"
 

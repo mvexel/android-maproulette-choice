@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -70,9 +71,24 @@ class StreetTallyApp : Application() {
     /** Sends a guest's waiting answers, if any, while still a guest. Signed in, they stay queued
      * (the guest token can't send them any more), and the claim covers those that reached the server. */
     fun sendQueued() {
+        scope.launch { sendQueuedNow() }
+    }
+
+    /** [sendQueued], waiting for it to finish. Best effort: never throws but for cancellation. */
+    suspend fun sendQueuedNow() {
         if (outbox.entries.value.isEmpty() || !session.state.value.restored || session.writer()?.guest != true) return
-        scope.launch {
+        try {
             if (outbox.send(ClientTaskOps(session.client())) > 0) session.refreshGuestStatus()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
         }
+    }
+
+    /** "I already use OpenStreetMap": answers still waiting on the phone are sent first, while still a
+     * guest, so they go with the sign-in like the saved ones (offline-copy.md). */
+    suspend fun signIn(authenticate: suspend (String) -> String) {
+        sendQueuedNow()
+        session.signIn(authenticate)
     }
 }

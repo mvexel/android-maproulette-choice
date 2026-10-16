@@ -78,6 +78,27 @@ class WordingTest {
         }
     }
 
+    /** design/offline-copy.md: never "offline", "queue", "sync" or "upload". */
+    @Test fun offlineCopy() {
+        val stop = Noun("stop", "stops")
+        assertEquals("Kept on this phone for now. It sends by itself when you have signal.", Wording.SAVED_ON_PHONE)
+        assertEquals("Waiting to send", Wording.WAITING_TO_SEND)
+        assertEquals("1 waiting for signal", Wording.waitingForSignal(1))
+        assertEquals("3 waiting for signal", Wording.waitingForSignal(3))
+        assertEquals(
+            "3 stops are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then.",
+            Wording.stillOnPhone(3, stop),
+        )
+        assertEquals(
+            "1 stop is still on this phone. It sends by itself when you have signal, so keep Street Tally installed until then.",
+            Wording.stillOnPhone(1, stop),
+        )
+        assertEquals("It also removes answers still waiting on this phone.", Wording.DELETE_MY_DATA_WAITING)
+        for (text in listOf(Wording.SAVED_ON_PHONE, Wording.WAITING_TO_SEND, Wording.waitingForSignal(2), Wording.stillOnPhone(2, stop), Wording.DELETE_MY_DATA_WAITING)) {
+            for (word in listOf("offline", "queue", "sync", "upload", "counted")) assert(word !in text.lowercase()) { text }
+        }
+    }
+
     @Test fun claimedMessages() {
         assertEquals(
             "You're signed in with OpenStreetMap. New answers go straight on the map from now on.",
