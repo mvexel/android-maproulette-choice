@@ -12,7 +12,8 @@ import org.maproulette.sdk.HttpRequest
 import org.maproulette.sdk.HttpResponse
 import org.maproulette.sdk.Transport
 
-/** One Woodbine entrance in [WoodbineBackend]: [live] payloads take guest answers; others don't.
+/** One Woodbine entrance in [WoodbineBackend]: [live] payloads take guest answers; others get 422
+ * unsupported_task, as a server from before guests everywhere (G1).
  * [status] is the task status (0 open, 1 fixed). */
 internal data class Door(val id: Long, val name: String, val position: LatLon, val live: Boolean = true, val status: Int = 0)
 
@@ -68,6 +69,7 @@ internal class WoodbineBackend(val doors: List<Door> = DOORS) : Transport {
                     rest == "" -> json(200, task(door))
                     rest == "/choice/check" -> json(200, """{"eligible":true,"deleteAllowed":false}""")
                     rest == "/choice/pending" && request.method == HttpMethod.POST -> if (!door.live) {
+                        answerPosts += door.id
                         json(422, """{"error":"unsupported_task"}""")
                     } else {
                         answerPosts += door.id

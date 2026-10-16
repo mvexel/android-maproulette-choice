@@ -24,8 +24,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.printToString
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignPlaces
@@ -60,10 +58,8 @@ class GuestCasesTest {
     @Test fun g1AGuestSeesEveryOpenPlace() {
         open(WoodbineBackend())
         waitFor(Wording.noAccountNeeded(noun))
-        assertGone(Wording.CAMPAIGN_NEEDS_ACCOUNT)
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
-        assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         compose.onNodeWithText(Wording.choose(noun)).assertExists()
         tap("List")
         waitFor("To check")
@@ -105,8 +101,6 @@ class GuestCasesTest {
         assertEquals(1, compose.onAllNodesWithText("Main door").fetchSemanticsNodes().size)
     }
 
-    /** T-002: another guest's saved report (here "There's no door") holds a place: it needs another
-     * look on this phone, doesn't count, and isn't offered. */
     /** which-one-spec.md F: the way out records "I can't check this" and the place needs another look. */
     @Test fun iCantTellWhichOneNeedsAnotherLook() {
         val backend = WoodbineBackend()
@@ -124,6 +118,8 @@ class GuestCasesTest {
         waitFor(Wording.NEEDS_LOOK)
     }
 
+    /** T-002: another guest's saved report (here "There's no door") holds a place: it needs another
+     * look on this phone, doesn't count, and isn't offered. */
     @Test fun anotherGuestsSavedReportNeedsAnotherLook() {
         val backend = WoodbineBackend()
         backend.pending[102L] = """{"outcome":"no-door"}"""
@@ -137,85 +133,50 @@ class GuestCasesTest {
         assertGone("Already checked")
     }
 
-    /** G-3: a campaign without liveMissingQuestions is badged in the picker. */
-    @Test fun g3ThePickerBadgesACampaignGuestsCantAnswer() {
-        val session = session(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
-        compose.setContent {
-            StreetTallyTheme(dark = false) {
-                PickerScreen(
-                    session = session, appScope = CoroutineScope(Dispatchers.Unconfined),
-                    authenticate = { error("no sign-in in this test") }, onCampaign = {},
-                )
-            }
-        }
-        waitFor(WoodbineBackend.OTHER_NAME)
-        waitFor(Wording.NEEDS_ACCOUNT_BADGE)
-        // On the campaign without the flag only; the other campaign has no badge.
-        compose.onNode(hasText(WoodbineBackend.NAME) and hasText(Wording.NEEDS_ACCOUNT_BADGE)).assertExists()
-        assertEquals(1, compose.onAllNodesWithText(Wording.NEEDS_ACCOUNT_BADGE).fetchSemanticsNodes().size)
-    }
-
-    /** G-3 and tonight's bug: in a campaign without liveMissingQuestions, every place stays visible to a
-     * guest; the welcome card says the campaign needs an account and never "No account needed". */
-    @Test fun g3ACampaignGuestsCantAnswerKeepsEveryPlaceVisible() {
+    /** G-3 after G1 (guests everywhere): a campaign without liveMissingQuestions reads like any other to a
+     * guest: "No account needed", every place visible, no sign-in block. */
+    @Test fun g3ACampaignWithoutTheLiveFlagIsOpenToGuests() {
         open(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
-        waitFor(Wording.CAMPAIGN_NEEDS_ACCOUNT)
-        assertGone(Wording.noAccountNeeded(noun))
+        waitFor(Wording.noAccountNeeded(noun))
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
-        waitFor(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
-        compose.onNodeWithText(Wording.guestCampaignNeedsAccountDetail(noun)).assertExists()
-        // The sign-in block is the only action: no Nearest, no "Choose an entrance", no all-checked line.
-        assertEquals(0, compose.onAllNodesWithText(Wording.nearest(noun, null), substring = true).fetchSemanticsNodes().size)
-        assertGone(Wording.choose(noun))
-        assertGone(Wording.allChecked(noun))
+        assertGone("Sign in with OpenStreetMap")
+        compose.onNodeWithText(Wording.choose(noun)).assertExists()
         tap("List")
         waitFor("To check")
         WoodbineBackend.DOORS.forEach { compose.onNodeWithText(it.name).assertExists() }
     }
 
-    /** Largest text (font scale 2.0) on a small phone: the sign-in block above the map scrolls, so its
-     * headline and button stay whole, and the map/list keeps room (iOS #30 clipped them; 8f2617c). */
-    @Config(qualifiers = "w360dp-h640dp", fontScale = 2.0f)
-    @Test fun theSignInBlockFitsAtTheLargestTextSize() {
-        open(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
-        tap("Let's go")
-        waitFor(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
-        compose.onNodeWithText(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT).performScrollTo().assertIsDisplayed()
-        compose.onNode(hasText("Sign in with OpenStreetMap") and hasClickAction()).performScrollTo().assertIsDisplayed()
-        compose.onNode(hasText("List") and hasClickAction()).assertIsDisplayed().performClick()
-        waitFor("To check")
-        compose.onAllNodesWithText(WoodbineBackend.DOORS.first().name)[0].assertIsDisplayed()
-    }
-
-    /** G-4: a place that needs an account, in a campaign with others still open: sign-in is offered for
-     * this place, with the next open one first; the campaign never says "the rest" need an account.
-     * Since "every campaign" (Martijn, 23:46) a mixed campaign shouldn't exist; this is the safety net. */
-    @Test fun g4APlaceThatNeedsAnAccountOffersSignIn() {
+    /** G-4 after G1: a guest answers a place without the flag. Where the server still refuses it
+     * (422 unsupported_task), sign-in is offered for this place, with the next open one first. */
+    @Test fun g4AnUnsupportedPlaceFallsBackToSignIn() {
         val backend = WoodbineBackend()
         open(backend)
         tap("Let's go")
-        waitFor(Wording.progress(0, 4, noun))
-        assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         tap("List")
         tap("Loading dock door")
+        waitFor("How does this door open?")
+        tap("Swings open")
+        waitFor("Does it open by itself?")
+        tap("Yes, with a button")
+        waitFor("Check your answers")
+        tapButton(Wording.DONE)
         waitFor(Wording.guestSignIn(noun))
         compose.onNodeWithText(Wording.guestSignInDetail(noun)).assertExists()
         compose.onNodeWithText(Wording.next(noun, null), substring = true).assertExists()
         compose.onNodeWithText("Sign in with OpenStreetMap").assertExists()
         assertGone(Wording.lastOne(noun))
         assertEquals(0, compose.onAllNodesWithText("these ${noun.many}", substring = true).fetchSemanticsNodes().size)
-        // Asked before the questions: nothing was sent.
-        assertEquals(emptyList<Long>(), backend.answerPosts.toList())
+        assertEquals(listOf(104L), backend.answerPosts.toList())
+        assertEquals(emptyList<Long>(), backend.pending.keys.toList())
     }
 
-    /** G-5: every place checked: the all-checked line, and no sign-in block even where none takes guest answers. */
+    /** G-5: every place checked: the all-checked line, and no sign-in block. */
     @Test fun g5AFullyCheckedCampaignHasNoSignInBlock() {
         open(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false, status = 1) }))
         tap("Let's go")
         waitFor(Wording.progress(4, 4, noun))
         waitFor(Wording.allChecked(noun))
-        assertGone(Wording.GUEST_CAMPAIGN_NEEDS_ACCOUNT)
         assertGone("Sign in with OpenStreetMap")
     }
 

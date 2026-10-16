@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.os.CancellationSignal
@@ -44,10 +45,21 @@ object Locator {
         if (attempts.isEmpty()) return LocateResult.Unavailable
         for ((provider, budget) in attempts) {
             val fix = current(manager, provider, budget) ?: continue
-            return LocateResult.Found(LatLon(fix.latitude, fix.longitude), fix.accuracy.takeIf { fix.hasAccuracy() })
+            return found(fix)
         }
-        return LocateResult.TimedOut
+        // A current fix can be missed right after the permission grant while fixes are arriving
+        // (Tess, #38 fresh launch): a recent one the phone already has will do.
+        val recent = enabled.mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
+        val ages = recent.map { (SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos) / 1_000_000 }
+        return recentIndex(ages)?.let { found(recent[it]) } ?: LocateResult.TimedOut
     }
+
+    private fun found(fix: Location) =
+        LocateResult.Found(LatLon(fix.latitude, fix.longitude), fix.accuracy.takeIf { fix.hasAccuracy() })
+
+    /** Which of the last known fixes, by age in milliseconds, to use: the newest within [maxAgeMs]. */
+    internal fun recentIndex(agesMs: List<Long>, maxAgeMs: Long = 120_000): Int? =
+        agesMs.withIndex().filter { it.value in 0..maxAgeMs }.minByOrNull { it.value }?.index
 
     /** Which providers to ask, in order, and how long each gets out of [timeoutMs]. */
     internal fun attempts(enabled: List<String>, timeoutMs: Long): List<Pair<String, Long>> = when {

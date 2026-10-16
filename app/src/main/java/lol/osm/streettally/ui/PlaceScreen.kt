@@ -118,8 +118,6 @@ fun PlaceScreen(
     /** Campaign preview (design/preview-mode.md): places "saved" in this visit; null when not previewing. */
     previewSaved: MutableSet<Long>? = null,
     onExitPreview: () -> Unit = {},
-    /** True the first time a guest's answer is saved on this phone: opens the "put them on the map" card once. */
-    firstSavedForLater: () -> Boolean = { false },
     /** Other people's not-here and moved reports, by task id (parity row 4; empty until the server read). */
     reports: Map<Long, TaskReport> = emptyMap(),
 ) {
@@ -129,7 +127,6 @@ fun PlaceScreen(
     // The place, question and answers on screen survive recreation (rotation, dark mode, font size):
     // people tilt their phones mid-answer (Ada, #36). The answers are replayed into the new controller.
     var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
-    var showPutOnMap by remember { mutableStateOf(false) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
     var controller by remember { mutableStateOf(newController(session, scope, noun, previewing)) }
@@ -209,15 +206,12 @@ fun PlaceScreen(
         if (done != null && !done.byOther && !counted) {
             counted = true
             checked.record(campaignId, done.task.id.value, look = done.action.needsLook, report = TaskReport.of(done.action))
-            // Once, after the first saved answer (a real one: not "I can't tell" or a report, as
-            // iOS); later from the campaign's banner.
-            val answered = done.action is ChoiceAction.Answers
-            if (done.savedForLater && answered && firstSavedForLater()) showPutOnMap = true
         }
     }
-    // Signed in from the sheet here: the sign-in and claim notes show on this screen too.
+    // Signed in here: the sign-in and claim notes show on this screen too. No sheet opens after the
+    // first save; the confirmation and its note say it, and the campaign's banner opens the sheet
+    // (handback-copy.md §1, "No sheet after the first save").
     var accountNote by remember { mutableStateOf(false) }
-    if (showPutOnMap) PutOnMapSheet(session, noun, onSignIn = { accountNote = true; onSignIn() }) { showPutOnMap = false }
 
     val here: LatLon? = loadedTask(screen)?.let { Places.position(it) }
         ?: candidates.firstOrNull { it.id == taskId }?.position
