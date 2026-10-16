@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -122,6 +125,12 @@ internal fun GuestSavedSection(
             Text(Wording.savedNotOnMap(counted, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             if (answers.onMap > 0) OnTheMap(answers.onMap)
         }
+        // The row opens "Your answers are saved", like iOS's disclosure chevron.
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     TextButton(onClick = onDoneForToday, modifier = Modifier.heightIn(min = 48.dp)) { Text(Wording.DONE_FOR_TODAY) }
 }
@@ -132,6 +141,7 @@ private fun OnTheMap(count: Int) {
     Text(
         Wording.onTheMap(count),
         style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
         modifier = Modifier.clearAndSetSemantics { contentDescription = Wording.onTheMapSpoken(count) },
     )
 }
