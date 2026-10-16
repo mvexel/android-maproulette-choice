@@ -5,6 +5,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
 import org.maproulette.sdk.TaskStatus
@@ -75,6 +76,19 @@ class WordingTest {
         )
         for (text in listOf(Wording.savedNotOnMap(1, stop), Wording.DAY_SUMMARY_SAVED, Wording.NO_ACCOUNT_NEEDED, Wording.GUEST_ANSWERS_ARE_PUBLIC)) {
             assert("computer" !in text && "email" !in text && "removed" !in text) { text }
+        }
+    }
+
+    /** Stale places by why (Iris, parity with iOS #48). */
+    @Test fun noLongerNeededSaysWhy() {
+        val door = Noun("entrance", "entrances")
+        assertEquals("This entrance is no longer on the map. Thanks anyway!", Wording.noLongerNeeded(IneligibleReason.ELEMENT_GONE, door))
+        assertEquals(
+            "This entrance changed on the map since the campaign started. Thanks anyway!",
+            Wording.noLongerNeeded(IneligibleReason.MATCH_FAILED, door),
+        )
+        for (reason in listOf(IneligibleReason.KEY_CHANGED, IneligibleReason.UNKNOWN, null)) {
+            assertEquals("Someone already checked this entrance. Thanks anyway!", Wording.noLongerNeeded(reason, door))
         }
     }
 

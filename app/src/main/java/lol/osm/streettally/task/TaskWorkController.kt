@@ -20,6 +20,7 @@ import org.maproulette.sdk.ChoiceProblem
 import org.maproulette.sdk.ChoiceResult
 import org.maproulette.sdk.ChoiceSubmission
 import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.PendingChoice
@@ -140,8 +141,8 @@ sealed interface TaskScreen {
     data class Preview(val task: Task, val challenge: Challenge, val work: TaskWork.Choice) : TaskScreen
     /** Campaign preview mode: what would have been sent. Nothing was. */
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
-    /** Ineligible (stale) at open or submit. No actions. */
-    data class NoLongerNeeded(val task: Task, val challenge: Challenge) : TaskScreen
+    /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown). */
+    data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.
      * [paused]: the backend's mobile writes are switched off (403 mobile_writes_disabled), so a retry won't help. */
     data class CheckFailed(val task: Task, val challenge: Challenge, val paused: Boolean = false) : TaskScreen
@@ -262,7 +263,7 @@ class TaskWorkController(
         if (eligibility == null) return TaskScreen.CheckFailed(task, challenge)
         if (!eligibility.eligible) {
             changed = true // The server now hides it from discovery.
-            return TaskScreen.NoLongerNeeded(task, challenge)
+            return TaskScreen.NoLongerNeeded(task, challenge, eligibility.reason)
         }
         val current = eligibility.questionIds?.let { ids ->
             work.copy(questions = work.questions.filter { it.id in ids })
@@ -469,7 +470,7 @@ class TaskWorkController(
         }
         if (error.problem == WriteProblem.WritesPaused) return TaskScreen.Answering(task, challenge, form, paused = true)
         return when (val problem = error.problem) {
-            is ChoiceProblem.TaskIneligible -> TaskScreen.NoLongerNeeded(task, challenge)
+            is ChoiceProblem.TaskIneligible -> TaskScreen.NoLongerNeeded(task, challenge, problem.reason)
             ChoiceProblem.ElementInUse -> if (action is ChoiceAction.Outcome && withoutDeletion(action.outcome) != null) {
                 TaskScreen.ElementInUse(task, challenge, form, action.outcome)
             } else answering("The map wouldn't accept this change. Nothing was saved.")

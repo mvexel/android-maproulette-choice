@@ -165,9 +165,9 @@ class TaskWorkControllerTest {
     @Test
     fun ineligibleAtOpenNoLongerNeedsAnswering() = runTest {
         val ops = FakeOps().thenRead({ task() })
-        ops.check = { ChoiceEligibility(false, false, IneligibleReason.KEY_CHANGED) }
+        ops.check = { ChoiceEligibility(false, false, IneligibleReason.ELEMENT_GONE) }
         val c = controller(ops)
-        assertTrue(c.state.value is TaskScreen.NoLongerNeeded)
+        assertEquals(IneligibleReason.ELEMENT_GONE, (c.state.value as TaskScreen.NoLongerNeeded).reason)
         assertTrue("the server now hides it: refresh the map", c.changed)
         assertEquals(listOf("get", "challenge", "check"), ops.calls)
     }
@@ -326,8 +326,8 @@ class TaskWorkControllerTest {
     @Test
     fun ineligibleAtSubmitNoLongerNeedsAnswering() = runTest {
         val ops = FakeOps().thenRead({ task() })
-        ops.submit = { throw failure(ErrorKind.CONFLICT, ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) }
-        assertTrue(answered(ops).state.value is TaskScreen.NoLongerNeeded)
+        ops.submit = { throw failure(ErrorKind.CONFLICT, ChoiceProblem.TaskIneligible(IneligibleReason.MATCH_FAILED)) }
+        assertEquals(IneligibleReason.MATCH_FAILED, (answered(ops).state.value as TaskScreen.NoLongerNeeded).reason)
     }
 
     @Test

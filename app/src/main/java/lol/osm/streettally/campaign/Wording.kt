@@ -5,6 +5,7 @@ import org.maproulette.sdk.ClaimStatus
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.GuestClaim
 import org.maproulette.sdk.GuestStatus
+import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskWork
@@ -147,6 +148,12 @@ object Wording {
     const val REPORTED_MOVED = "Thanks, reported. The organizer will move it on the map."
     fun skip(noun: Noun): String = "Skip this ${noun.one}"
     fun alreadyChecked(noun: Noun): String = "Someone already checked this ${noun.one}. Thanks anyway!"
+    /** A stale place, by why (Iris, parity with iOS #48); key changed or unknown: [alreadyChecked]. */
+    fun noLongerNeeded(reason: IneligibleReason?, noun: Noun): String = when (reason) {
+        IneligibleReason.ELEMENT_GONE -> "This ${noun.one} is no longer on the map. Thanks anyway!"
+        IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
+        else -> alreadyChecked(noun)
+    }
     /** A guest on a place the server won't keep guest answers for (Iris, copy-fixes-2026-10-11.md). */
     fun guestSignIn(noun: Noun): String = "Sign in to check this ${noun.one}"
     fun guestSignInDetail(noun: Noun): String =

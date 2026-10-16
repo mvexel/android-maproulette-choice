@@ -344,7 +344,7 @@ fun PlaceScreen(
                         nextButtons(false)
                     }
                     is TaskScreen.NoLongerNeeded -> {
-                        Text(Wording.alreadyChecked(noun), style = MaterialTheme.typography.titleMedium)
+                        Text(Wording.noLongerNeeded(s.reason, noun), style = MaterialTheme.typography.titleMedium)
                         nextButtons(true)
                     }
                     is TaskScreen.Answering -> {
