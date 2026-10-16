@@ -118,11 +118,13 @@ class GuestOutboxTest {
         assertFalse(outbox.limitReached.value)
     }
 
-    @Test fun deletingMyDataEmptiesTheQueue() {
+    @Test fun deletingMyDataEmptiesTheQueueAndOpensThePlaces() {
         val store = MemoryStore()
-        val outbox = GuestOutbox(store)
+        val dropped = mutableListOf<Long>()
+        val outbox = GuestOutbox(store) { dropped += it.taskId }
         outbox.add(GuestOutbox.Entry(1, 3, answers))
         outbox.clear()
+        assertEquals(listOf(1L), dropped)
         assertTrue(outbox.entries.value.isEmpty())
         assertEquals(null, store.value)
     }

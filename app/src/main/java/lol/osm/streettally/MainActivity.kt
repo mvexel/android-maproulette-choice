@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
                         appScope = app.scope,
                         outbox = app.outbox,
                         signIn = { app.signIn(authenticate) },
+                        onDeletedMyData = { app.checked.forgetAll() },
                         onCampaign = {
                             previewing = false
                             campaignNotice = null

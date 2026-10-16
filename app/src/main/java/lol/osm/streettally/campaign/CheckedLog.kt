@@ -50,6 +50,13 @@ class CheckedLog(
         reports[campaignId]?.remove(taskId)
     }
 
+    /** "Delete my data": every place saved or reported here is open again; today's counts stay. */
+    fun forgetAll() {
+        saved.clear()
+        reported.clear()
+        reports.clear()
+    }
+
     fun today(campaignId: Long): Int = counts.get(key(campaignId))
 
     /** Places checked here: they count toward the campaign's tally. */

@@ -155,7 +155,7 @@ private fun OnTheMap(count: Int) {
 
 /** "Delete my data" for a guest, with its confirmation; under the account section. */
 @Composable
-internal fun DeleteMyData(session: AppSession, outbox: GuestOutbox? = null) {
+internal fun DeleteMyData(session: AppSession, outbox: GuestOutbox? = null, onDeleted: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val waiting = outbox?.entries?.collectAsState()?.value.orEmpty().isNotEmpty()
     var confirm by remember { mutableStateOf(false) }
@@ -180,6 +180,7 @@ internal fun DeleteMyData(session: AppSession, outbox: GuestOutbox? = null) {
                     scope.launch {
                         result = try {
                             session.deleteGuestData()
+                            onDeleted()
                             Wording.DELETE_MY_DATA_DONE
                         } catch (e: CancellationException) {
                             throw e

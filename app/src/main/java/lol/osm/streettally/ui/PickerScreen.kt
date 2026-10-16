@@ -55,6 +55,8 @@ fun PickerScreen(
     /** A guest's answers still on this phone: sent with a sign-in, removed by "Delete my data". */
     outbox: GuestOutbox?,
     signIn: suspend () -> Unit,
+    /** After "Delete my data": the places this phone saved are open again. */
+    onDeletedMyData: () -> Unit = {},
     onCampaign: (Long) -> Unit,
 ) {
     val state by session.state.collectAsState()
@@ -142,7 +144,7 @@ fun PickerScreen(
                             onSignIn = { appScope.launch { signIn() } },
                             onSignOut = { appScope.launch { session.signOut() } },
                         )
-                        DeleteMyData(session, outbox)
+                        DeleteMyData(session, outbox, onDeletedMyData)
                         // Test builds name their backend; participants on prod don't need to see it.
                         if (session.config.baseUrl != AppConfig.PROD_ORIGIN) Text(
                             session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",

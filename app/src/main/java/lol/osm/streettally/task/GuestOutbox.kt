@@ -56,9 +56,12 @@ class GuestOutbox(
 
     fun limitShown() { mutableLimitReached.value = false }
 
-    /** Forgets every waiting answer ("Delete my data"). */
+    /** Forgets every waiting answer ("Delete my data"); their places are open again ([onDropped]). */
     @Synchronized
-    fun clear() = save(emptyList())
+    fun clear() {
+        mutableEntries.value.forEach(onDropped)
+        save(emptyList())
+    }
 
     /** Queues [entry], replacing an earlier one for the same task (the server would replace it too). */
     @Synchronized
