@@ -48,18 +48,37 @@ class DemoBackendTest {
         val all = DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> File("src/demo/assets/$asset").readText() })
         val client = MapRouletteClient(config.environment(), all)
         assertTrue(all.use("crossings"))
-        val crossings = Campaigns.places(client, ChallengeId(DemoBackend.CAMPAIGN))
+        assertEquals(4L, all.campaignId)
+        val crossings = Campaigns.places(client, ChallengeId(all.campaignId))
         assertEquals(81, crossings.tasks.size)
         assertEquals(Noun("crossing", "crossings"), crossings.noun)
         assertEquals(Footprint.Kind.CROSSING, Footprint.kind(crossings.tasks.first().task))
         assertTrue(crossings.tasks.none { it.isDone })
         assertTrue(all.use("buildings"))
-        val buildings = Campaigns.places(client, ChallengeId(DemoBackend.CAMPAIGN))
+        assertEquals(5L, all.campaignId)
+        val buildings = Campaigns.places(client, ChallengeId(all.campaignId))
         assertEquals(93, buildings.tasks.size)
         assertEquals(Noun("building", "buildings"), buildings.noun)
         assertEquals("way/35962668", buildings.tasks.first().task.name)
         assertEquals(Footprint.Kind.BUILDING, Footprint.kind(buildings.tasks.first().task))
         assertFalse(all.use("benches"))
+    }
+
+    /** Each demo campaign has its own id, so "checked today" isn't shared (Tess, #40); after a
+     * relaunch the app asks for the last one by id. */
+    @Test fun aCampaignIsServedByItsOwnId() = runTest {
+        val all = DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> File("src/demo/assets/$asset").readText() })
+        val client = MapRouletteClient(config.environment(), all)
+        assertEquals(DemoBackend.CAMPAIGN, all.campaignId)
+        assertEquals(81, Campaigns.places(client, ChallengeId(4)).tasks.size)
+        assertEquals(4L, all.campaignId)
+    }
+
+    @Test fun deleteMyDataClearsTheSavedAnswers() = runTest {
+        backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}"""))
+        val response = backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/mobile-guest", emptyMap(), HttpMethod.DELETE, null))
+        assertEquals(204, response.status)
+        assertTrue(backend.pending.isEmpty())
     }
 
     @Test fun answersStayInMemory() = runTest {

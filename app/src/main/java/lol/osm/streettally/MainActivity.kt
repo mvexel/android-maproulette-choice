@@ -173,7 +173,7 @@ class MainActivity : ComponentActivity() {
         val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
             ?: intent.getLongExtra(DEMO_TASK, -1L).takeIf { it > 0 }
         if (!switched && task == null) return
-        linked = DemoBackend.CAMPAIGN to false
+        linked = ((application as StreetTallyApp).demo?.campaignId ?: DemoBackend.CAMPAIGN) to false
         demoTask = task
     }
 
