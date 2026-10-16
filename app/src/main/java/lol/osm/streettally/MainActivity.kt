@@ -115,7 +115,6 @@ class MainActivity : ComponentActivity() {
                             onBack = { closePlace() },
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
-                            firstSavedForLater = { app.prefs.takePutOnMapCard() },
                             reports = open.reports,
                         ) }
                     }
