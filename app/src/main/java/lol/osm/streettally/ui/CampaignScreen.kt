@@ -242,6 +242,12 @@ fun CampaignScreen(
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
     val waiting = if (state.guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
+    // Some sent: reload, so a place sent after a restart shows as saved (the held set says so).
+    var lastWaiting by remember { mutableStateOf(waiting) }
+    LaunchedEffect(waiting) {
+        if (!waiting.containsAll(lastWaiting)) reload++
+        lastWaiting = waiting
+    }
     // Reported here or by someone else: either way the place needs another look and isn't offered.
     // A guest's saved report holding a place (T-002) counts the same way.
     val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys + held.reports

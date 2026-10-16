@@ -97,11 +97,13 @@ class GuestOutboxTest {
     }
 
     @Test fun anAnswerTheServerRefusesForGoodIsDropped() = runTest {
-        val outbox = GuestOutbox(MemoryStore())
+        val dropped = mutableListOf<Long>()
+        val outbox = GuestOutbox(MemoryStore()) { dropped += it.taskId }
         outbox.add(GuestOutbox.Entry(1, 3, answers))
         outbox.add(GuestOutbox.Entry(2, 3, gone))
         val ops = Ops { if (it == 1L) throw MapRouletteException(ErrorKind.CONFLICT, 409, reason = "task_completed") }
         assertEquals(1, outbox.send(ops))
+        assertEquals(listOf(1L), dropped)
         assertEquals(listOf(2L to gone), ops.sent)
         assertTrue(outbox.entries.value.isEmpty())
     }

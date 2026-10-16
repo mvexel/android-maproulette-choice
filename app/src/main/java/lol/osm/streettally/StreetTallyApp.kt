@@ -37,8 +37,9 @@ class StreetTallyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         prefs = CampaignPrefs(this)
-        outbox = GuestOutbox(prefs.outboxStore)
         checked = CheckedLog(prefs.checkedCounts)
+        // Refused for good when sent: the place is open again.
+        outbox = GuestOutbox(prefs.outboxStore) { checked.forget(it.campaignId, it.taskId) }
         val config = AppConfig.fromBuild()
         session = AppSession(
             config,

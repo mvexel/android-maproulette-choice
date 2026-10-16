@@ -33,7 +33,11 @@ import org.maproulette.sdk.WriteProblem
  * of one it did store replaces it rather than doubling it. Sent when the connection comes back, when
  * the app opens, and after the next answer that does get through (design: BACKLOG O1).
  */
-class GuestOutbox(private val store: Store) {
+class GuestOutbox(
+    private val store: Store,
+    /** An answer refused for good, about to leave the queue. */
+    private val onDropped: (Entry) -> Unit = {},
+) {
     /** Where the queue lives: one string (prefs in the app, memory in tests). */
     interface Store {
         fun read(): String?
@@ -67,7 +71,7 @@ class GuestOutbox(private val store: Store) {
     /** Sends what's queued, oldest first, through [ops]. Stops at the first answer that still can't
      * get through, keeping it and the rest. An answer the server refuses for good (the place was
      * checked meanwhile, the campaign closed, the phone's answer limit) is dropped: it can never be
-     * saved, and its place goes back to open. Returns how many were saved. */
+     * saved, and its place goes back to open ([onDropped]). Returns how many were saved. */
     suspend fun send(ops: TaskOps): Int = sending.withLock {
         var saved = 0
         for (entry in mutableEntries.value) {
@@ -81,6 +85,7 @@ class GuestOutbox(private val store: Store) {
             } catch (e: Exception) {
                 if (retryLater(e)) break
                 if (e is MapRouletteException && e.kind == ErrorKind.RATE_LIMIT) mutableLimitReached.value = true
+                onDropped(entry)
                 remove(entry)
             }
         }

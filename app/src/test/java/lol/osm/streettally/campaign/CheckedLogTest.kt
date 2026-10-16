@@ -51,4 +51,16 @@ class CheckedLogTest {
         clock.now = Instant.parse("2026-10-12T10:00:00Z")
         assertEquals(0, restarted.today(3))
     }
+
+    @Test fun aRefusedWaitingAnswerOpensThePlaceAgainButKeepsTodaysCount() {
+        val log = CheckedLog()
+        log.record(3, 1)
+        log.record(3, 2, look = true, report = TaskReport.NotHere)
+        log.forget(3, 1)
+        log.forget(3, 2)
+        assertEquals(emptySet<Long>(), log.done(3))
+        assertEquals(emptySet<Long>(), log.reported(3))
+        assertEquals(emptyMap<Long, TaskReport>(), log.reports(3))
+        assertEquals(2, log.today(3))
+    }
 }
