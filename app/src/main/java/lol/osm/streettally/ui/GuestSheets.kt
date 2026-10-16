@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.task.GuestOutbox
 import org.maproulette.sdk.ChallengeAnswerCounts
 
 /** "Your answers are saved": what happens to a guest's answers (design/handback-copy.md §1).
@@ -81,12 +82,15 @@ fun DaySummarySheet(
     noun: Noun,
     answers: ChallengeAnswerCounts,
     onSignIn: () -> Unit,
+    /** Answers still on this phone. */
+    waiting: Int = 0,
     onClose: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onClose) {
         SheetColumn {
             Text(Wording.daySummaryTitle(checkedToday), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(Wording.daySummary(checkedToday, done, total, noun))
+            if (waiting > 0) Text(Wording.stillOnPhone(waiting, noun))
             // "Local mappers will check them" only while some are still waiting (Iris, on the map).
             if (answers.pending > 0) Text(Wording.DAY_SUMMARY_SAVED)
             if (answers.onMap > 0) OnTheMap(answers.onMap)
@@ -109,9 +113,11 @@ internal fun GuestSavedSection(
     noun: Noun,
     onLink: () -> Unit,
     onDoneForToday: () -> Unit,
+    /** Answers still on this phone: first, and never in the saved and counted line (offline-copy.md). */
+    waiting: Int = 0,
 ) {
     val counted = answers.pending + answers.onMap
-    if (counted <= 0) return
+    if (counted <= 0 && waiting <= 0) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -122,7 +128,8 @@ internal fun GuestSavedSection(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(Wording.savedNotOnMap(counted, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            if (waiting > 0) Text(Wording.waitingForSignal(waiting), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            if (counted > 0) Text(Wording.savedNotOnMap(counted, noun), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             if (answers.onMap > 0) OnTheMap(answers.onMap)
         }
         // The row opens "Your answers are saved", like iOS's disclosure chevron.
@@ -148,8 +155,9 @@ private fun OnTheMap(count: Int) {
 
 /** "Delete my data" for a guest, with its confirmation; under the account section. */
 @Composable
-internal fun DeleteMyData(session: AppSession) {
+internal fun DeleteMyData(session: AppSession, outbox: GuestOutbox? = null, onDeleted: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
+    val waiting = outbox?.entries?.collectAsState()?.value.orEmpty().isNotEmpty()
     var confirm by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
     val state by session.state.collectAsState()
@@ -163,13 +171,16 @@ internal fun DeleteMyData(session: AppSession) {
         AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text(Wording.DELETE_MY_DATA) },
-            text = { Text(Wording.DELETE_MY_DATA_EXPLAINED) },
+            text = { Text(Wording.deleteMyDataExplained(waiting)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
+                    // The answers still on this phone go first: they are this phone's to remove.
+                    outbox?.clear()
                     scope.launch {
                         result = try {
                             session.deleteGuestData()
+                            onDeleted()
                             Wording.DELETE_MY_DATA_DONE
                         } catch (e: CancellationException) {
                             throw e

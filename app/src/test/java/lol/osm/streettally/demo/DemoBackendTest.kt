@@ -94,6 +94,16 @@ class DemoBackendTest {
         assertEquals(ChallengeAnswerCounts(0, 1), session.guest.value.status?.answersHere(DemoBackend.CAMPAIGN))
     }
 
+    @Test fun offlineFailsOnlyTheSave() = runTest {
+        backend.offline = true
+        val save = HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}""")
+        assertTrue(runCatching { backend.execute(save) }.exceptionOrNull() is java.io.IOException)
+        assertEquals(139, Campaigns.places(MapRouletteClient(config.environment(), backend), ChallengeId(DemoBackend.CAMPAIGN)).tasks.size)
+        backend.offline = false
+        assertEquals(200, backend.execute(save).status)
+        assertEquals(1, backend.pending.size)
+    }
+
     @Test fun deleteMyDataClearsTheSavedAnswers() = runTest {
         backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}"""))
         val response = backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/mobile-guest", emptyMap(), HttpMethod.DELETE, null))

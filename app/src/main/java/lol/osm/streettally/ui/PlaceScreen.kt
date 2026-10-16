@@ -86,6 +86,7 @@ import lol.osm.streettally.location.Locator
 import lol.osm.streettally.task.ChoiceAction
 import lol.osm.streettally.task.ChoiceForm
 import lol.osm.streettally.task.ClientTaskOps
+import lol.osm.streettally.task.GuestOutbox
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
@@ -106,6 +107,8 @@ import org.maproulette.sdk.TaskWork
 fun PlaceScreen(
     session: AppSession,
     checked: CheckedLog,
+    /** Where a guest's answers wait when they can't be sent; null in previews and tests. */
+    outbox: GuestOutbox? = null,
     campaignId: Long,
     firstTaskId: Long,
     /** The campaign's places, for "Next nearest". */
@@ -129,7 +132,7 @@ fun PlaceScreen(
     var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
-    var controller by remember { mutableStateOf(newController(session, scope, noun, previewing)) }
+    var controller by remember { mutableStateOf(newController(session, scope, noun, previewing, outbox)) }
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
@@ -176,7 +179,7 @@ fun PlaceScreen(
         val interrupted = old.busy || old.state.value is TaskScreen.CheckAgain
         old.cancel()
         confirmation = null
-        controller = newController(session, scope, noun, previewing)
+        controller = newController(session, scope, noun, previewing, outbox)
         switchNotice = if (interrupted) {
             "Your sign-in changed while your answers were being saved, so we can't tell whether they were."
         } else null
@@ -229,7 +232,7 @@ fun PlaceScreen(
         notSure = emptySet()
         answers = HashMap()
         resetReport()
-        controller = newController(session, scope, noun, previewing)
+        controller = newController(session, scope, noun, previewing, outbox)
         controller.load(TaskId(place.id))
     }
 
@@ -341,7 +344,7 @@ fun PlaceScreen(
                         nextButtons(false)
                     }
                     is TaskScreen.NoLongerNeeded -> {
-                        Text(Wording.alreadyChecked(noun), style = MaterialTheme.typography.titleMedium)
+                        Text(Wording.noLongerNeeded(s.reason, noun), style = MaterialTheme.typography.titleMedium)
                         nextButtons(true)
                     }
                     is TaskScreen.Answering -> {
@@ -441,8 +444,12 @@ fun PlaceScreen(
                                 "✓ " + if (s.savedForLater) Wording.savedForLater(today, noun) else Wording.saved(today, noun),
                                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                             )
-                            // Only the first few times: by then the participant knows.
-                            if (s.savedForLater && today <= 3) {
+                            // Waiting on this phone: always said, since it isn't on the server yet.
+                            if (s.queued) {
+                                Text(Wording.SAVED_ON_PHONE, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else if (s.savedForLater && today <= 3) {
+                                // Only the first few times: by then the participant knows.
                                 Text(Wording.SAVED_FOR_LATER_NOTE, style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -559,8 +566,12 @@ private class Confirmation(
 )
 
 /** A controller is bound to one account's client; results of a replaced one are never shown. */
-private fun newController(session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean): TaskWorkController =
-    TaskWorkController(ClientTaskOps(session.client()), session.writer(), scope, noun = noun, previewing = previewing)
+private fun newController(
+    session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean, outbox: GuestOutbox?,
+): TaskWorkController = TaskWorkController(
+    ClientTaskOps(session.client()), session.writer(), scope, noun = noun, previewing = previewing,
+    outbox = outbox.takeUnless { previewing },
+)
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {
     TaskScreen.Loading, is TaskScreen.LoadFailed -> null

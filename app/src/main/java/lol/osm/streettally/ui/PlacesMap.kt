@@ -50,6 +50,8 @@ fun PlacesMap(
     pending: Set<Long> = emptySet(),
     /** Reported places: "Needs another look" ([Pin.LOOK]). */
     look: Set<Long> = emptySet(),
+    /** A guest's answers still on this phone: "Waiting to send" ([Pin.WAITING]). */
+    unsent: Set<Long> = emptySet(),
     /** Where moved places were reported to be: a small gray dot, joined to the pin by a dashed line. */
     movedTo: Map<Long, LatLon> = emptyMap(),
     locationPermitted: Boolean,
@@ -87,7 +89,7 @@ fun PlacesMap(
         }
     }
     AndroidView(factory = { holder.view }, modifier = modifier, update = {
-        holder.show(places, done, pending, look, movedTo)
+        holder.show(Shown(places, done, pending, look, unsent, movedTo))
         holder.syncLocation()
     })
 }
@@ -144,7 +146,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 )
                 this.source = source
                 syncLocation()
-                waiting?.let { show(it.places, it.done, it.pending, it.look, it.movedTo) }
+                waiting?.let { show(it) }
             }
             map.addOnMapClickListener { latLng ->
                 val point = map.projection.toScreenLocation(latLng)
@@ -185,13 +187,14 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         if (!component.isLocationComponentEnabled) component.isLocationComponentEnabled = true
     }
 
-    fun show(places: List<LocatedTask>, done: Set<Long>, pending: Set<Long>, look: Set<Long>, movedTo: Map<Long, LatLon>) {
+    fun show(shown: Shown) {
         val source = source
         if (source == null) {
-            waiting = Shown(places, done, pending, look, movedTo)
+            waiting = shown
             return
         }
         waiting = null
+        val (places, done, pending, look, unsent, movedTo) = shown
         val located = places.filter { it.position != null }
         movedSource?.setGeoJson(
             FeatureCollection.fromFeatures(
@@ -211,6 +214,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                         addNumberProperty("id", place.id)
                         val pin = when (place.id) {
                             in look -> Pin.LOOK
+                            in unsent -> Pin.WAITING
                             in pending -> Pin.PENDING
                             in done -> Pin.DONE
                             else -> Pin.TODO
@@ -248,5 +252,6 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
 }
 
 private data class Shown(
-    val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val movedTo: Map<Long, LatLon>,
+    val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,
+    val movedTo: Map<Long, LatLon>,
 )

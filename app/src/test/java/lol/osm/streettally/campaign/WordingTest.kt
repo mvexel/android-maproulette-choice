@@ -5,6 +5,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
 import org.maproulette.sdk.TaskStatus
@@ -75,6 +76,45 @@ class WordingTest {
         )
         for (text in listOf(Wording.savedNotOnMap(1, stop), Wording.DAY_SUMMARY_SAVED, Wording.NO_ACCOUNT_NEEDED, Wording.GUEST_ANSWERS_ARE_PUBLIC)) {
             assert("computer" !in text && "email" !in text && "removed" !in text) { text }
+        }
+    }
+
+    /** Stale places by why (Iris, parity with iOS #48). */
+    @Test fun noLongerNeededSaysWhy() {
+        val door = Noun("entrance", "entrances")
+        assertEquals("This entrance is no longer on the map. Thanks anyway!", Wording.noLongerNeeded(IneligibleReason.ELEMENT_GONE, door))
+        assertEquals(
+            "This entrance changed on the map since the campaign started. Thanks anyway!",
+            Wording.noLongerNeeded(IneligibleReason.MATCH_FAILED, door),
+        )
+        for (reason in listOf(IneligibleReason.KEY_CHANGED, IneligibleReason.UNKNOWN, null)) {
+            assertEquals("Someone already checked this entrance. Thanks anyway!", Wording.noLongerNeeded(reason, door))
+        }
+    }
+
+    /** design/offline-copy.md: never "offline", "queue", "sync" or "upload". */
+    @Test fun offlineCopy() {
+        val stop = Noun("stop", "stops")
+        assertEquals("Kept on this phone for now. It sends by itself when you have signal.", Wording.SAVED_ON_PHONE)
+        assertEquals("Waiting to send", Wording.WAITING_TO_SEND)
+        assertEquals("1 waiting for signal", Wording.waitingForSignal(1))
+        assertEquals("3 waiting for signal", Wording.waitingForSignal(3))
+        assertEquals(
+            "3 stops are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then.",
+            Wording.stillOnPhone(3, stop),
+        )
+        assertEquals(
+            "1 stop is still on this phone. It sends by itself when you have signal, so keep Street Tally installed until then.",
+            Wording.stillOnPhone(1, stop),
+        )
+        assertEquals("It also removes answers still waiting on this phone.", Wording.DELETE_MY_DATA_WAITING)
+        assertEquals(
+            "${Wording.DELETE_MY_DATA_EXPLAINED} It also removes answers still waiting on this phone. Deleting the app doesn't remove them. Use this button instead.",
+            Wording.deleteMyDataExplained(waiting = true),
+        )
+        assertEquals("${Wording.DELETE_MY_DATA_EXPLAINED} Deleting the app doesn't remove them. Use this button instead.", Wording.deleteMyDataExplained(false))
+        for (text in listOf(Wording.SAVED_ON_PHONE, Wording.WAITING_TO_SEND, Wording.waitingForSignal(2), Wording.stillOnPhone(2, stop), Wording.DELETE_MY_DATA_WAITING)) {
+            for (word in listOf("offline", "queue", "sync", "upload", "counted")) assert(word !in text.lowercase()) { text }
         }
     }
 

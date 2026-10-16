@@ -1,5 +1,6 @@
 package lol.osm.streettally.demo
 
+import java.io.IOException
 import java.net.URI
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,9 @@ class DemoBackend(
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
 
+    /** Saving an answer fails as if there were no connection (the `offline` extra); reads still work. */
+    @Volatile var offline: Boolean = false
+
     /** Answers a local mapper has already put on the map, reported in the guest status (the `onmap` extra). */
     @Volatile var onMap: Int = 0
 
@@ -100,6 +104,10 @@ class DemoBackend(
     /** Answered on a background thread, as a real transport would: parsing a survey file on the
      * main thread stalled the emulator into "isn't responding" (Tess). */
     override suspend fun execute(request: HttpRequest): HttpResponse = withContext(Dispatchers.Default) {
+        if (offline && request.method == HttpMethod.POST && request.url.endsWith("/choice/pending")) {
+            log("${request.method} ${request.url} -> no connection (offline extra)")
+            throw IOException("demo: offline")
+        }
         answer(request).also { log("${request.method} ${request.url} -> ${it.status}") }
     }
 
@@ -129,7 +137,7 @@ class DemoBackend(
             api == "challenges/extendedFind" -> json(200, if (query["page"].orEmpty() in setOf("", "0")) "[${campaign(tagged = true)}]" else "[]")
             api == "challenge/$campaignId/tasks" -> json(200, page(trees, query).joinToString(",", "[", "]") { task(it).toString() })
             api.startsWith("tasks/box/") -> {
-                val open = trees.filter { status[it.id] == 0 }
+                val open = trees.filter { status[it.id] in BOX_STATUSES }
                 json(200, page(open, query).joinToString(",", """{"total":${open.size},"tasks":[""", "]}") { summary(it) })
             }
             else -> tree(api)?.let { (tree, rest) ->
@@ -227,6 +235,8 @@ class DemoBackend(
         /** The bundled survey file, in the demo flavor's assets. */
         const val ASSET = "demo/woodbine-trees.json"
         const val TREES = "trees"
+        /** The bounds search's statuses (SDK TaskFilter default): to check, skipped, needs another look. */
+        private val BOX_STATUSES = setOf(0, 3, 6)
         /** The demo campaigns, by the name the `demo` launch extra takes, and their bundled files. */
         val ASSETS = linkedMapOf(TREES to ASSET, "crossings" to "demo/woodbine-crossings.json", "buildings" to "demo/woodbine-buildings.json")
     }

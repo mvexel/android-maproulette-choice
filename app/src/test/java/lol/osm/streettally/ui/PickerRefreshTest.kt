@@ -66,7 +66,7 @@ class PickerRefreshTest {
         compose.setContent {
             PickerScreen(
                 session = session, appScope = CoroutineScope(Dispatchers.Unconfined),
-                authenticate = { error("no sign-in in this test") }, onCampaign = {},
+                outbox = null, signIn = { error("no sign-in in this test") }, onCampaign = {},
             )
         }
         waitForText(Wording.NO_CAMPAIGNS.take(20))

@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -79,6 +80,7 @@ import lol.osm.streettally.campaign.answersHere
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
+import lol.osm.streettally.task.GuestOutbox
 import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.ErrorKind
@@ -92,6 +94,8 @@ fun CampaignScreen(
     session: AppSession,
     prefs: CampaignPrefs,
     checkedLog: CheckedLog,
+    /** A guest's answers still on this phone: shown as waiting to send, not counted until sent. */
+    outbox: GuestOutbox? = null,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -200,6 +204,9 @@ fun CampaignScreen(
             val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
+            // With the places, not after the reports below: the welcome never pops up over a tally
+            // already showing.
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
             serverReports = if (preview || !session.config.serverReports) emptyMap() else try {
                 reportSource.reports(session.client(), ChallengeId(campaignId))
             } catch (e: CancellationException) {
@@ -212,7 +219,6 @@ fun CampaignScreen(
                 preview -> Wording.previewNoPlaces(loaded.noun)
                 else -> "Nothing to check in this campaign yet."
             }
-            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -231,24 +237,39 @@ fun CampaignScreen(
     val current = places
     val noun = current?.noun ?: lol.osm.streettally.campaign.Noun.PLACE
     // Places saved on this phone count as checked straight away; a guest's show as saved, not on the map.
+    // A guest's answers still on this phone show as waiting to send, and count once sent (offline-copy.md;
+    // a guest's only: once signed in, the guest token can't send them).
+    val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
+    val limitReached = outbox?.limitReached?.collectAsState()?.value == true
+    DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
+    val waiting = if (state.guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
+    // Some sent: reload, so a place sent after a restart shows as saved (the held set says so).
+    var lastWaiting by remember { mutableStateOf(waiting) }
+    LaunchedEffect(waiting) {
+        if (!waiting.containsAll(lastWaiting)) reload++
+        lastWaiting = waiting
+    }
     // Reported here or by someone else: either way the place needs another look and isn't offered.
     // A guest's saved report holding a place (T-002) counts the same way.
     val reported = if (preview) emptySet() else checkedLog.reported(campaignId).toSet() + serverReports.keys + held.reports
     // Where a moved place was reported to be: a gray dot on the map, joined to its pin.
     val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
         .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
-    val tally = remember(current, held, justDone, reported, state.guest) {
-        CampaignProgress(current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported)
+    val tally = remember(current, held, justDone, reported, state.guest, waiting) {
+        CampaignProgress(
+            current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported, waiting = waiting, offered = held.offered,
+        )
     }
     val shown = tally.shown
     val done = tally.done
     val open = Places.sorted(tally.open, origin)
     val checked = Places.sorted(shown.filter { it.id in done }, origin)
     val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
-    // Held places are not offered by "Next nearest" either.
+    val unsent = Places.sorted(shown.filter { it.id in tally.waiting }, origin)
+    // Held and gone places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
-        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids }, reports = serverReports), origin) }
+        current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids && t.id !in tally.gone }, reports = serverReports), origin) }
     }
 
     LaunchedEffect(current, openTask) {
@@ -321,6 +342,8 @@ fun CampaignScreen(
                     notice?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
+                    if (limitReached && state.guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
                     if (tally.total > 0 && !preview) {
@@ -336,8 +359,12 @@ fun CampaignScreen(
                         val today = checkedLog.today(campaignId)
                         if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                         val saved = guestInfo.status
-                        if (state.guest && saved != null) {
-                            GuestSavedSection(saved.answersHere(campaignId), noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
+                        if (state.guest && (saved != null || tally.waiting.isNotEmpty())) {
+                            GuestSavedSection(
+                                saved?.answersHere(campaignId) ?: ChallengeAnswerCounts.ZERO, noun,
+                                onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY },
+                                waiting = tally.waiting.size,
+                            )
                         }
                     } else if (tally.total == 0 || loading || failed) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -383,7 +410,7 @@ fun CampaignScreen(
                             onRefresh = { reload++ },
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            PlaceList(open, look, checked, tally.pending, origin, noun) { open(it) }
+                            PlaceList(open, look, unsent, checked, tally.pending, origin, noun) { open(it) }
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -393,6 +420,7 @@ fun CampaignScreen(
                                 done = done,
                                 pending = tally.pending,
                                 look = tally.look,
+                                unsent = tally.waiting,
                                 movedTo = movedTo,
                                 locationPermitted = locationPermitted,
                                 // A tap shows the place's name first, as iOS's callout; the card opens it.
@@ -401,9 +429,10 @@ fun CampaignScreen(
                                 modifier = Modifier.fillMaxSize(),
                             )
                             shown.firstOrNull { it.id == selected }?.let { place ->
-                                val opens = place.isOpen && place.id !in done
+                                val opens = place.isOpen && place.id !in done && place.id !in tally.waiting
                                 val subtitle = when {
                                     place.id in tally.look -> Wording.NEEDS_LOOK
+                                    place.id in tally.waiting -> Wording.WAITING_TO_SEND
                                     place.id in tally.pending -> Wording.SAVED_NOT_ON_MAP
                                     place.id in done -> "Already checked"
                                     else -> Wording.TAP_TO_ANSWER
@@ -440,6 +469,7 @@ fun CampaignScreen(
         Sheet.DAY_SUMMARY -> DaySummarySheet(
             session, checkedToday = checkedLog.today(campaignId), done = tally.checked, total = tally.total, noun = noun,
             answers = guestInfo.status?.answersHere(campaignId) ?: ChallengeAnswerCounts.ZERO, onSignIn = signInHere,
+            waiting = tally.waiting.size,
         ) { sheet = null }
         null -> Unit
     }
@@ -500,6 +530,8 @@ private fun PlaceList(
     open: List<LocatedTask>,
     /** Reported here (not here, moved, status 6): still openable, never offered as nearest. */
     look: List<LocatedTask>,
+    /** A guest's answers still on this phone: not counted yet, not opened again. */
+    unsent: List<LocatedTask>,
     checked: List<LocatedTask>,
     pending: Set<Long>,
     origin: LatLon?,
@@ -517,6 +549,11 @@ private fun PlaceList(
             PlaceRow(task, origin, noun, done = false, look = true, onClick = { onOpen(task) })
             HorizontalDivider()
         }
+        if (unsent.isNotEmpty()) item { SectionHeader(Wording.WAITING_TO_SEND) }
+        items(unsent, key = { it.id }) { task ->
+            PlaceRow(task, origin, noun, done = false, waiting = true, onClick = null)
+            HorizontalDivider()
+        }
         if (checked.isNotEmpty()) item { SectionHeader("Already checked") }
         items(checked, key = { it.id }) { task ->
             PlaceRow(task, origin, noun, done = true, pending = task.id in pending, onClick = null)
@@ -526,8 +563,9 @@ private fun PlaceList(
 }
 
 /** A place's state for TalkBack, as iOS's VoiceOver value. */
-private fun placeState(done: Boolean, pending: Boolean, look: Boolean = false): String? = when {
+private fun placeState(done: Boolean, pending: Boolean, look: Boolean = false, waiting: Boolean = false): String? = when {
     look -> Wording.NEEDS_LOOK
+    waiting -> Wording.WAITING_TO_SEND
     pending -> Wording.SAVED_NOT_ON_MAP
     done -> "Already checked"
     else -> null
@@ -550,10 +588,11 @@ private fun PlaceRow(
     onClick: (() -> Unit)?,
     pending: Boolean = false,
     look: Boolean = false,
+    waiting: Boolean = false,
 ) {
     val name = Wording.placeName(task.task, noun)
     val distance = Places.rowText(origin, task.position)
-    val color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+    val color = if (done || waiting) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -561,7 +600,7 @@ private fun PlaceRow(
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(name, distance, placeState(done, pending, look)).joinToString(", ")
+                contentDescription = listOfNotNull(name, distance, placeState(done, pending, look, waiting)).joinToString(", ")
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -43,6 +43,7 @@ import lol.osm.streettally.campaign.CampaignList
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.campaign.errorMessage
+import lol.osm.streettally.task.GuestOutbox
 import org.maproulette.sdk.Challenge
 
 /** Account and the backend's published mapping campaigns, like the iOS picker. */
@@ -51,7 +52,11 @@ import org.maproulette.sdk.Challenge
 fun PickerScreen(
     session: AppSession,
     appScope: CoroutineScope,
-    authenticate: suspend (String) -> String,
+    /** A guest's answers still on this phone: sent with a sign-in, removed by "Delete my data". */
+    outbox: GuestOutbox?,
+    signIn: suspend () -> Unit,
+    /** After "Delete my data": the places this phone saved are open again. */
+    onDeletedMyData: () -> Unit = {},
     onCampaign: (Long) -> Unit,
 ) {
     val state by session.state.collectAsState()
@@ -136,10 +141,10 @@ fun PickerScreen(
                             state = state,
                             needsReconsent = AppSession.needsReconsent(session.config.writesAllowed, state.account),
                             guestsAvailable = session.canAnswerAsGuest,
-                            onSignIn = { appScope.launch { session.signIn(authenticate) } },
+                            onSignIn = { appScope.launch { signIn() } },
                             onSignOut = { appScope.launch { session.signOut() } },
                         )
-                        DeleteMyData(session)
+                        DeleteMyData(session, outbox, onDeletedMyData)
                         // Test builds name their backend; participants on prod don't need to see it.
                         if (session.config.baseUrl != AppConfig.PROD_ORIGIN) Text(
                             session.config.baseUrl + if (session.config.writesAllowed) "" else " (read only)",

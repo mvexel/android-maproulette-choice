@@ -80,14 +80,48 @@ class CampaignProgressTest {
         assertEquals(setOf(2L), CampaignProgress(tasks, emptySet(), justDone = setOf(2L, 4L), guest = true).pending)
     }
 
+    @Test fun answersStillOnThePhoneAreShownButNotCountedOrOffered() {
+        // 1 and 2 open, 3 open and waiting on this phone, 4 fixed and still waiting (the server closed it).
+        val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 1))
+        val tally = CampaignProgress(tasks, held = emptySet(), justDone = setOf(3L), guest = true, waiting = setOf(3L, 4L))
+        assertEquals(setOf(3L), tally.waiting)
+        assertEquals(setOf(4L), tally.done)
+        assertEquals(1, tally.checked)
+        assertEquals(4, tally.total)
+        assertEquals(listOf(1L, 2L, 3L, 4L), tally.shown.map { it.id })
+        assertEquals(listOf(1L, 2L), tally.open.map { it.id })
+        assertEquals(emptySet<Long>(), tally.pending)
+        assertEquals(emptySet<Long>(), tally.look)
+        // Sent: it counts, as a saved one.
+        val sent = CampaignProgress(tasks, held = setOf(3L), justDone = setOf(3L), guest = true)
+        assertEquals(2, sent.checked)
+        assertEquals(setOf(3L), sent.pending)
+    }
+
+    @Test fun theTotalIsPlacesOfferedPlusPlacesChecked() {
+        // 1 to 3 open and offered, 4 open but gone from the bounds search (stale or deleted), 5 and 6 fixed.
+        val tasks = listOf(place(1, 0), place(2, 0), place(3, 0), place(4, 0), place(5, 1), place(6, 2))
+        val tally = CampaignProgress(tasks, held = setOf(3L), offered = setOf(1L, 2L, 3L))
+        assertEquals(setOf(4L), tally.gone)
+        assertEquals(3, tally.checked)
+        assertEquals(5, tally.total)
+        assertEquals(listOf(1L, 2L, 3L, 5L, 6L), tally.shown.map { it.id })
+        assertEquals(listOf(1L, 2L), tally.open.map { it.id })
+        // Answered here a moment ago, or waiting on this phone: still this person's, never gone.
+        assertEquals(setOf(2L, 3L), CampaignProgress(tasks, emptySet(), justDone = setOf(4L), offered = setOf(1L)).gone)
+        assertEquals(setOf(2L, 3L), CampaignProgress(tasks, emptySet(), waiting = setOf(4L), offered = setOf(1L)).gone)
+        // Unknown (an older backend, a failed search): the task list stands.
+        assertEquals(6, CampaignProgress(tasks, emptySet()).total)
+    }
+
     @Test fun flagsAreUsedOnlyWhenEveryRowHasOne() {
         fun row(id: Long, pending: Boolean?, kind: HeldKind? = null) =
             TaskSummary(TaskId(id), ChallengeId(3), "t$id", TaskStatus(0), null, pending, kind)
         // An older backend says nothing about what holds a task: every held place reads as checked.
-        assertEquals(Held(setOf(2L)), HeldTasks.fromFlags(listOf(row(1, false), row(2, true))))
+        assertEquals(Held(setOf(2L), offered = setOf(1L, 2L)), HeldTasks.fromFlags(listOf(row(1, false), row(2, true))))
         // A report holds 3 (T-002): it needs another look instead.
         assertEquals(
-            Held(setOf(2L, 3L), reports = setOf(3L)),
+            Held(setOf(2L, 3L), reports = setOf(3L), offered = setOf(1L, 2L, 3L)),
             HeldTasks.fromFlags(listOf(row(1, false), row(2, true, HeldKind.ANSWER), row(3, true, HeldKind.REPORT))),
         )
         assertNull(HeldTasks.fromFlags(listOf(row(1, false), row(2, null))))

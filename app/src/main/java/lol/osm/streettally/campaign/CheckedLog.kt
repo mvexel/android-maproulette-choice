@@ -42,6 +42,21 @@ class CheckedLog(
         counts.set(key, counts.get(key) + 1)
     }
 
+    /** A waiting answer the server refused for good: its place is open again. Today's count stays,
+     * as for a skipped answer (offline-copy.md). */
+    fun forget(campaignId: Long, taskId: Long) {
+        saved[campaignId]?.remove(taskId)
+        reported[campaignId]?.remove(taskId)
+        reports[campaignId]?.remove(taskId)
+    }
+
+    /** "Delete my data": every place saved or reported here is open again; today's counts stay. */
+    fun forgetAll() {
+        saved.clear()
+        reported.clear()
+        reports.clear()
+    }
+
     fun today(campaignId: Long): Int = counts.get(key(campaignId))
 
     /** Places checked here: they count toward the campaign's tally. */
