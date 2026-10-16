@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
 import org.maproulette.sdk.Challenge
@@ -204,6 +205,9 @@ class TaskWorkController(
     val previewing: Boolean = false,
     /** Where a guest's answers wait when they can't be sent; null keeps them on the screen to retry. */
     private val outbox: GuestOutbox? = null,
+    /** The phone's copy of a place and its campaign (BACKLOG O2), opened when there is no connection.
+     * A guest's answer from it waits in [outbox]; the server checks the place when it is sent. */
+    private val kept: (TaskId) -> Pair<Task, Challenge>? = { null },
 ) {
     private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
     private val writer: Writer? = if (previewing) null else writer
@@ -232,9 +236,21 @@ class TaskWorkController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                TaskScreen.LoadFailed(readError(e))
+                openedKept(id, e) ?: TaskScreen.LoadFailed(readError(e))
             }
         }
+    }
+
+    /** No connection: a guest answers the phone's copy, with no eligibility check (there is none to
+     * reach); the answer waits on the phone, and the server checks it when it's sent. Null otherwise. */
+    private fun openedKept(id: TaskId, error: Exception): TaskScreen? {
+        if (previewing || outbox == null || writer?.guest != true || !CampaignCache.isOffline(error)) return null
+        val (task, challenge) = kept(id) ?: return null
+        val work = task.work()
+        if (task.mobileSupport() != MobileSupport.IN_PLACE || work !is TaskWork.Choice) {
+            return TaskScreen.NotAvailable(task, challenge, TaskText.unavailableReason(task))
+        }
+        return TaskScreen.Answering(task, challenge, form(work, ops.choiceOutcomes(task), deleteAllowed = false))
     }
 
     private suspend fun opened(task: Task, challenge: Challenge): TaskScreen {

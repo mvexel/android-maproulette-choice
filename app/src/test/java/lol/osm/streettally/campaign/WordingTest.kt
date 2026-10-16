@@ -92,6 +92,14 @@ class WordingTest {
         }
     }
 
+    @Test fun keptCopySaysHowOld() {
+        val now = 10L * 24 * 60 * 60_000
+        assertEquals("No signal. Showing this campaign as of just now.", Wording.keptCopy(now - 30_000, now))
+        assertEquals("No signal. Showing this campaign as of 12 min ago.", Wording.keptCopy(now - 12 * 60_000, now))
+        assertEquals("No signal. Showing this campaign as of 3 h ago.", Wording.keptCopy(now - 3 * 60 * 60_000 - 5, now))
+        assertEquals("No signal. Showing this campaign as of 2 days ago.", Wording.keptCopy(now - 2L * 24 * 60 * 60_000, now))
+    }
+
     /** design/offline-copy.md: never "offline", "queue", "sync" or "upload". */
     @Test fun offlineCopy() {
         val stop = Noun("stop", "stops")

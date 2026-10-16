@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CampaignLink
 import lol.osm.streettally.campaign.CampaignPlaces
 import lol.osm.streettally.campaign.CampaignProgress
@@ -96,6 +97,10 @@ fun CampaignScreen(
     checkedLog: CheckedLog,
     /** A guest's answers still on this phone: shown as waiting to send, not counted until sent. */
     outbox: GuestOutbox? = null,
+    /** The last campaign opened, kept for dead spots (BACKLOG O2); null in previews and tests. */
+    cache: CampaignCache? = null,
+    /** Goes up each time the connection comes back: a campaign shown from [cache] refreshes. */
+    networkBack: Int = 0,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -125,6 +130,8 @@ fun CampaignScreen(
     var failed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
+    // Shown from the phone's copy (no connection): when the server last sent it.
+    var keptFrom by remember { mutableStateOf<Long?>(null) }
     var showList by rememberSaveable { mutableStateOf(false) }
     // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
     // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
@@ -162,6 +169,8 @@ fun CampaignScreen(
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
+        // One campaign kept: opening another lets the old copy go.
+        cache?.keepOnly(campaignId)
         if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
@@ -172,6 +181,11 @@ fun CampaignScreen(
         if (preview) previewWelcomeSeen = true else prefs.markWelcomeSeen(campaignId)
         sheet = null
         if (first || origin == null) askLocation()
+    }
+    // Back online while showing the phone's copy: load the server's, which drops places checked
+    // or gone meanwhile.
+    LaunchedEffect(networkBack) {
+        if (keptFrom != null) reload++
     }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
@@ -204,6 +218,8 @@ fun CampaignScreen(
             val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
+            keptFrom = null
+            if (!preview) cache?.save(loaded, heldNow)
             // With the places, not after the reports below: the welcome never pops up over a tally
             // already showing.
             if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
@@ -224,6 +240,16 @@ fun CampaignScreen(
         } catch (e: Exception) {
             if (preview && !previewing && refused(e)) {
                 phase = PreviewPhase.NO_ACCESS
+                return@LaunchedEffect
+            }
+            val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
+            if (kept != null) {
+                // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+                places = kept.places
+                held = kept.held
+                keptFrom = kept.savedAt
+                status = ""
+                if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
                 return@LaunchedEffect
             }
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
@@ -341,6 +367,10 @@ fun CampaignScreen(
                 ) {
                     notice?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    keptFrom?.let {
+                        Text(Wording.keptCopy(it, System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
                     if (limitReached && state.guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)

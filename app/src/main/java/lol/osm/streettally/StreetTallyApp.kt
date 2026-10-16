@@ -5,12 +5,17 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.auth.KeystoreCredentialStore
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.demo.DemoBackend
@@ -30,6 +35,12 @@ class StreetTallyApp : Application() {
     /** A guest's answers that couldn't be sent yet; see [sendQueued]. */
     lateinit var outbox: GuestOutbox
         private set
+    /** The last campaign opened, kept for dead spots (BACKLOG O2). */
+    lateinit var cache: CampaignCache
+        private set
+    private val networkBackCount = MutableStateFlow(0)
+    /** Counts the connection coming back, so a campaign shown from [cache] refreshes. */
+    val networkReturns: StateFlow<Int> = networkBackCount
     /** The demo build's in-process backend; null in every other build. */
     var demo: DemoBackend? = null
         private set
@@ -40,6 +51,7 @@ class StreetTallyApp : Application() {
         checked = CheckedLog(prefs.checkedCounts)
         // Refused for good when sent: the place is open again.
         outbox = GuestOutbox(prefs.outboxStore) { checked.forget(it.campaignId, it.taskId) }
+        cache = CampaignCache(CampaignCache.fileStore(File(filesDir, "campaign-cache.json")))
         val config = AppConfig.fromBuild()
         session = AppSession(
             config,
@@ -63,10 +75,16 @@ class StreetTallyApp : Application() {
         (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.registerDefaultNetworkCallback(
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    scope.launch { sendQueued() }
+                    networkBack()
                 }
             },
         )
+    }
+
+    /** The connection is back: send what's waiting, and refresh a campaign shown from the phone's copy. */
+    fun networkBack() {
+        networkBackCount.update { it + 1 }
+        sendQueued()
     }
 
     /** Sends a guest's waiting answers, if any, while still a guest. Signed in, they stay queued

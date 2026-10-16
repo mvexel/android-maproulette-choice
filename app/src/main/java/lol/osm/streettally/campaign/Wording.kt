@@ -223,6 +223,18 @@ object Wording {
         "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
     /** Last in the explainer, after [DELETE_MY_DATA_WAITING] when shown: ends on the action. */
     const val DELETE_MY_DATA_NOT_BY_UNINSTALL = "Deleting the app doesn't remove them. Use this button instead."
+    /** The campaign shown from the phone's copy, with no connection (BACKLOG O2). Draft copy until
+     * Iris's. [savedAt] and [now] in epoch milliseconds. */
+    fun keptCopy(savedAt: Long, now: Long): String {
+        val minutes = ((now - savedAt) / 60_000).coerceAtLeast(0)
+        val ago = when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "$minutes min ago"
+            minutes < 24 * 60 -> "${minutes / 60} h ago"
+            else -> "${minutes / (24 * 60)} days ago"
+        }
+        return "No signal. Showing this campaign as of $ago."
+    }
     /** Added to [DELETE_MY_DATA_EXPLAINED] while answers wait on the phone. */
     const val DELETE_MY_DATA_WAITING = "It also removes answers still waiting on this phone."
     fun deleteMyDataExplained(waiting: Boolean): String =

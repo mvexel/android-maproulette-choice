@@ -125,8 +125,9 @@ private class FakeOps(val allowElementDeletion: Boolean = false) : TaskOps {
 class TaskWorkControllerTest {
     private fun TestScope.controller(
         ops: FakeOps, writer: Writer? = Writer(ME, canEditOsm = true), outbox: GuestOutbox? = null,
+        kept: (TaskId) -> Pair<Task, Challenge>? = { null },
     ): TaskWorkController =
-        TaskWorkController(ops, writer, this, StandardTestDispatcher(testScheduler), outbox = outbox).also {
+        TaskWorkController(ops, writer, this, StandardTestDispatcher(testScheduler), outbox = outbox, kept = kept).also {
             it.load(ID)
             advanceUntilIdle()
         }
@@ -762,6 +763,33 @@ class TaskWorkControllerTest {
             assertTrue(done.savedForLater && done.queued)
             assertEquals(listOf(GuestOutbox.Entry(ID.value, CHALLENGE.id.value, ChoiceSubmission.Answers(mapOf("backrest" to "no")))), outbox.entries.value)
         }
+    }
+
+    @Test
+    fun inADeadSpotAGuestAnswersThePhonesCopyAndTheAnswerWaits() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        val ops = FakeOps().thenRead({ throw MapRouletteException(ErrorKind.NETWORK) })
+        ops.pending = { throw MapRouletteException(ErrorKind.NETWORK) }
+        val keptTask = task(cooperativeWork = GUEST_BENCH)
+        val c = controller(ops, writer = Writer.GUEST, outbox = outbox, kept = { if (it == ID) keptTask to CHALLENGE else null })
+        // No eligibility check to reach: the server checks the place when the answer is sent.
+        assertEquals(listOf("get"), ops.calls)
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertTrue((c.state.value as TaskScreen.Done).queued)
+        assertEquals(listOf(ID.value), outbox.entries.value.map { it.taskId })
+    }
+
+    @Test
+    fun thePhonesCopyIsOnlyForAGuestWithNoConnection() = runTest {
+        val keptTask = task(cooperativeWork = GUEST_BENCH)
+        val kept: (TaskId) -> Pair<Task, Challenge>? = { keptTask to CHALLENGE }
+        // Signed in: no outbox to wait in.
+        val signedIn = FakeOps().thenRead({ throw MapRouletteException(ErrorKind.NETWORK) })
+        assertTrue(controller(signedIn, outbox = GuestOutbox(MemoryStore()), kept = kept).state.value is TaskScreen.LoadFailed)
+        // The server answered: its word stands.
+        val gone = FakeOps().thenRead({ throw MapRouletteException(ErrorKind.NOT_FOUND, 404) })
+        assertTrue(controller(gone, writer = Writer.GUEST, outbox = GuestOutbox(MemoryStore()), kept = kept).state.value is TaskScreen.LoadFailed)
     }
 
     @Test

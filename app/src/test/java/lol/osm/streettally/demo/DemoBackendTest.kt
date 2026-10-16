@@ -4,6 +4,7 @@ import java.io.File
 import kotlinx.coroutines.test.runTest
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.Noun
@@ -94,11 +95,12 @@ class DemoBackendTest {
         assertEquals(ChallengeAnswerCounts(0, 1), session.guest.value.status?.answersHere(DemoBackend.CAMPAIGN))
     }
 
-    @Test fun offlineFailsOnlyTheSave() = runTest {
+    @Test fun offlineFailsEveryRequest() = runTest {
         backend.offline = true
         val save = HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}""")
         assertTrue(runCatching { backend.execute(save) }.exceptionOrNull() is java.io.IOException)
-        assertEquals(139, Campaigns.places(MapRouletteClient(config.environment(), backend), ChallengeId(DemoBackend.CAMPAIGN)).tasks.size)
+        val load = runCatching { Campaigns.places(MapRouletteClient(config.environment(), backend), ChallengeId(DemoBackend.CAMPAIGN)) }
+        assertTrue(load.exceptionOrNull()?.let(CampaignCache::isOffline) == true)
         backend.offline = false
         assertEquals(200, backend.execute(save).status)
         assertEquals(1, backend.pending.size)
