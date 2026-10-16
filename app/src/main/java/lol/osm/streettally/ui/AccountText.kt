@@ -11,7 +11,7 @@ internal fun accountLine(state: SessionState, guestsAvailable: Boolean = false):
     return when {
         !state.restored -> "Checking your sign-in…"
         state.busy -> if (account == null) "Signing in…" else "Signing out…"
-        account == null && guestsAvailable -> Wording.noAccountNeeded()
+        account == null && guestsAvailable -> Wording.NO_ACCOUNT_NEEDED
         account == null -> "To save answers you'll sign in with a free OpenStreetMap account."
         else -> Wording.signedInAs(account.displayName)
     }

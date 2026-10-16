@@ -154,8 +154,8 @@ class AppSession(
         if (state.value.guest) mutableGuest.update { it.copy(status = status) }
     }
 
-    /** Sends the "finish on a computer" link to [email] (again, to correct it). Throws for the
-     * card to show a plain message ([Wording.linkFailed]). */
+    /** Sends the "finish on a computer" link to [email]. No screen offers it since the handback
+     * model (design/handback-copy.md §1: no mail provider); kept until the backend drops the route. */
     suspend fun sendFinishLink(email: String) {
         val status = client().setGuestEmail(email)
         if (state.value.guest) mutableGuest.value = GuestInfo(status, email.trim())
