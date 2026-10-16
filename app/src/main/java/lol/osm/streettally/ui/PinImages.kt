@@ -31,7 +31,14 @@ internal enum class Pin(val id: String) {
         when (this) {
             TODO -> {
                 canvas.drawCircle(14f, 14f, 10.5f, fill(AMBER))
-                canvas.drawCircle(14f, 14f, 10.5f, if (dark) stroke(WHITE, 2f) else stroke(NAVY, 3f))
+                if (dark) {
+                    // The 2 dp white ring wholly outside the disc, edged in black so it still shows on
+                    // the close-up's white building outline and crossing bar (Iris, #37).
+                    canvas.drawCircle(14f, 14f, 13f, stroke(BLACK, 1f))
+                    canvas.drawCircle(14f, 14f, 11.5f, stroke(WHITE, 2f))
+                } else {
+                    canvas.drawCircle(14f, 14f, 10.5f, stroke(NAVY, 3f))
+                }
             }
             DONE -> {
                 canvas.drawCircle(14f, 14f, 12f, fill(GREEN))
@@ -65,6 +72,7 @@ internal enum class Pin(val id: String) {
         val NAVY = Color.parseColor("#14213D")
         val GREEN = Color.parseColor("#1F7A4D")
         val WHITE = Color.parseColor("#FFFFFF")
+        val BLACK = Color.parseColor("#000000")
         const val TICK = "M8.6 14.3 L12.4 18 L19.6 10.4"
         const val QUESTION = "M11.4 11.6 a2.7 2.7 0 1 1 3.9 2.4 c-0.9 0.45 -1.3 0.9 -1.3 1.9"
 
