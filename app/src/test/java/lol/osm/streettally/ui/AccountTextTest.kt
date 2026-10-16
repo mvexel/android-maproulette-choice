@@ -19,7 +19,7 @@ class AccountTextTest {
         val signedOut = SessionState(restored = true)
         assertEquals("To save answers you'll sign in with a free OpenStreetMap account.", accountLine(signedOut))
         assertEquals(
-            "No account needed to start. Answer a few places first, and we'll help you put them on the map afterwards.",
+            "No account needed. Local mappers check your answers and add them to the map.",
             accountLine(signedOut, guestsAvailable = true),
         )
         val named = signedOut.copy(account = MobileAccount(1, setOf("tasks:read"), 1, "rosa_slc"))

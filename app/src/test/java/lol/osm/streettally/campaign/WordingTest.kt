@@ -56,47 +56,21 @@ class WordingTest {
         assertEquals("Stop", Wording.placeName(task("{}"), stop))
     }
 
-    @Test fun finishLaterCopy() {
-        val utc = java.time.ZoneOffset.UTC
-        val date = java.time.Instant.parse("2026-11-30T18:00:00Z")
+    /** design/handback-copy.md §1: counted now, on the map once a local mapper has checked it. Never
+     * a deadline, a computer or an email. */
+    @Test fun handbackCopy() {
         val stop = Noun("stop", "stops")
-        java.util.Locale.setDefault(java.util.Locale.US)
-        assertEquals("Nov\u00A030", Wording.day(date, utc))
-        assertEquals("Sent to rosa@example.com. Check your email later. The link works until Nov\u00A030.", Wording.linkSent("rosa@example.com", date, utc))
-        assertEquals("Sent to rosa@example.com. Check your email later.", Wording.linkSent("rosa@example.com", null))
-        assertEquals("1 saved stop will be removed on Nov\u00A030 unless you finish on a computer.", Wording.savedClosing(1, stop, date, utc))
-        assertEquals("14 saved stops will be removed on Nov\u00A030 unless you finish on a computer.", Wording.savedClosing(14, stop, date, utc))
-        assertEquals("3 stops saved, not on the map yet. Finish on a computer by Nov\u00A030.", Wording.savedNotOnMap(3, stop, date, utc))
+        assertEquals("3 stops saved and counted.", Wording.savedNotOnMap(3, stop))
         assertEquals("You checked 14 stops. The tally: 212 of 410.", Wording.daySummary(14, 212, 410, stop))
+        assertEquals("Local mappers will check them and add them to the map.", Wording.DAY_SUMMARY_SAVED)
+        assertEquals("No account needed. Local mappers check your answers and add them to the map.", Wording.NO_ACCOUNT_NEEDED)
         assertEquals(
-            "They're saved until Nov\u00A030. If we emailed you a link, open it on a computer to put them on the map.",
-            Wording.daySummarySaved(date, utc),
+            "Your answers are counted for this campaign right away. Local mappers then check them and add them to OpenStreetMap, the free map anyone can use, under their own names.",
+            Wording.GUEST_ANSWERS_ARE_PUBLIC,
         )
-        // No unmeasured "about 3 minutes", and no promise that an email was sent (Iris, copy fixes).
-        for (text in listOf(Wording.PUT_ON_MAP_INTRO, Wording.daySummarySaved(null), Wording.SIGN_IN_PUTS_ON_MAP)) {
-            assert("3 minutes" !in text && "We'll email" !in text) { text }
+        for (text in listOf(Wording.savedNotOnMap(1, stop), Wording.DAY_SUMMARY_SAVED, Wording.NO_ACCOUNT_NEEDED, Wording.GUEST_ANSWERS_ARE_PUBLIC)) {
+            assert("computer" !in text && "email" !in text && "removed" !in text) { text }
         }
-    }
-
-    @Test fun linkFailures() {
-        fun error(kind: org.maproulette.sdk.ErrorKind, status: Int, reason: String? = null) =
-            org.maproulette.sdk.MapRouletteException(kind, status, reason = reason)
-        val C = org.maproulette.sdk.ErrorKind.CONFLICT
-        val stop = Noun("stop", "stops")
-        assertEquals("Answer a stop first, then we can send you the link.", Wording.linkFailed(error(C, 409, "nothing_saved"), stop))
-        assertEquals(
-            "These answers are already linked to an OpenStreetMap account. Sign in with it to see them.",
-            Wording.linkFailed(error(C, 409, "guest_claimed")),
-        )
-        assertEquals("Couldn't send the link right now. Try again later.", Wording.linkFailed(error(C, 409)))
-        assertEquals("That doesn't look like an email address.", Wording.linkFailed(IllegalArgumentException("bad")))
-        assertEquals("That doesn't look like an email address.", Wording.linkFailed(error(org.maproulette.sdk.ErrorKind.HTTP, 422)))
-        assertEquals(
-            "We've sent a few links already. Try again tomorrow.",
-            Wording.linkFailed(error(org.maproulette.sdk.ErrorKind.RATE_LIMIT, 429, "email_rate_limited")),
-        )
-        assert(Wording.isInputError(IllegalArgumentException()))
-        assert(!Wording.isInputError(error(org.maproulette.sdk.ErrorKind.RATE_LIMIT, 429)))
     }
 
     @Test fun claimedMessages() {

@@ -57,7 +57,7 @@ class GuestCasesTest {
     /** G-1: a fresh install, no sign-in, a live campaign: every open place is listed, the tally starts at 0. */
     @Test fun g1AGuestSeesEveryOpenPlace() {
         open(WoodbineBackend())
-        waitFor(Wording.noAccountNeeded(noun))
+        waitFor(Wording.NO_ACCOUNT_NEEDED)
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
         compose.onNodeWithText(Wording.choose(noun)).assertExists()
@@ -137,7 +137,7 @@ class GuestCasesTest {
      * guest: "No account needed", every place visible, no sign-in block. */
     @Test fun g3ACampaignWithoutTheLiveFlagIsOpenToGuests() {
         open(WoodbineBackend(WoodbineBackend.DOORS.map { it.copy(live = false) }))
-        waitFor(Wording.noAccountNeeded(noun))
+        waitFor(Wording.NO_ACCOUNT_NEEDED)
         tap("Let's go")
         waitFor(Wording.progress(0, 4, noun))
         assertGone("Sign in with OpenStreetMap")

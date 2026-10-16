@@ -700,7 +700,7 @@ class TaskWorkControllerTest {
     fun guestFailuresKeepTheAnswers() = runTest {
         val cases = listOf(
             MapRouletteException(ErrorKind.RATE_LIMIT, 429, reason = "pending_limit") to
-                "That's as many places as we can keep before they go on the map. Finish on a computer, or tap “I already use OpenStreetMap” to sign in and keep going.",
+                "That's as many places as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going.",
             MapRouletteException(ErrorKind.NETWORK) to "Couldn't connect. Check your connection and try again.",
             MapRouletteException(ErrorKind.AUTHENTICATION, 401) to "Couldn't save your answers. Try again in a moment.",
         )
