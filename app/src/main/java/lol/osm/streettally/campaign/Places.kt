@@ -94,9 +94,10 @@ object Places {
         return points[((normalized + 22.5) / 45).toInt() % 8]
     }
 
-    /** "120 m" / "1.2 km", or "400 ft" / "0.6 mi" where roads are measured in miles. */
+    /** "120 m" / "1.2 km", or "400 ft" / "0.6 mi" where [WhichOne.units] says feet, so one screen
+     * never mixes the two. */
     fun distance(meters: Double, locale: Locale = Locale.getDefault()): String =
-        if (locale.country in MILES) {
+        if (WhichOne.units(locale) == WhichOne.Units.IMPERIAL) {
             val feet = meters * 3.28084
             if (feet < 1000) "${roundTo(feet, if (feet < 100) 10 else 50)} ft"
             else String.format(Locale.US, "%.1f mi", meters / 1609.344)
@@ -106,8 +107,6 @@ object Places {
         }
 
     private fun roundTo(value: Double, step: Int): Int = maxOf(step, (value / step).roundToInt() * step)
-
-    private val MILES = setOf("US", "GB", "LR", "MM")
 
     fun distanceText(a: LatLon?, b: LatLon?, locale: Locale = Locale.getDefault()): String? =
         if (a == null || b == null) null else distance(meters(a, b), locale)

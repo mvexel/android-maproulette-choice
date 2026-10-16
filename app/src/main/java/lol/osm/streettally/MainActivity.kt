@@ -22,6 +22,7 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.TaskReport
+import lol.osm.streettally.demo.DemoBackend
 import lol.osm.streettally.ui.CampaignScreen
 import lol.osm.streettally.ui.PickerScreen
 import lol.osm.streettally.ui.PlaceScreen
@@ -35,11 +36,16 @@ private class OpenPlace(
 class MainActivity : ComponentActivity() {
     /** A campaign a link asked to open, and whether it asked for preview, until the UI takes it. */
     private var linked by mutableStateOf<Pair<Long, Boolean>?>(null)
+    /** The demo build's place to open once its campaign loads (the `task` extra). */
+    private var demoTask by mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) linked = campaignFrom(intent)
+        if (savedInstanceState == null) {
+            linked = campaignFrom(intent)
+            demoFrom(intent)
+        }
         val app = application as StreetTallyApp
         val authenticate: suspend (String) -> String = { url -> BrowserSignIn.authenticate(this, url) }
         setContent {
@@ -50,6 +56,15 @@ class MainActivity : ComponentActivity() {
                 // Reopen the last campaign once per launch; Back leads to the campaign list.
                 var campaignId by rememberSaveable { mutableStateOf(if (savedInstanceState == null) app.prefs.lastCampaign else null) }
                 var place by remember { mutableStateOf<OpenPlace?>(null) }
+                // The open place's task, kept across recreation (dark mode, font size): the campaign
+                // screen reopens it once its places load (Tess, #36 emulator pass).
+                var placeId by rememberSaveable { mutableStateOf<Long?>(null) }
+                fun closePlace() {
+                    // Answers in progress are kept only while the place is open.
+                    placeId?.let { saved.removeState("place-$it") }
+                    place = null
+                    placeId = null
+                }
                 // A preview link (design/preview-mode.md) opens its campaign in preview. [visit] is new
                 // for each open, so opening the link again reloads the campaign and starts afresh.
                 var previewing by rememberSaveable { mutableStateOf(false) }
@@ -63,12 +78,12 @@ class MainActivity : ComponentActivity() {
                         previewing = preview
                         campaignNotice = null
                         visit += 1
-                        place = null
+                        closePlace()
                         linked = null
                     }
                 }
                 fun exitPreview() {
-                    place = null
+                    closePlace()
                     campaignNotice = null
                     previewing = false
                     campaignId = null
@@ -87,8 +102,8 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                     open != null -> {
-                        BackHandler { place = null }
-                        PlaceScreen(
+                        BackHandler { closePlace() }
+                        saved.SaveableStateProvider("place-${open.taskId}") { PlaceScreen(
                             session = app.session,
                             checked = app.checked,
                             campaignId = id,
@@ -97,12 +112,12 @@ class MainActivity : ComponentActivity() {
                             noun = open.noun,
                             origin = open.origin,
                             onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
-                            onBack = { place = null },
+                            onBack = { closePlace() },
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
                             firstSavedForLater = { app.prefs.takePutOnMapCard() },
                             reports = open.reports,
-                        )
+                        ) }
                     }
                     else -> saved.SaveableStateProvider("campaign-$id-$previewing-$visit") {
                         BackHandler { exitPreview() }
@@ -112,7 +127,10 @@ class MainActivity : ComponentActivity() {
                             checkedLog = app.checked,
                             campaignId = id,
                             onBack = { exitPreview() },
-                            onPlace = { task, places, origin -> place = OpenPlace(task.id, places.tasks, places.noun, origin, places.reports) },
+                            onPlace = { task, places, origin ->
+                                place = OpenPlace(task.id, places.tasks, places.noun, origin, places.reports)
+                                placeId = task.id
+                            },
                             preview = previewing,
                             onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
                             onOpenForReal = { alreadyPublished ->
@@ -121,6 +139,8 @@ class MainActivity : ComponentActivity() {
                                 campaignNotice = if (alreadyPublished) Wording.PREVIEW_ALREADY_PUBLISHED else null
                             },
                             notice = campaignNotice,
+                            openTask = demoTask ?: placeId,
+                            onOpenTask = { demoTask = null },
                         )
                     }
                 }
@@ -131,6 +151,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         campaignFrom(intent)?.let { linked = it }
+        demoFrom(intent)
     }
 
     override fun onPause() {
@@ -143,8 +164,25 @@ class MainActivity : ComponentActivity() {
         BrowserSignIn.onHostResumed()
     }
 
+    /** Demo build only: `adb shell am start -n <app>/lol.osm.streettally.MainActivity --es demo crossings
+     * --es task 1012` opens that demo campaign (trees, the default; crossings; buildings) at that place
+     * (a task id, 1001 onwards, or the feature's OSM id). */
+    private fun demoFrom(intent: Intent?) {
+        if (!BuildConfig.DEMO || intent == null) return
+        val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
+        // A task id, or the feature's OSM element: node/<id>, way/<id> or the bare id.
+        val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
+            ?: intent.getLongExtra(DEMO_TASK, -1L).takeIf { it > 0 }
+        if (!switched && task == null) return
+        linked = DemoBackend.CAMPAIGN to false
+        demoTask = task
+    }
+
     private fun campaignFrom(intent: Intent?): Pair<Long, Boolean>? {
         val link = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return null
         return CampaignLink.challenge(link)?.let { it to CampaignLink.isPreview(link) }
     }
 }
+
+private const val DEMO_TASK = "task"
+private const val DEMO_CAMPAIGN = "demo"

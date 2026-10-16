@@ -1,5 +1,6 @@
 package lol.osm.streettally.ui
 
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -99,6 +100,9 @@ fun CampaignScreen(
     onOpenForReal: (alreadyPublished: Boolean) -> Unit = {},
     /** A one-time note above the tally. */
     notice: String? = null,
+    /** A place to open once the places load (its task id, or its node id): the demo build's, or the place open before recreation; then [onOpenTask]. */
+    openTask: Long? = null,
+    onOpenTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by session.state.collectAsState()
@@ -211,6 +215,7 @@ fun CampaignScreen(
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
             }
+            Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = errorMessage(e)
             failed = true
         } finally {
@@ -244,6 +249,14 @@ fun CampaignScreen(
     // Held places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
         current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids }, reports = serverReports), origin) }
+    }
+
+    LaunchedEffect(current, openTask) {
+        val wanted = openTask ?: return@LaunchedEffect
+        val task = current?.tasks?.firstOrNull { it.id == wanted || it.task.name.substringAfter('/') == "$wanted" } ?: return@LaunchedEffect
+        sheet = null
+        onOpenTask()
+        open(task)
     }
 
     Scaffold(

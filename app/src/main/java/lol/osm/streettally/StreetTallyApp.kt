@@ -1,6 +1,7 @@
 package lol.osm.streettally
 
 import android.app.Application
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -8,6 +9,7 @@ import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.auth.KeystoreCredentialStore
 import lol.osm.streettally.campaign.CampaignPrefs
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.demo.DemoBackend
 import org.maproulette.sdk.OkHttpTransport
 
 /** Holds the process-wide session, so sign-in survives activity recreation. */
@@ -19,6 +21,9 @@ class StreetTallyApp : Application() {
         private set
     lateinit var prefs: CampaignPrefs
         private set
+    /** The demo build's in-process backend; null in every other build. */
+    var demo: DemoBackend? = null
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -28,7 +33,14 @@ class StreetTallyApp : Application() {
         session = AppSession(
             config,
             KeystoreCredentialStore(this, "${config.baseUrl}|${config.oauthClientId}"),
-            OkHttpTransport(),
+            if (config.demo) {
+                DemoBackend(
+                    DemoBackend.ASSETS.mapValues { (_, asset) -> assets.open(asset).bufferedReader().use { it.readText() } },
+                    log = { Log.d("StreetTallyDemo", it) },
+                ).also { demo = it }
+            } else {
+                OkHttpTransport()
+            },
         )
         scope.launch {
             session.restore()

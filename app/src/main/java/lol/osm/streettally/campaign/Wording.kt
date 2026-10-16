@@ -30,6 +30,7 @@ data class Noun(val one: String, val many: String) {
         /** Key and value of the identity tag; a null value matches any (Woodbine's entrance=main|yes). */
         private val known = listOf<Triple<String, String?, Noun>>(
             Triple("highway", "bus_stop", Noun("stop", "stops")),
+            Triple("highway", "crossing", Noun("crossing", "crossings")),
             Triple("public_transport", "platform", Noun("stop", "stops")),
             Triple("railway", "platform", Noun("platform", "platforms")),
             Triple("amenity", "bench", Noun("bench", "benches")),
@@ -40,7 +41,10 @@ data class Noun(val one: String, val many: String) {
             Triple("amenity", "shelter", Noun("shelter", "shelters")),
             Triple("leisure", "playground", Noun("playground", "playgrounds")),
             Triple("leisure", "park", Noun("park", "parks")),
+            Triple("natural", "tree", Noun("tree", "trees")),
             Triple("entrance", null, Noun("entrance", "entrances")),
+            // Any building=*, after the specific tags (Iris, E).
+            Triple("building", null, Noun("building", "buildings")),
         )
 
         fun from(match: Map<String, String>): Noun =
@@ -95,6 +99,22 @@ object Wording {
     const val SOMETHING_WRONG = "Something's wrong here"
     const val DONE = "Done"
     fun cantCheck(noun: Noun): String = "I can't check this ${noun.one}"
+
+    // "Which one?" (design/which-one-spec.md F and G).
+    /** The way out on the question: records the can't-check outcome (status 6). */
+    fun cantTell(noun: Noun): String = "I can't tell which ${noun.one}"
+    fun cantTellThanks(noun: Noun): String = "Thanks. Someone will take another look at this ${noun.one}."
+    /** Under the task map, when the first frame shows a neighbour. */
+    fun otherDots(noun: Noun): String = "Grey dots are other ${noun.many} in this campaign."
+    fun taskMapLabel(placeName: String, noun: Noun): String = "Map of $placeName, with other ${noun.many} nearby"
+    const val RECENTER = "Show me and the big pin"
+    /** The direction line's place when location is denied or off (which-one-spec C rule 1). */
+    fun turnOnLocation(noun: Noun): String = "Turn on location to see which way the ${noun.one} is."
+    const val OPEN_SETTINGS = "Open Settings"
+    /** The aerial photo toggle (which-one-spec D): the label says what a tap shows. */
+    const val SHOW_AERIAL = "Aerial photo"
+    const val SHOW_MAP = "Map"
+    const val AERIAL_CREDIT = "Imagery: USDA NAIP 2024"
 
     // "Something's wrong here" (design/not-here-moved.md §2, §7), as in the iOS app.
     const val SKIP_EXPLAINED = "Leave it for someone else."

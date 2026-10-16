@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -228,7 +229,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 val bounds = LatLngBounds.Builder().apply {
                     located.forEach { include(LatLng(it.position!!.lat, it.position.lon)) }
                 }.build()
-                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+                // Once laid out: bounds fitted into no space land far off (after a recreation, the cached style can beat layout).
+                view.doOnLayout { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding)) }
             }
         }
     }

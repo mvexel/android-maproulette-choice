@@ -1,5 +1,10 @@
 package lol.osm.streettally.ui
 
+import android.content.Context
+import android.content.Intent
+import android.location.LocationManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -7,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,26 +48,38 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.location.LocationManagerCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CheckedLog
+import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.MovedSpot
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.TaskReport
+import lol.osm.streettally.campaign.WhichOne
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
@@ -108,7 +126,9 @@ fun PlaceScreen(
     val previewing = previewSaved != null
     val state by session.state.collectAsState()
     val scope = rememberCoroutineScope()
-    var taskId by remember { mutableStateOf(firstTaskId) }
+    // The place, question and answers on screen survive recreation (rotation, dark mode, font size):
+    // people tilt their phones mid-answer (Ada, #36). The answers are replayed into the new controller.
+    var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
     var showPutOnMap by remember { mutableStateOf(false) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
@@ -116,8 +136,10 @@ fun PlaceScreen(
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
-    var step by remember { mutableIntStateOf(0) }
-    var notSure by remember { mutableStateOf(emptySet<String>()) }
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var notSure by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var answers by rememberSaveable { mutableStateOf(HashMap<String, String>()) }
+    var replayed by remember { mutableStateOf(false) }
     var counted by remember { mutableStateOf(false) }
     var showProblems by remember { mutableStateOf(false) }
     // "It's moved": picking the spot on the map, then the report waiting for Done.
@@ -125,6 +147,14 @@ fun PlaceScreen(
     var picked by remember { mutableStateOf<LatLon?>(null) }
     var pickedFromHere by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<ChoiceAction?>(null) }
+    // "I can't tell which one" (which-one-spec.md F): its own thanks line once saved.
+    var cantTell by remember { mutableStateOf(false) }
+    // What the task map senses, for the direction line; and how many neighbours its first frame shows.
+    val sensed = remember { Sensed() }
+    // The aerial photo stays on from place to place until turned off (spec D).
+    var aerial by rememberSaveable { mutableStateOf(false) }
+    var inFrame by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
     fun resetReport() {
         picking = false
         picked = null
@@ -155,11 +185,20 @@ fun PlaceScreen(
         } else null
         step = 0
         notSure = emptySet()
+        answers = HashMap()
         resetReport()
         controller.load(TaskId(taskId))
     }
     val c = controller
     val screen by c.state.collectAsState()
+    // After recreation: put the saved answers back once this place's questions are on screen.
+    LaunchedEffect(c, screen) {
+        val answering = screen as? TaskScreen.Answering ?: return@LaunchedEffect
+        if (replayed || answering.task.id.value != taskId) return@LaunchedEffect
+        replayed = true
+        answers.forEach { (q, o) -> c.select(q, o) }
+        step = step.coerceAtMost(answering.form.work.questions.size)
+    }
     // A preview save counts only in this visit's preview (§4.4).
     LaunchedEffect(c, screen) {
         (screen as? TaskScreen.PreviewSaved)?.let { previewSaved?.add(it.task.id.value) }
@@ -170,8 +209,10 @@ fun PlaceScreen(
         if (done != null && !done.byOther && !counted) {
             counted = true
             checked.record(campaignId, done.task.id.value, look = done.action.needsLook, report = TaskReport.of(done.action))
-            // Once, after the first saved answer; later from the campaign's banner.
-            if (done.savedForLater && firstSavedForLater()) showPutOnMap = true
+            // Once, after the first saved answer (a real one: not "I can't tell" or a report, as
+            // iOS); later from the campaign's banner.
+            val answered = done.action is ChoiceAction.Answers
+            if (done.savedForLater && answered && firstSavedForLater()) showPutOnMap = true
         }
     }
     // Signed in from the sheet here: the sign-in and claim notes show on this screen too.
@@ -188,8 +229,11 @@ fun PlaceScreen(
         taskId = place.id
         visited += place.id
         counted = false
+        cantTell = false
+        inFrame = 0
         step = 0
         notSure = emptySet()
+        answers = HashMap()
         resetReport()
         controller = newController(session, scope, noun, previewing)
         controller.load(TaskId(place.id))
@@ -217,19 +261,54 @@ fun PlaceScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 loadedTask(screen)?.let { task ->
-                    // A small map of the place above its name, as iOS (parity row 5). The moved flow
-                    // and its review draw their own map, so it steps aside there.
+                    // The close-up map of the place and its neighbours, then the live direction line
+                    // (design/which-one-spec.md A to C). The moved flow and its review draw their own
+                    // map, so it steps aside there.
                     val position = Places.position(task)
-                    if (position != null && !picking && report == null) {
-                        // Keyed: the map keeps its first position, and Next nearest reuses this screen.
+                    val live = position != null && !picking && report == null
+                    if (live && position != null) {
+                        val neighbours = WhichOne.neighbours(
+                            task.id.value, candidates, checked.done(campaignId),
+                            checked.reported(campaignId) + reports.keys,
+                        )
+                        val height = maxOf(MIN_MAP_HEIGHT, (LocalConfiguration.current.screenHeightDp * MAP_SHARE).dp)
+                        // Keyed: Next nearest reuses this screen with a new map.
                         key(task.id.value) {
-                            MovedSpotMap(
-                                session.config.mapStyleUrl, position, picked = null, onTheMapLabel = "", interactive = false,
-                                onPick = {}, modifier = Modifier.fillMaxWidth().height(150.dp),
+                            TaskMap(
+                                session.config.mapStyleUrl, position, neighbours,
+                                Wording.taskMapLabel(Wording.placeName(task, noun), noun), sensed,
+                                onNeighboursInFrame = { inFrame = it },
+                                modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)),
+                                aerial = aerial,
+                                onAerial = { aerial = it },
+                                kind = Footprint.kind(task),
                             )
                         }
+                        key(task.id.value) { DirectionLine(sensed, position, noun) }
+                        if (inFrame > 0) {
+                            Text(Wording.otherDots(noun), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    Header(task, noun, if (task.id.value == firstTaskId) Places.fromYouText(origin, Places.position(task)) else null)
+                    // The live line replaces the "from you" line once location is on.
+                    val fromYou = if (task.id.value == firstTaskId && !(live && Locator.permitted(context))) {
+                        Places.fromYouText(origin, position)
+                    } else null
+                    // "I can't tell which one" (spec F): the can't-check outcome, offered on every question,
+                    // as a link under the dots note (or the direction line), so it stays above the fold.
+                    (screen as? TaskScreen.Answering)?.takeIf {
+                        report == null && !picking && c.canEditOsm && step < it.form.work.questions.size
+                    }?.let { s ->
+                        s.form.outcomes.firstOrNull { it.id == ChoiceOutcome.TOO_HARD_ID }
+                            ?.let { ChoiceAction.Outcome(it) }?.takeIf { c.offers(s.task, s.form, it) }
+                    }?.let { action ->
+                        CantTellLink(Wording.cantTell(noun)) {
+                            switchNotice = null
+                            cantTell = true
+                            c.perform(action)
+                        }
+                    }
+                    Header(task, noun, fromYou)
                     task.lockedBy?.let { if (it != state.account?.userId) Banner("Someone else may be checking this ${noun.one} right now. You can still answer.") }
                     // Someone else's report (not-here-moved.md §4). Whoever reported it here sees their own saved line instead.
                     val id = task.id.value
@@ -310,6 +389,7 @@ fun PlaceScreen(
                                     onAnswer = { optionId ->
                                         val id = questions[step].id
                                         c.select(id, optionId)
+                                        answers = HashMap(answers).apply { if (optionId == null) remove(id) else put(id, optionId) }
                                         notSure = if (optionId == null) notSure + id else notSure - id
                                         step += 1
                                     },
@@ -358,6 +438,8 @@ fun PlaceScreen(
                             Text(Wording.checkedByOtherFirst(noun), style = MaterialTheme.typography.titleMedium)
                         } else if (s.action.isReport) {
                             ReportSaved(moved = s.action is ChoiceAction.Moved)
+                        } else if (cantTell) {
+                            Text(Wording.cantTellThanks(noun), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                         } else {
                             // Counted once the effect above has recorded it; reading [counted] recomposes then.
                             val today = checked.today(campaignId) + if (counted) 0 else 1
@@ -535,6 +617,88 @@ private fun Question(
     AnswerButton(Wording.NOT_SURE, null, notSure) { onAnswer(null) }
     if (index > 0) TextButton(onClick = onPrevious) { Text("‹ Previous question") }
 }
+
+/** "I can't tell which one" as a plain link at the start edge, 48 dp tall for touch. */
+@Composable
+private fun CantTellLink(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 0.dp),
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) { Text(label, textDecoration = TextDecoration.Underline) }
+}
+
+/** The task map takes this share of the screen height, and at least [MIN_MAP_HEIGHT] (spec A). */
+private const val MAP_SHARE = 0.35f
+private val MIN_MAP_HEIGHT = 220.dp
+
+/** Where the place is from you, under the task map (which-one-spec.md C): recomputed once a second
+ * from what the map senses. TalkBack hears it again only when its category changes (the rule, side or
+ * compass point, not the number), at most every 5 s. With location denied or off, a line to turn it
+ * on and a link to the app's settings (rule 1); nothing before the first fix. Checked again on
+ * return, so coming back from Settings with location on starts the line. */
+@Composable
+private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
+    val context = LocalContext.current
+    val units = remember { WhichOne.units() }
+    var line by remember { mutableStateOf<WhichOne.Line?>(null) }
+    var announced by remember { mutableStateOf("") }
+    var on by remember { mutableStateOf(locationOn(context)) }
+    LifecycleResumeEffect(Unit) {
+        on = locationOn(context)
+        onPauseOrDispose {}
+    }
+    // The phone's location switch when that is what's off, else the app's own page (permissions).
+    val settings = if (Locator.permitted(context)) {
+        Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+    } else {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    }
+    if (!on) {
+        Column {
+            Text(Wording.turnOnLocation(noun), style = MaterialTheme.typography.bodyLarge)
+            TextButton(
+                onClick = { context.startActivity(settings) },
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(Wording.OPEN_SETTINGS, textDecoration = TextDecoration.Underline) }
+        }
+        return
+    }
+    LaunchedEffect(Unit) {
+        var lastAnnounced = 0L
+        var category: String? = null
+        while (isActive) {
+            val next = WhichOne.line(sensed.you, sensed.accuracyM, sensed.heading, target, noun, units, line?.side)
+            if (next != line) line = next
+            val now = System.currentTimeMillis()
+            if (next != null && next.category != category && now - lastAnnounced >= ANNOUNCE_MS) {
+                category = next.category
+                announced = next.text
+                lastAnnounced = now
+            }
+            delay(LINE_MS)
+        }
+    }
+    val text = line?.text ?: return
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = announced.ifEmpty { text }
+            liveRegion = LiveRegionMode.Polite
+        },
+    )
+}
+
+/** Location permitted and the phone's location switched on. */
+private fun locationOn(context: Context): Boolean {
+    val manager = context.getSystemService(LocationManager::class.java)
+    return Locator.permitted(context) && manager != null && LocationManagerCompat.isLocationEnabled(manager)
+}
+
+private const val LINE_MS = 1_000L
+private const val ANNOUNCE_MS = 5_000L
 
 @Composable
 private fun Review(c: TaskWorkController, task: Task, form: ChoiceForm, noun: Noun, previewing: Boolean, onEdit: (Int) -> Unit) {

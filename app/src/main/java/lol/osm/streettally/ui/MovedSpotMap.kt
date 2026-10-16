@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -255,7 +256,8 @@ private class MovedSpotHolder(
             val padding = (40 * view.resources.displayMetrics.density).toInt()
             val bounds = org.maplibre.android.geometry.LatLngBounds.Builder()
                 .include(LatLng(mapped.lat, mapped.lon)).include(LatLng(picked.lat, picked.lon)).build()
-            map?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+            // Once laid out, as the task map.
+            view.doOnLayout { map?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding)) }
         }
     }
 

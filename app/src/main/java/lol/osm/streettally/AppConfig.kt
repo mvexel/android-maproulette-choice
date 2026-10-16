@@ -1,6 +1,7 @@
 package lol.osm.streettally
 
 import java.net.URI
+import lol.osm.streettally.demo.DemoBackend
 import org.maproulette.sdk.MapRouletteEnvironment
 
 /** The backend this build talks to and whether it may send answers there.
@@ -19,14 +20,17 @@ data class AppConfig(
     val guests: Boolean = false,
     /** Show other people's not-here and moved reports (parity row 4), once the backend can list them. */
     val serverReports: Boolean = false,
+    /** The demo build: [baseUrl] is [DemoBackend.ORIGIN] and the in-process [DemoBackend] answers. */
+    val demo: Boolean = false,
 ) {
     init {
         require(origin(baseUrl) == baseUrl) { "baseUrl must be an https origin without a path: $baseUrl" }
+        require(!demo || baseUrl == DemoBackend.ORIGIN) { "the demo build has no real backend" }
     }
 
-    /** Whether this build sends answers to [baseUrl]. */
+    /** Whether this build sends answers to [baseUrl]. The demo's answers never leave the phone. */
     val writesAllowed: Boolean
-        get() = baseUrl in WRITE_ORIGINS || (allowLiveWrites && baseUrl in LIVE_WRITE_ORIGINS)
+        get() = demo || baseUrl in WRITE_ORIGINS || (allowLiveWrites && baseUrl in LIVE_WRITE_ORIGINS)
 
     /** The OAuth callback registered with the backend (`<scheme>:/oauth2redirect`). */
     val redirectUri: String get() = "$callbackScheme:/oauth2redirect"
@@ -48,6 +52,7 @@ data class AppConfig(
             campaignLinkHost = BuildConfig.CAMPAIGN_LINK_HOST,
             guests = BuildConfig.MAPROULETTE_GUESTS,
             serverReports = BuildConfig.SERVER_REPORTS,
+            demo = BuildConfig.DEMO,
         )
 
         /** `https://host[:port]` of [url], or null when it is not a plain https origin. */
