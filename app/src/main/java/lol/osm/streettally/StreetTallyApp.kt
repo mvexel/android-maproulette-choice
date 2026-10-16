@@ -95,7 +95,10 @@ class StreetTallyApp : Application() {
 
     /** [sendQueued], waiting for it to finish. Best effort: never throws but for cancellation. */
     suspend fun sendQueuedNow() {
-        if (outbox.entries.value.isEmpty() || !session.state.value.restored || session.writer()?.guest != true) return
+        if (outbox.entries.value.isEmpty() || !session.state.value.restored) return
+        // Answered in a dead spot before this phone registered as a guest: register first.
+        if (session.writer() == null && session.canAnswerAsGuest) session.ensureGuest()
+        if (session.writer()?.guest != true) return
         try {
             if (outbox.send(ClientTaskOps(session.client())) > 0) session.refreshGuestStatus()
         } catch (e: CancellationException) {

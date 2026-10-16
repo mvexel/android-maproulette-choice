@@ -182,10 +182,10 @@ fun CampaignScreen(
         sheet = null
         if (first || origin == null) askLocation()
     }
-    // Back online while showing the phone's copy: load the server's, which drops places checked
-    // or gone meanwhile.
+    // Back online while showing the phone's copy (or after failing to load): load the server's,
+    // which drops places checked or gone meanwhile.
     LaunchedEffect(networkBack) {
-        if (keptFrom != null) reload++
+        if (keptFrom != null || failed) reload++
     }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
@@ -399,7 +399,8 @@ fun CampaignScreen(
                     } else if (tally.total == 0 || loading || failed) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (loading) CircularProgressIndicator()
-                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Weighted, so a long line wraps and leaves room for Retry (Tess, #45).
+                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
                             if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
                         }
                     }

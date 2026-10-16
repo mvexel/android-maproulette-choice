@@ -91,6 +91,7 @@ import lol.osm.streettally.task.GuestOutbox
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
+import lol.osm.streettally.task.Writer
 import lol.osm.streettally.task.isReport
 import lol.osm.streettally.task.needsLook
 import org.maproulette.sdk.ChoiceOutcome
@@ -572,7 +573,11 @@ private class Confirmation(
 private fun newController(
     session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean, outbox: GuestOutbox?, cache: CampaignCache?,
 ): TaskWorkController = TaskWorkController(
-    ClientTaskOps(session.client()), session.writer(), scope, noun = noun, previewing = previewing,
+    // A phone that hasn't registered as a guest yet (it registers before the first answer, and can't in
+    // a dead spot) still answers as one; its answers wait on the phone until it can (Tess, #45).
+    ClientTaskOps(session.client()),
+    session.writer() ?: Writer.GUEST.takeIf { !previewing && outbox != null && session.canAnswerAsGuest },
+    scope, noun = noun, previewing = previewing,
     outbox = outbox.takeUnless { previewing },
     kept = { id -> cache?.task(id.value) },
 )
