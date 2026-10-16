@@ -22,4 +22,10 @@ class LocatorTest {
         assertEquals(listOf("gps" to 15_000L), Locator.attempts(listOf("gps"), 15_000))
         assertEquals(emptyList<Pair<String, Long>>(), Locator.attempts(emptyList(), 15_000))
     }
+
+    @Test fun aRecentLastKnownFixStandsInForAMissedOne() {
+        assertEquals(1, Locator.recentIndex(listOf(90_000L, 5_000L, 60_000L)))
+        assertEquals(null, Locator.recentIndex(listOf(300_000L)))
+        assertEquals(null, Locator.recentIndex(emptyList()))
+    }
 }

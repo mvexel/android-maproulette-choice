@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -45,7 +44,6 @@ import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.campaign.errorMessage
 import org.maproulette.sdk.Challenge
-import org.maproulette.sdk.ChallengeId
 
 /** Account and the backend's published mapping campaigns, like the iOS picker. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,9 +61,6 @@ fun PickerScreen(
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
-    // Campaigns a guest can't answer, badged so a guest knows before opening one.
-    var needsAccount by remember { mutableStateOf(emptySet<ChallengeId>()) }
-    val asGuest = state.account == null && (state.guest || session.canAnswerAsGuest)
 
     LaunchedEffect(state.restored, state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
@@ -77,7 +72,6 @@ fun PickerScreen(
             list = loaded
             status = if (loaded.campaigns.isEmpty()) Wording.NO_CAMPAIGNS else ""
             loading = false
-            needsAccount = if (asGuest) Campaigns.needingAccount(session.client(), loaded.campaigns) else emptySet()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -130,7 +124,7 @@ fun PickerScreen(
                     }
                 }
                 items(shown, key = { it.id.value }) { challenge ->
-                    CampaignRow(challenge, needsAccount = asGuest && challenge.id in needsAccount) { onCampaign(challenge.id.value) }
+                    CampaignRow(challenge) { onCampaign(challenge.id.value) }
                     HorizontalDivider()
                 }
                 item {
@@ -166,16 +160,12 @@ fun PickerScreen(
 }
 
 @Composable
-private fun CampaignRow(challenge: Challenge, needsAccount: Boolean, onClick: () -> Unit) {
+private fun CampaignRow(challenge: Challenge, onClick: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(challenge.name, style = MaterialTheme.typography.bodyLarge)
-        if (needsAccount) Text(
-            Wording.NEEDS_ACCOUNT_BADGE, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         challenge.description?.trim()?.takeIf { it.isNotEmpty() }?.let {
             Text(
                 it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
