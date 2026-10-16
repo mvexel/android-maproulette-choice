@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -83,8 +84,11 @@ fun DaySummarySheet(
             Text(Wording.daySummary(checkedToday, done, total, noun))
             Text(Wording.DAY_SUMMARY_SAVED)
             info.status?.publishedCount?.takeIf { it > 0 }?.let { Text(Wording.onTheMap(it)) }
-            AlreadyMapping(onSignIn = { onSignIn(); onClose() })
-            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
+            // Done leads; signing in is a secondary link with no footer (Iris, parity picks).
+            Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Done") }
+            TextButton(onClick = { onSignIn(); onClose() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text(Wording.I_ALREADY_USE_OSM)
+            }
         }
     }
 }
