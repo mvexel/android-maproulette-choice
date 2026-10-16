@@ -172,9 +172,9 @@ object Wording {
         "You weren't sure about any question. You can skip this ${noun.one} instead."
     /** A guest's answers: saved, not on the map yet (deferred sign-up copy, never "on the map"). */
     fun savedForLater(todayCount: Int, noun: Noun): String = "Saved. That's ${noun.count(todayCount)} today."
-    const val SAVED_FOR_LATER_NOTE = "Saved on our server. They go on the map when you finish on a computer."
+    const val SAVED_FOR_LATER_NOTE = "Saved and counted. Local mappers check answers and add them to the map."
     fun pendingLimit(noun: Noun): String =
-        "That's as many ${noun.many} as we can keep before they go on the map. Finish on a computer, or tap “I already use OpenStreetMap” to sign in and keep going."
+        "That's as many ${noun.many} as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
     const val NO_ACCOUNT_NEEDED = "No account needed. Local mappers check your answers and add them to the map."
 
@@ -197,8 +197,8 @@ object Wording {
     const val DONE_FOR_TODAY = "I'm done for today"
     const val DELETE_MY_DATA = "Delete my data"
     const val DELETE_MY_DATA_EXPLAINED =
-        "Removes your email and any saved answers that aren't on the map yet. Answers already on the map stay there, because they belong to OpenStreetMap now."
-    const val DELETE_MY_DATA_DONE = "Done. Your email and saved answers are deleted."
+        "Removes your saved answers that aren't on the map yet, so mappers won't see them. Answers already on the map stay there, because they're part of OpenStreetMap now."
+    const val DELETE_MY_DATA_DONE = "Done. Your saved answers are deleted."
     const val DELETE_MY_DATA_FAILED = "Couldn't delete right now. Check your connection and try again."
     /** A guest whose answers were claimed on the web, now signed in (§1.5). */
     fun claimedMessage(status: GuestStatus?): String {
