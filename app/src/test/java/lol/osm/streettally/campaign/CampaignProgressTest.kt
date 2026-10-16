@@ -6,7 +6,12 @@ import lol.osm.streettally.task.BENCH
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.time.Instant
+import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.GuestEmailState
+import org.maproulette.sdk.GuestState
+import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.HeldKind
 import org.maproulette.sdk.Task
 import org.maproulette.sdk.TaskId
@@ -94,5 +99,20 @@ class CampaignProgressTest {
         assertEquals(40.7595, box.south, 1e-9)
         assertEquals(-111.8895, box.east, 1e-9)
         assertNull(HeldTasks.bounds(emptyList()))
+    }
+
+    private fun guest(pending: Int, byChallenge: Map<ChallengeId, ChallengeAnswerCounts>) = GuestStatus(
+        guestId = "g", state = GuestState.ACTIVE, email = GuestEmailState.NONE, pendingCount = pending,
+        publishedCount = 0, expiresAt = Instant.EPOCH, byChallenge = byChallenge,
+    )
+
+    @Test fun answersHereReadsThisCampaignsCounts() {
+        val status = guest(5, mapOf(ChallengeId(3) to ChallengeAnswerCounts(2, 4), ChallengeId(4) to ChallengeAnswerCounts(3, 0)))
+        assertEquals(ChallengeAnswerCounts(2, 4), status.answersHere(3))
+        assertEquals(ChallengeAnswerCounts.ZERO, status.answersHere(9))
+    }
+
+    @Test fun beforePerCampaignCountsThePendingTotalStandsIn() {
+        assertEquals(ChallengeAnswerCounts(5, 0), guest(5, emptyMap()).answersHere(3))
     }
 }

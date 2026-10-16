@@ -7,10 +7,12 @@ import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.Noun
+import lol.osm.streettally.campaign.answersHere
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.HttpMethod
 import org.maproulette.sdk.HttpRequest
@@ -72,6 +74,15 @@ class DemoBackendTest {
         assertEquals(DemoBackend.CAMPAIGN, all.campaignId)
         assertEquals(81, Campaigns.places(client, ChallengeId(4)).tasks.size)
         assertEquals(4L, all.campaignId)
+    }
+
+    @Test fun theGuestStatusCountsThisCampaignsSavedAnswers() = runTest {
+        backend.execute(HttpRequest("${DemoBackend.ORIGIN}/api/v2/task/1092/choice/pending", emptyMap(), HttpMethod.POST, """{"answers":{}}"""))
+        val session = AppSession(config, InMemoryCredentialStore(), backend)
+        session.restore()
+        assertTrue(session.ensureGuest())
+        session.refreshGuestStatus()
+        assertEquals(ChallengeAnswerCounts(1, 0), session.guest.value.status?.answersHere(DemoBackend.CAMPAIGN))
     }
 
     @Test fun deleteMyDataClearsTheSavedAnswers() = runTest {

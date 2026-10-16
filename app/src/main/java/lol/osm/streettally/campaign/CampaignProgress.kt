@@ -2,7 +2,9 @@ package lol.osm.streettally.campaign
 
 import kotlinx.coroutines.CancellationException
 import org.maproulette.sdk.Bounds
+import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
+import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.HeldKind
 import org.maproulette.sdk.MapRouletteClient
 import org.maproulette.sdk.PageCursor
@@ -106,3 +108,8 @@ object HeldTasks {
         return if (cursor == null) rows else null
     }
 }
+
+/** A guest's answers in [campaignId]: saved and still waiting, and on the map. A backend from before
+ * per-campaign counts sends none at all, so the overall pending count stands in, with none on the map. */
+fun GuestStatus.answersHere(campaignId: Long): ChallengeAnswerCounts =
+    if (byChallenge.isEmpty()) ChallengeAnswerCounts(pendingCount, 0) else answersIn(ChallengeId(campaignId))

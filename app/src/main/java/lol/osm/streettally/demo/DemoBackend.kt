@@ -117,7 +117,7 @@ class DemoBackend(
                 json(200, """{"token_type":"Bearer","access_token":"demo-guest-token-demo-guest","expires_in":86400,"scope":"guest"}""")
             api == "mobile-guest/me" -> json(200,
                 """{"guestId":"demo-guest","state":"active","email":"none","pending":${pending.size},"published":0,""" +
-                    """"expiresAt":"2099-01-01T00:00:00Z"}""")
+                    """"expiresAt":"2099-01-01T00:00:00Z","byChallenge":{"$campaignId":{"pending":${pending.size},"onMap":0}}}""")
             api == "mobile-guest" && request.method == HttpMethod.DELETE -> {
                 pending.clear()
                 HttpResponse(204, body = "")

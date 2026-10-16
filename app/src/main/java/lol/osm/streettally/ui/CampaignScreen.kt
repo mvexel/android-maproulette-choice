@@ -75,9 +75,11 @@ import lol.osm.streettally.campaign.LocatedTask
 import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.TaskReport
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.campaign.answersHere
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
+import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.ErrorKind
 import org.maproulette.sdk.MapRouletteException
@@ -335,7 +337,7 @@ fun CampaignScreen(
                         if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                         val saved = guestInfo.status
                         if (state.guest && saved != null) {
-                            GuestSavedSection(saved, noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
+                            GuestSavedSection(saved.answersHere(campaignId), noun, onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY })
                         }
                     } else if (tally.total == 0 || loading || failed) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -437,7 +439,7 @@ fun CampaignScreen(
         Sheet.PUT_ON_MAP -> PutOnMapSheet(session, noun, onSignIn = signInHere) { sheet = null }
         Sheet.DAY_SUMMARY -> DaySummarySheet(
             session, checkedToday = checkedLog.today(campaignId), done = tally.checked, total = tally.total, noun = noun,
-            onSignIn = signInHere,
+            answers = guestInfo.status?.answersHere(campaignId) ?: ChallengeAnswerCounts.ZERO, onSignIn = signInHere,
         ) { sheet = null }
         null -> Unit
     }
