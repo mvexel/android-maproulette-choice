@@ -97,7 +97,7 @@ class WordingTest {
         val now = java.time.ZonedDateTime.of(2026, 10, 16, 18, 0, 0, 0, zone).toInstant().toEpochMilli()
         val at = { h: Int, d: Int -> java.time.ZonedDateTime.of(2026, 10, d, h, 30, 0, 0, zone).toInstant().toEpochMilli() }
         fun time(savedAt: Long) = Wording.keptTime(savedAt, now, zone, clock = { "clock" }, day = { "day" })
-        assertEquals("just now", time(now - 30_000))
+        assertEquals("1 min ago", time(now - 30_000))
         assertEquals("12 min ago", time(now - 12 * 60_000))
         assertEquals("clock", time(at(9, 16)))
         assertEquals("yesterday", time(at(23, 15)))

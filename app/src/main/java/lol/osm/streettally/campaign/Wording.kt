@@ -225,15 +225,14 @@ object Wording {
     const val DELETE_MY_DATA_NOT_BY_UNINSTALL = "Deleting the app doesn't remove them. Use this button instead."
     /** The campaign shown from the phone's copy, with no connection (offline-copy.md, O2); [time] from [keptTime]. */
     fun keptCopy(time: String) = "No signal. Showing the list from $time. Some may be done already."
-    /** When the kept copy was saved, for [keptCopy]: minutes within the hour, the device's clock
+    /** When the kept copy was saved, for [keptCopy]: minutes within the hour (at least 1), the device's clock
      * ([clock]) the same day, "yesterday", then the device's month and day ([day]). */
     fun keptTime(savedAt: Long, now: Long, zone: java.time.ZoneId, clock: (Long) -> String, day: (Long) -> String): String {
         val minutes = (now - savedAt).coerceAtLeast(0) / 60_000
         val saved = java.time.Instant.ofEpochMilli(savedAt).atZone(zone).toLocalDate()
         val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         return when {
-            minutes < 1 -> "just now"
-            minutes < 60 -> "$minutes min ago"
+            minutes < 60 -> "${minutes.coerceAtLeast(1)} min ago"
             saved == today -> clock(savedAt)
             saved == today.minusDays(1) -> "yesterday"
             else -> day(savedAt)
