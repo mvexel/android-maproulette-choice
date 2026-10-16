@@ -633,15 +633,17 @@ private fun DirectionLine(sensed: Sensed, target: LatLon, noun: Noun) {
         on = locationOn(context)
         onPauseOrDispose {}
     }
+    // The phone's location switch when that is what's off, else the app's own page (permissions).
+    val settings = if (Locator.permitted(context)) {
+        Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+    } else {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    }
     if (!on) {
         Column {
             Text(Wording.turnOnLocation(noun), style = MaterialTheme.typography.bodyLarge)
             TextButton(
-                onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
-                    )
-                },
+                onClick = { context.startActivity(settings) },
                 contentPadding = PaddingValues(horizontal = 0.dp),
                 modifier = Modifier.heightIn(min = 48.dp),
             ) { Text(Wording.OPEN_SETTINGS, textDecoration = TextDecoration.Underline) }

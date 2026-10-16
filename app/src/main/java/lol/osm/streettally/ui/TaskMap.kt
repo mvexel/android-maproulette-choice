@@ -266,8 +266,10 @@ private class TaskMapHolder(
             map.addOnCameraIdleListener {
                 // The dots footnote shows only while dots are in view, moved or not (Iris).
                 countInFrame()
-                lookForFootprints()
             }
+            // Footprints once the tiles in view have loaded and drawn, not at the first camera idle,
+            // which comes before the tiles: else the target's shape waited for a pan (Tess).
+            view.addOnDidBecomeIdleListener { lookForFootprints() }
             map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                 val neighbours = GeoJsonSource(NEIGHBOURS)
                 style.addSource(neighbours)
@@ -529,6 +531,9 @@ private class TaskMapHolder(
         val component = map?.locationComponent?.takeIf { it.isLocationComponentActivated } ?: return
         component.locationEngine?.removeLocationUpdates(fixes)
         component.locationEngine?.requestLocationUpdates(request, fixes, Looper.getMainLooper())
+        // The last known fix first: the blue dot shows it, and the direction line should too, without
+        // waiting for a new fix that may be slow to come (Tess: none for minutes on the emulator).
+        component.locationEngine?.getLastLocation(fixes)
         component.compassEngine?.removeCompassListener(compass)
         component.compassEngine?.addCompassListener(compass)
     }

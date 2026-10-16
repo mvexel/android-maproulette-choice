@@ -56,6 +56,13 @@ class MainActivity : ComponentActivity() {
                 // Reopen the last campaign once per launch; Back leads to the campaign list.
                 var campaignId by rememberSaveable { mutableStateOf(if (savedInstanceState == null) app.prefs.lastCampaign else null) }
                 var place by remember { mutableStateOf<OpenPlace?>(null) }
+                // The open place's task, kept across recreation (dark mode, font size): the campaign
+                // screen reopens it once its places load (Tess, #36 emulator pass).
+                var placeId by rememberSaveable { mutableStateOf<Long?>(null) }
+                fun closePlace() {
+                    place = null
+                    placeId = null
+                }
                 // A preview link (design/preview-mode.md) opens its campaign in preview. [visit] is new
                 // for each open, so opening the link again reloads the campaign and starts afresh.
                 var previewing by rememberSaveable { mutableStateOf(false) }
@@ -69,12 +76,12 @@ class MainActivity : ComponentActivity() {
                         previewing = preview
                         campaignNotice = null
                         visit += 1
-                        place = null
+                        closePlace()
                         linked = null
                     }
                 }
                 fun exitPreview() {
-                    place = null
+                    closePlace()
                     campaignNotice = null
                     previewing = false
                     campaignId = null
@@ -93,7 +100,7 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                     open != null -> {
-                        BackHandler { place = null }
+                        BackHandler { closePlace() }
                         PlaceScreen(
                             session = app.session,
                             checked = app.checked,
@@ -103,7 +110,7 @@ class MainActivity : ComponentActivity() {
                             noun = open.noun,
                             origin = open.origin,
                             onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
-                            onBack = { place = null },
+                            onBack = { closePlace() },
                             previewSaved = if (previewing) previewSaved else null,
                             onExitPreview = { exitPreview() },
                             firstSavedForLater = { app.prefs.takePutOnMapCard() },
@@ -118,7 +125,10 @@ class MainActivity : ComponentActivity() {
                             checkedLog = app.checked,
                             campaignId = id,
                             onBack = { exitPreview() },
-                            onPlace = { task, places, origin -> place = OpenPlace(task.id, places.tasks, places.noun, origin, places.reports) },
+                            onPlace = { task, places, origin ->
+                                place = OpenPlace(task.id, places.tasks, places.noun, origin, places.reports)
+                                placeId = task.id
+                            },
                             preview = previewing,
                             onSignIn = { app.scope.launch { app.session.signIn(authenticate) } },
                             onOpenForReal = { alreadyPublished ->
@@ -127,7 +137,7 @@ class MainActivity : ComponentActivity() {
                                 campaignNotice = if (alreadyPublished) Wording.PREVIEW_ALREADY_PUBLISHED else null
                             },
                             notice = campaignNotice,
-                            openTask = demoTask,
+                            openTask = demoTask ?: placeId,
                             onOpenTask = { demoTask = null },
                         )
                     }
