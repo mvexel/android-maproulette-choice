@@ -86,6 +86,11 @@ launch() { LAST_DEMO=$1; adb shell pm clear $PKG >/dev/null; [ "${2:-}" = grant 
 # the dialog takes input. $1 is a dump name that already holds the dialog.
 lets_go() {
   local f=$1
+  # The tally can be on screen a moment before the dialog's window: give the dialog time to show.
+  for _ in 1 2 3 4; do
+    grep -q "text=\"Let's go\"" "$OUT/$f.xml" && break
+    sleep 2; dump _lg; f=_lg
+  done
   for _ in 1 2 3; do
     tap "$(ui "$OUT/$f.xml" exact "Let's go")"
     sleep 2
