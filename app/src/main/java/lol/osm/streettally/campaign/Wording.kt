@@ -191,9 +191,11 @@ object Wording {
     fun onTheMapSpoken(count: Int): String = "$count on the map"
     /** Once local mappers have added some of this phone's answers; nothing for skipped ones. */
     const val DAY_SUMMARY_TITLE = "Nice work today."
+    /** With nothing checked today (only answers from before, or on the map), no "Nice work today". */
+    fun daySummaryTitle(checked: Int): String = if (checked > 0) DAY_SUMMARY_TITLE else "Your answers"
     /** "You checked 14 stops. The tally: 212 of 410." */
     fun daySummary(checked: Int, done: Int, total: Int, noun: Noun): String =
-        "You checked ${noun.count(checked)}. The tally: $done of $total."
+        if (checked > 0) "You checked ${noun.count(checked)}. The tally: $done of $total." else "The tally: $done of $total."
     const val DAY_SUMMARY_SAVED = "Local mappers will check them and add them to the map."
     /** A guest's saved place on the map and in the list (the pending pin). */
     const val SAVED_NOT_ON_MAP = "Saved, not on the map yet"

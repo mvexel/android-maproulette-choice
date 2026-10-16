@@ -64,6 +64,9 @@ class WordingTest {
         assertEquals("\u2713 3 on the map", Wording.onTheMap(3))
         assertEquals("3 on the map", Wording.onTheMapSpoken(3))
         assertEquals("You checked 14 stops. The tally: 212 of 410.", Wording.daySummary(14, 212, 410, stop))
+        assertEquals("The tally: 212 of 410.", Wording.daySummary(0, 212, 410, stop))
+        assertEquals("Nice work today.", Wording.daySummaryTitle(14))
+        assertEquals("Your answers", Wording.daySummaryTitle(0))
         assertEquals("Local mappers will check them and add them to the map.", Wording.DAY_SUMMARY_SAVED)
         assertEquals("No account needed. Local mappers check your answers and add them to the map.", Wording.NO_ACCOUNT_NEEDED)
         assertEquals(

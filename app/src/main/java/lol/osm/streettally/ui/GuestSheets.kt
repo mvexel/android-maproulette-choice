@@ -82,7 +82,7 @@ fun DaySummarySheet(
 ) {
     ModalBottomSheet(onDismissRequest = onClose) {
         SheetColumn {
-            Text(Wording.DAY_SUMMARY_TITLE, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(Wording.daySummaryTitle(checkedToday), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(Wording.daySummary(checkedToday, done, total, noun))
             // "Local mappers will check them" only while some are still waiting (Iris, on the map).
             if (answers.pending > 0) Text(Wording.DAY_SUMMARY_SAVED)
