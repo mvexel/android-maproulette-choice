@@ -115,7 +115,7 @@ fun PickerScreen(
         } catch (e: Exception) {
             trace("load failed: ${e.javaClass.simpleName}")
             list = null
-            kept = if (CampaignCache.isOffline(e)) cache?.keptCampaign() else null
+            kept = if (CampaignCache.isOffline(e)) withContext(Dispatchers.IO) { cache?.keptCampaign() } else null
             status = if (kept != null) Wording.PICKER_KEPT else errorMessage(e)
             failed = true
         } finally {

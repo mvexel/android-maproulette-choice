@@ -70,7 +70,7 @@ object Campaigns {
     /** A campaign's places as their pages land (L1 step 2): read a few pages at a time and merged by
      * task id (a task can shift between pages while they load), in id order, so the map can draw
      * before all 5,000 are in. The last step is [Loading.complete] and says whether it was cut off. */
-    fun placesLoading(client: MapRouletteClient, id: ChallengeId): Flow<Loading> = flow {
+    fun placesLoading(client: MapRouletteClient, id: ChallengeId, onPage: (places: Int) -> Unit = {}): Flow<Loading> = flow {
         val challenge = client.getChallenge(id)
         val byId = HashMap<Long, LocatedTask>()
         var full = 0
@@ -82,6 +82,7 @@ object Campaigns {
             // isOpen parses the choice payload: worked out here, off the main thread, not by the tally.
             page.items.forEach { byId[it.id.value] = LocatedTask.of(it).also { place -> place.isOpen } }
             if (page.items.size == TASK_PAGE_SIZE) full++
+            onPage(byId.size)
             emit(Loading(snapshot(truncated = false), complete = false))
         }
         // Every page full: the campaign has more than this phone shows.

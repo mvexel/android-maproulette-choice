@@ -4,6 +4,7 @@ import java.io.IOException
 import java.net.URI
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -89,6 +90,9 @@ class DemoBackend(
     /** How long every request waits before its answer, as on a slow connection (the `latency` extra). */
     @Volatile var latencyMs: Long = 0
 
+    /** Every request waits and never answers, as on one bar of signal (the `hang` extra). */
+    @Volatile var hang: Boolean = false
+
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
 
@@ -125,6 +129,7 @@ class DemoBackend(
             log("${request.method} ${request.url} -> no connection (offline extra)")
             throw IOException("demo: offline")
         }
+        if (hang) awaitCancellation()
         if (latencyMs > 0) delay(latencyMs)
         answer(request).also { log("${request.method} ${request.url} -> ${it.status}") }
     }

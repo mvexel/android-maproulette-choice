@@ -19,23 +19,26 @@ adb install -r -g "$TEST_APK" >/dev/null || { log "FAIL: test APK didn't install
 adb shell settings put global anr_show_background 0 || true
 adb shell settings put global hide_error_dialogs 1 || true
 adb shell pm disable-user --user 0 com.google.android.googlesdksetup >/dev/null 2>&1 || true
-adb shell pm clear $PKG >/dev/null
-# No location prompt over the map.
-adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
-adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
 adb logcat -c
 
-adb shell am instrument -w $PKG.test/androidx.test.runner.AndroidJUnitRunner >"$OUT/instrument.txt" 2>&1
+# Each class from a fresh start: PinAccessTest expects the trees as a first launch leaves them.
+: >"$OUT/instrument.txt"
+for class in OpenTimeTest PinAccessTest; do
+  adb shell pm clear $PKG >/dev/null
+  adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
+  adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
+  adb shell am instrument -w -e class lol.osm.streettally.$class $PKG.test/androidx.test.runner.AndroidJUnitRunner >>"$OUT/instrument.txt" 2>&1
+done
 adb logcat -d >"$OUT/logcat.txt" 2>/dev/null
 
 adb logcat -d -s OpenTime:I | grep " OpenTime" | sed 's/.*OpenTime: /[instrumented] open time: /'
 # The app's own step times (CampaignScreen and PickerScreen trace them).
-adb logcat -d -s StreetTallyTime:I | grep " StreetTallyTime" | sed 's/.*StreetTallyTime: /[instrumented]   step: /' | head -200
+adb logcat -d -s StreetTallyTime:I | grep " StreetTallyTime" | sed 's/.*StreetTallyTime: /[instrumented]   step: /' | head -700
 skipped=$(grep -E "Choreographer.*Skipped [0-9]+ frames" "$OUT/logcat.txt" | grep -oE "Skipped [0-9]+" | awk '{ s += $2 } END { print s + 0 }')
 log "main thread skipped ${skipped:-0} frames in all ($(grep -cE "Choreographer.*Skipped [0-9]+ frames" "$OUT/logcat.txt") Choreographer warnings)"
 
-if grep -q "^OK (" "$OUT/instrument.txt"; then
-  log "PASS: $(grep '^OK (' "$OUT/instrument.txt")"
+if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq 2 ]; then
+  log "PASS: $(grep '^OK (' "$OUT/instrument.txt" | tr '\n' ' ')"
 else
   log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -60
   exit 1

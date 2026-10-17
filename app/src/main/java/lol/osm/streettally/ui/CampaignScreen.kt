@@ -258,7 +258,8 @@ fun CampaignScreen(
             // pin and the tally (as iOS #57).
             var shownAt = 0L
             // Reading and parsing the pages, and the places' sort, run off the main thread.
-            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).flowOn(Dispatchers.Default).conflate().collect { step ->
+            var pages = 0
+            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)) { trace("page ${++pages} read, ${it} places") }.flowOn(Dispatchers.Default).conflate().collect { step ->
                 if (step.complete) {
                     trace("all ${step.places.tasks.size} places read")
                     complete = step.places

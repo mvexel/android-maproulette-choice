@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import lol.osm.streettally.campaign.Wording
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,13 +25,45 @@ class OpenTimeTest {
 
     @Test fun fourThousandNineHundredNinetyNinePlaces() = open(4_999)
 
-    private fun open(places: Int) {
-        shell("dumpsys gfxinfo $pkg reset")
-        val intent = instrumentation.targetContext.packageManager.getLaunchIntentForPackage(pkg)!!
+    /** One bar of signal (AE6b, AE7): every request hangs. The campaign shows the phone's copy, read
+     * cold from its file, and Back shows the picker's kept entry, each about SLOW_MS after opening. */
+    @Test fun aDeadSpotShowsTheKeptCopy() {
+        open(5_200)
+        SystemClock.sleep(5_000) // The copy is saved after the tally shows.
+        val start = SystemClock.uptimeMillis()
+        instrumentation.targetContext.startActivity(launch(5_200).putExtra("hang", true).putExtra("cold", true))
+        val campaign = poll(BUDGET_MS) { texts().firstOrNull { it.startsWith(KEPT_COPY) } }?.let { SystemClock.uptimeMillis() - start }
+        node { it.text?.toString() == LETS_GO }?.let(::click)
+        val back = SystemClock.uptimeMillis()
+        automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        val picker = poll(BUDGET_MS) { texts().firstOrNull { it == Wording.PICKER_KEPT } }?.let { SystemClock.uptimeMillis() - back }
+        Log.i(TAG, "dead spot, 5200 places: kept copy on the campaign ${campaign ?: "never"} ms (cold), " +
+            "kept entry on the picker ${picker ?: "never"} ms after Back")
+        instrumentation.targetContext.startActivity(launch(5_200).putExtra("hang", false))
+        assertTrue("no kept copy on the campaign", campaign != null)
+        assertTrue("no kept entry on the picker", picker != null)
+    }
+
+    private fun launch(places: Int): Intent =
+        instrumentation.targetContext.packageManager.getLaunchIntentForPackage(pkg)!!
             .putExtra("places", places)
             .putExtra("latency", LATENCY_MS)
+            .putExtra("hang", false)
             .putExtra("demo", "large")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+
+    private fun <T : Any> poll(timeoutMs: Long, find: () -> T?): T? {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            find()?.let { return it }
+            SystemClock.sleep(POLL_MS)
+        }
+        return find()
+    }
+
+    private fun open(places: Int) {
+        shell("dumpsys gfxinfo $pkg reset")
+        val intent = launch(places)
         val start = SystemClock.uptimeMillis()
         instrumentation.targetContext.startActivity(intent)
         var first: Long? = null
@@ -90,6 +123,8 @@ class OpenTimeTest {
     private companion object {
         const val TAG = "OpenTime"
         const val LETS_GO = "Let's go"
+        /** The start of [Wording.keptCopy]. */
+        const val KEPT_COPY = "No signal. Showing the list from"
         /** A slow phone connection's round trip. */
         const val LATENCY_MS = 300
         const val POLL_MS = 100L
