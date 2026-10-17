@@ -140,7 +140,8 @@ data class ChoiceForm(
 /** Screen states (docs/design/task-completion.md §11, docs/design/mobile-choice-challenges.md §7 app rules). */
 sealed interface TaskScreen {
     data object Loading : TaskScreen
-    data class LoadFailed(val message: String) : TaskScreen
+    /** [gone]: the place isn't there any more (404); a retry won't bring it back. */
+    data class LoadFailed(val message: String, val gone: Boolean = false) : TaskScreen
     /** Not a choice task, or nothing left to do: read-only, "Not available on mobile". */
     data class NotAvailable(val task: Task, val challenge: Challenge, val reason: String) : TaskScreen
     /** Signed out or read-only: the questions without actions. No eligibility check is made. */
@@ -259,7 +260,7 @@ class TaskWorkController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                openedKept(id, e) ?: TaskScreen.LoadFailed(readError(e))
+                openedKept(id, e) ?: TaskScreen.LoadFailed(readError(e), gone = (e as? MapRouletteException)?.kind == ErrorKind.NOT_FOUND)
             }
         }
     }
@@ -666,7 +667,7 @@ class TaskWorkController(
     }
 
     private fun readError(error: Exception): String = when ((error as? MapRouletteException)?.kind) {
-        ErrorKind.NOT_FOUND -> "This ${noun.one} is no longer in the campaign."
+        ErrorKind.NOT_FOUND -> Wording.goneAtOpen(noun)
         ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
         ErrorKind.AUTHENTICATION -> "Your sign-in has expired. Sign in again."
         else -> "Couldn't load this ${noun.one}. Try again."

@@ -362,7 +362,8 @@ fun PlaceScreen(
                     TaskScreen.Loading -> Busy("Loading…")
                     is TaskScreen.LoadFailed -> {
                         Text(s.message)
-                        BigButton("Try again") { c.load(TaskId(taskId)) }
+                        // Gone: a retry won't bring it back, and the campaign drops it when it reloads.
+                        if (!s.gone) BigButton("Try again") { c.load(TaskId(taskId)) }
                         BackButton(noun, onBack)
                     }
                     is TaskScreen.NotAvailable -> {

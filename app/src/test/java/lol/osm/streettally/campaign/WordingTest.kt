@@ -156,4 +156,8 @@ class WordingTest {
     @Test fun aLiveSaveTheChangedPlaceRefusedMatchesIos() {
         assertEquals("This bench changed on the map while you were answering. Thanks anyway!", Wording.changedWhileAnswering(Noun("bench", "benches")))
     }
+
+    @Test fun aPlaceGoneWhenOpenedHasNoThanks() {
+        assertEquals("This bench is no longer on the map.", Wording.goneAtOpen(Noun("bench", "benches")))
+    }
 }
