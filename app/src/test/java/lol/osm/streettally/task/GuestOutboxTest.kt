@@ -111,9 +111,9 @@ class GuestOutboxTest {
         assertEquals(listOf(1L), dropped)
         assertEquals(listOf(2L to gone), ops.sent)
         assertTrue(outbox.entries.value.isEmpty())
-        assertEquals(1, outbox.notSent.value)
-        outbox.notSentShown()
-        assertEquals(0, outbox.notSent.value)
+        assertEquals(mapOf(3L to 1), outbox.notSent.value)
+        outbox.notSentShown(3)
+        assertEquals(0, outbox.notSent.value.values.sum())
     }
 
     private val keyChanged = MapRouletteException(ErrorKind.CONFLICT, 409,
@@ -129,7 +129,7 @@ class GuestOutboxTest {
         assertEquals(1, outbox.send(ops))
         assertEquals(listOf(1L to ChoiceSubmission.Answers(mapOf("armrest" to "no"))), ops.sent)
         assertTrue(dropped.isEmpty())
-        assertEquals(0, outbox.notSent.value)
+        assertEquals(0, outbox.notSent.value.values.sum())
         assertTrue(outbox.entries.value.isEmpty())
     }
 
@@ -144,7 +144,7 @@ class GuestOutboxTest {
             outbox.send(ops)
         }
         assertEquals(listOf(1L, 1L), dropped)
-        assertEquals(2, outbox.notSent.value)
+        assertEquals(2, outbox.notSent.value.values.sum())
         assertTrue(outbox.entries.value.isEmpty())
     }
 
@@ -154,15 +154,15 @@ class GuestOutboxTest {
         val ops = Ops(check = { throw MapRouletteException(ErrorKind.NETWORK) }, send = { _, _ -> throw keyChanged })
         assertEquals(0, outbox.send(ops))
         assertEquals(listOf(1L), outbox.entries.value.map { it.taskId })
-        assertEquals(0, outbox.notSent.value)
+        assertEquals(0, outbox.notSent.value.values.sum())
     }
 
     @Test fun aGonePlaceSaysSoButTheLimitAndAClosedCampaignDont() = runTest {
         val outbox = GuestOutbox(MemoryStore())
         outbox.add(GuestOutbox.Entry(1, 3, answers))
         outbox.send(Ops { _, _ -> throw MapRouletteException(ErrorKind.NOT_FOUND, 404) })
-        assertEquals(1, outbox.notSent.value)
-        outbox.notSentShown()
+        assertEquals(1, outbox.notSent.value.values.sum())
+        outbox.notSentShown(3)
         for (error in listOf(
             MapRouletteException(ErrorKind.RATE_LIMIT, 429, reason = "pending_limit"),
             MapRouletteException(ErrorKind.PERMISSION, 403, reason = "challenge_not_published"),
@@ -171,7 +171,7 @@ class GuestOutboxTest {
             outbox.send(Ops { _, _ -> throw error })
             assertTrue(outbox.entries.value.isEmpty())
         }
-        assertEquals(0, outbox.notSent.value)
+        assertEquals(0, outbox.notSent.value.values.sum())
     }
 
     @Test fun thePhonesAnswerLimitDropsTheAnswerAndSaysSoOnce() = runTest {
@@ -206,5 +206,16 @@ class GuestOutboxTest {
     @Test fun retriesBackOffToFiveMinutes() {
         assertEquals(listOf(30_000L, 60_000L, 120_000L, 240_000L, 300_000L, 300_000L),
             (0..5).map(GuestOutbox::retryDelayMs))
+    }
+
+    @Test fun eachCampaignKeepsItsOwnNotSentCount() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        outbox.add(GuestOutbox.Entry(1, 3, answers))
+        outbox.add(GuestOutbox.Entry(2, 4, answers))
+        outbox.send(Ops { _, _ -> throw MapRouletteException(ErrorKind.NOT_FOUND, 404) })
+        assertEquals(mapOf(3L to 1, 4L to 1), outbox.notSent.value)
+        // Seen on one campaign's screen: the other still has its line to show.
+        outbox.notSentShown(3)
+        assertEquals(mapOf(4L to 1), outbox.notSent.value)
     }
 }

@@ -3,6 +3,7 @@ package lol.osm.streettally.task
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -58,12 +59,13 @@ class GuestOutbox(
 
     fun limitShown() { mutableLimitReached.value = false }
 
-    private val mutableNotSent = MutableStateFlow(0)
-    /** How many waiting answers were refused because their place changed, was checked or is gone
-     * (409, 404): said once on the campaign screen, then [notSentShown] (offline-copy.md row 17). */
-    val notSent: StateFlow<Int> = mutableNotSent
+    private val mutableNotSent = MutableStateFlow<Map<Long, Int>>(emptyMap())
+    /** Per campaign, how many waiting answers were refused because their place changed, was checked
+     * or is gone (409, 404). Kept until that campaign's screen has said so once, whichever screen was
+     * up when they were refused, then [notSentShown] (offline-copy.md row 17). */
+    val notSent: StateFlow<Map<Long, Int>> = mutableNotSent
 
-    fun notSentShown() { mutableNotSent.value = 0 }
+    fun notSentShown(campaignId: Long) = mutableNotSent.update { it - campaignId }
 
     /** Forgets every waiting answer ("Delete my data"); their places are open again ([onDropped]). */
     @Synchronized
@@ -104,7 +106,9 @@ class GuestOutbox(
             } catch (e: Exception) {
                 if (retryLater(e)) break
                 if (e is MapRouletteException && e.kind == ErrorKind.RATE_LIMIT) mutableLimitReached.value = true
-                else if (e is MapRouletteException && e.kind in STALE) mutableNotSent.value += 1
+                else if (e is MapRouletteException && e.kind in STALE) {
+                    mutableNotSent.update { it + (entry.campaignId to (it[entry.campaignId] ?: 0) + 1) }
+                }
                 onDropped(entry)
                 remove(entry)
             }

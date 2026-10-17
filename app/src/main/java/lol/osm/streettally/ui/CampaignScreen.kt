@@ -287,10 +287,10 @@ fun CampaignScreen(
     val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
     val limitReached = outbox?.limitReached?.collectAsState()?.value == true
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
-    val notSent = outbox?.notSent?.collectAsState()?.value ?: 0
+    val notSent = if (preview) 0 else outbox?.notSent?.collectAsState()?.value?.get(campaignId) ?: 0
     // Keyed once: a count that grows while shown is kept until the screen goes.
     val notSentNow by rememberUpdatedState(notSent)
-    DisposableEffect(outbox) { onDispose { if (notSentNow > 0) outbox?.notSentShown() } }
+    DisposableEffect(outbox) { onDispose { if (notSentNow > 0) outbox?.notSentShown(campaignId) } }
     // A phone that answered in a dead spot before it could register is a guest too, as far as its
     // waiting answers go (Tess, #45): they register it when they send.
     val guest = state.guest || (!preview && queued.isNotEmpty() && session.canAnswerAsGuest)
