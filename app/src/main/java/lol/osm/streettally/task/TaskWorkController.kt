@@ -147,8 +147,11 @@ sealed interface TaskScreen {
     data class Preview(val task: Task, val challenge: Challenge, val work: TaskWork.Choice) : TaskScreen
     /** Campaign preview mode: what would have been sent. Nothing was. */
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
-    /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown). */
-    data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null) : TaskScreen
+    /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown).
+     * [dropped]: a guest's answers, refused because the place now asks something they don't answer
+     * (row 17's line, not "already checked"; iOS AB7). */
+    data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null,
+                              val dropped: Boolean = false) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.
      * [paused]: the backend's mobile writes are switched off (403 mobile_writes_disabled), so a retry won't help. */
     data class CheckFailed(val task: Task, val challenge: Challenge, val paused: Boolean = false) : TaskScreen
@@ -371,7 +374,7 @@ class TaskWorkController(
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
             // Only the write itself outlives cancellation; its result is discarded if cancelled.
-            val outcome = withContext(NonCancellable + io) { send(task, action) }
+            val outcome = withContext(NonCancellable + io) { send(task, action).recoverNarrowed(task, action) { ops.submitChoice(task, it) } }
             ensureActive()
             mutableState.value = outcome.fold(
                 onSuccess = { result -> succeeded(task, challenge, action, me, result) },
@@ -432,6 +435,28 @@ class TaskWorkController(
         Result.failure(e)
     }
 
+    /** Refused because the place's questions changed (409 key_changed): resent quietly with the answers
+     * it still asks, when they cover all of it (row 17 for live saves too; Ada, iOS AB7). Otherwise, or
+     * if the check fails, the first failure stands. */
+    private suspend fun <T> Result<T>.recoverNarrowed(task: Task, action: ChoiceAction, resend: suspend (ChoiceSubmission) -> T): Result<T> {
+        val error = exceptionOrNull() as? MapRouletteException ?: return this
+        val submission = action.submission ?: return this
+        val narrowed = try {
+            GuestOutbox.narrowed(error, task.id, submission, ops)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return this
+        return try {
+            Result.success(resend(narrowed))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /** A guest's submission: stored as a pending answer (never an OSM edit, never a lock). Skipping
      * only moves on. Resending after a failure is safe: the server keeps one answer per task. */
     private fun saveForLater(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
@@ -456,7 +481,7 @@ class TaskWorkController(
                     throw e
                 } catch (e: Exception) {
                     Result.failure(e)
-                }
+                }.recoverNarrowed(task, action) { ops.submitPendingChoice(task, it) }
             }
             // No reply in time: it waits on the phone like an unsent one. A late result is dropped;
             // the resend is safe, as the server keeps one answer per task.
@@ -487,6 +512,9 @@ class TaskWorkController(
         }
         if (error !is MapRouletteException) return answering("Couldn't save your answers. Try again.")
         if (error.reason == "task_completed") return notAccepted(task, challenge)
+        if (error.problem == ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED) && submission is ChoiceSubmission.Answers) {
+            return TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.KEY_CHANGED, dropped = true)
+        }
         if (error.problem == ChoiceProblem.UnsupportedTask) return TaskScreen.GuestSignIn(task, challenge)
         if (error.kind == ErrorKind.RATE_LIMIT && error.reason == "pending_limit") return answering(Wording.pendingLimit(noun))
         if (error.kind == ErrorKind.PERMISSION && error.reason == "challenge_not_published") {

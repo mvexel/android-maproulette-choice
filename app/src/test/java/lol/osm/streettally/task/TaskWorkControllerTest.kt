@@ -832,6 +832,41 @@ class TaskWorkControllerTest {
         assertEquals(listOf(ID.value), outbox.entries.value.map { it.taskId })
     }
 
+    private val keyChanged = MapRouletteException(ErrorKind.CONFLICT, 409,
+        problem = ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED), reason = "task_ineligible")
+
+    /** A guest's live save refused with key_changed; after the first check, the place asks [now]. */
+    private fun TestScope.liveKeyChanged(vararg now: String): Pair<FakeOps, TaskWorkController> {
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        var checks = 0
+        ops.check = {
+            checks += 1
+            ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null, questionIds = if (checks == 1) null else setOf(*now))
+        }
+        var sent = 0
+        ops.pending = { sent += 1; if (sent == 1) throw keyChanged; PendingChoice(ID, state = PendingState.PENDING, answeredAt = Instant.EPOCH) }
+        val c = controller(ops, writer = Writer.GUEST, outbox = GuestOutbox(MemoryStore()))
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        return ops to c
+    }
+
+    @Test
+    fun aLiveSaveTheChangedPlaceStillNeedsIsResentQuietly() = runTest {
+        val (ops, c) = liveKeyChanged("backrest")
+        val done = c.state.value as TaskScreen.Done
+        assertFalse(done.queued)
+        assertEquals(2, ops.submissions.size)
+    }
+
+    @Test
+    fun aLiveSaveTheChangedPlaceAsksMoreOfIsDroppedWithRow17() = runTest {
+        val (ops, c) = liveKeyChanged("backrest", "armrest")
+        val gone = c.state.value as TaskScreen.NoLongerNeeded
+        assertTrue(gone.dropped)
+        assertEquals(1, ops.submissions.size)
+    }
+
     @Test
     fun withoutThePhonesCopyASlowReadIsWaitedFor() = runTest {
         val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })

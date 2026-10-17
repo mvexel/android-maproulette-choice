@@ -116,16 +116,8 @@ class GuestOutbox(
         saved
     }
 
-    /** After [error], [entry]'s answers cut down to the questions its place still asks, when they
-     * answer each of them; null when it can't be resent. Errors reading the place propagate. */
-    private suspend fun trimmed(error: MapRouletteException, entry: Entry, ops: TaskOps): ChoiceSubmission? {
-        if (error.problem != ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) return null
-        val answers = entry.submission as? ChoiceSubmission.Answers ?: return null
-        val now = ops.checkChoice(TaskId(entry.taskId))
-        val asked = now.questionIds?.takeIf { now.eligible && it.isNotEmpty() } ?: return null
-        if (!asked.all { it in answers.byQuestion }) return null
-        return ChoiceSubmission.Answers(answers.byQuestion.filterKeys { it in asked })
-    }
+    private suspend fun trimmed(error: MapRouletteException, entry: Entry, ops: TaskOps): ChoiceSubmission? =
+        narrowed(error, TaskId(entry.taskId), entry.submission, ops)
 
     private fun save(entries: List<Entry>) {
         mutableEntries.value = entries
@@ -133,6 +125,18 @@ class GuestOutbox(
     }
 
     companion object {
+        /** After [error], [submission]'s answers cut down to the questions the place asks now, when they
+         * answer each of them; null when it can't be resent. Row 17 for every refused save, waiting or
+         * live (Ada, iOS AB7). Errors reading the place propagate. */
+        suspend fun narrowed(error: MapRouletteException, id: TaskId, submission: ChoiceSubmission, ops: TaskOps): ChoiceSubmission? {
+            if (error.problem != ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) return null
+            val answers = submission as? ChoiceSubmission.Answers ?: return null
+            val now = ops.checkChoice(id)
+            val asked = now.questionIds?.takeIf { now.eligible && it.isNotEmpty() } ?: return null
+            if (!asked.all { it in answers.byQuestion }) return null
+            return ChoiceSubmission.Answers(answers.byQuestion.filterKeys { it in asked })
+        }
+
         private val STALE = setOf(ErrorKind.CONFLICT, ErrorKind.NOT_FOUND)
 
         /** Worth trying again later: the connection, an unknown outcome, the server or its rate limit
