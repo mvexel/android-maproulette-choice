@@ -1,6 +1,5 @@
 package lol.osm.streettally.ui
 
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,13 +64,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CampaignLink
@@ -145,10 +139,8 @@ fun CampaignScreen(
     var reload by remember { mutableStateOf(0) }
     // Shown from the phone's copy (no connection): when the server last sent it.
     var keptFrom by remember { mutableStateOf<Long?>(null) }
-    // Places are showing while more pages still load: the tally says so instead (as iOS #57).
-    var partial by remember { mutableStateOf(false) }
     /** When the current hang began: a reload during it doesn't restart the wait for the kept copy. */
-    var waitingSince by remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
+    var waitingSince by remember { mutableStateOf<Long?>(null) }
     var showList by rememberSaveable { mutableStateOf(false) }
     // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
     // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
@@ -187,7 +179,7 @@ fun CampaignScreen(
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
         // One campaign kept: opening another lets the old copy go.
-        withContext(Dispatchers.IO) { cache?.keepOnly(campaignId) }
+        cache?.keepOnly(campaignId)
         if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
@@ -204,29 +196,6 @@ fun CampaignScreen(
     LaunchedEffect(networkBack) {
         if (keptFrom != null || failed) reload++
     }
-    fun showKept(kept: CampaignCache.Snapshot) {
-        // A dead spot: the phone's copy, answered through the outbox until the connection is back.
-        places = kept.places
-        held = kept.held
-        keptFrom = kept.savedAt
-        status = ""
-        if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
-    }
-    // The first open of a hang counts from the screen opening, not from the session's restore,
-    // which can wait on the network too (Tess's AE6b: ~20 s from a cold launch). Read off the main
-    // thread: a 5,000-place copy takes a while to decode.
-    val opened = remember { SystemClock.elapsedRealtime() }
-    // Open-time steps in logcat (AE7): when each one lands, from the screen opening.
-    fun trace(step: String) = Log.i(TRACE, "campaign $campaignId +${SystemClock.elapsedRealtime() - opened} ms: $step")
-    LaunchedEffect(Unit) {
-        if (preview) return@LaunchedEffect
-        delay(SLOW_MS)
-        if (places != null) return@LaunchedEffect
-        trace("kept-copy timer")
-        val copy = withContext(Dispatchers.IO) { cache?.get(campaignId) } ?: return@LaunchedEffect
-        trace("kept copy read, ${copy.places.tasks.size} places")
-        if (places == null) showKept(copy)
-    }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
         if (preview && state.account == null) {
@@ -234,51 +203,26 @@ fun CampaignScreen(
             phase = PreviewPhase.SIGN_IN_NEEDED
             return@LaunchedEffect
         }
-        trace("load starts (generation ${state.generation}, reload $reload, shown ${places?.tasks?.size})")
         loading = true
         failed = false
         if (!preview) launch { session.refreshGuestStatus() }
+        fun showKept(kept: CampaignCache.Snapshot) {
+            // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+            places = kept.places
+            held = kept.held
+            keptFrom = kept.savedAt
+            status = ""
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+        }
         // A hanging connection (weak signal) isn't refused for a long while: the kept copy shows
         // after a few seconds instead, until the load lands (as iOS).
         val since = waitingSince ?: System.currentTimeMillis().also { waitingSince = it }
         val slow = if (preview || places != null) null else launch {
             delay((SLOW_MS - (System.currentTimeMillis() - since)).coerceAtLeast(0))
-            if (places == null) withContext(Dispatchers.IO) { cache?.get(campaignId) }?.let { if (places == null) showKept(it) }
+            if (places == null) cache?.get(campaignId)?.let(::showKept)
         }
-        // The held search needs no places, so it runs while their pages load (as iOS #57).
-        // Preview hides the tally, so held places aren't looked up.
-        val flagged = if (preview) null else async(Dispatchers.Default) { HeldTasks.flagged(session.client(), ChallengeId(campaignId)) }
         try {
-            // Places show as their pages land (L1 step 2), unless the phone's copy is already up or
-            // this is a preview, which first decides what to show. A reload keeps the full list
-            // until the new one is in. A busy screen skips steps.
-            val fresh = places == null
-            var complete: CampaignPlaces? = null
-            // The first page shows at once, later ones at most every STEP_MS: each redraws every
-            // pin and the tally (as iOS #57).
-            var shownAt = 0L
-            // Reading and parsing the pages, and the places' sort, run off the main thread.
-            var pages = 0
-            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)) { trace("page ${++pages} read, ${it} places") }.flowOn(Dispatchers.Default).conflate().collect { step ->
-                if (step.complete) {
-                    trace("all ${step.places.tasks.size} places read")
-                    complete = step.places
-                    partial = false
-                } else if (shownAt == 0L && !(fresh && !preview && keptFrom == null)) {
-                    trace("first page not shown: fresh $fresh, kept ${keptFrom != null}")
-                    shownAt = -1L
-                } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false &&
-                    System.currentTimeMillis() - shownAt >= STEP_MS
-                ) {
-                    shownAt = System.currentTimeMillis()
-                    places = step.places
-                    partial = true
-                    trace("${step.places.tasks.size} places so far")
-                    status = ""
-                    if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
-                }
-            }
-            val loaded = checkNotNull(complete)
+            val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
             waitingSince = null
             if (preview) {
                 val published = Campaigns.isPublished(loaded.challenge)
@@ -295,14 +239,13 @@ fun CampaignScreen(
                 status = Wording.NOT_PUBLISHED
                 return@LaunchedEffect
             }
-            val heldNow = if (flagged == null) Held() else withContext(Dispatchers.Default) { HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks, flagged.await()) }
+            // Preview hides the tally, so held places aren't looked up.
+            val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
             keptFrom = null
-            trace("held read; all places shown")
             if (!preview) {
-                withContext(Dispatchers.IO) { cache?.save(loaded, heldNow) }
-                trace("copy kept")
+                cache?.save(loaded, heldNow)
                 onReachable()
             }
             // With the places, not after the reports below: the welcome never pops up over a tally
@@ -328,19 +271,16 @@ fun CampaignScreen(
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
             }
-            val kept = if (preview || !CampaignCache.isOffline(e)) null else withContext(Dispatchers.IO) { cache?.get(campaignId) }
+            val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
             if (kept != null) {
                 showKept(kept)
                 return@LaunchedEffect
             }
-            trace("load failed: ${e.javaClass.simpleName}")
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
         } finally {
             slow?.cancel()
-            flagged?.cancel()
-            partial = false
             loading = false
         }
     }
@@ -381,11 +321,10 @@ fun CampaignScreen(
     }
     val shown = tally.shown
     val done = tally.done
-    // Sorted once per tally or fix, not on every recomposition (5,000 places, AE6b).
-    val open = remember(tally, origin) { Places.sorted(tally.open, origin) }
-    val checked = remember(tally, origin) { Places.sorted(shown.filter { it.id in done }, origin) }
-    val look = remember(tally, origin) { Places.sorted(shown.filter { it.id in tally.look }, origin) }
-    val unsent = remember(tally, origin) { Places.sorted(shown.filter { it.id in tally.waiting }, origin) }
+    val open = Places.sorted(tally.open, origin)
+    val checked = Places.sorted(shown.filter { it.id in done }, origin)
+    val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
+    val unsent = Places.sorted(shown.filter { it.id in tally.waiting }, origin)
     // Held and gone places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
         current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids && t.id !in tally.gone }, reports = serverReports), origin) }
@@ -471,16 +410,7 @@ fun CampaignScreen(
                     if (notSent > 0) Text(Wording.notSent(notSent), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
-                    if (partial && !preview) {
-                        // Not a live region: TalkBack doesn't re-announce it for every page.
-                        val soFar = current?.tasks?.size ?: 0
-                        Text(
-                            Wording.loadingSoFar(noun, soFar),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.semantics { contentDescription = Wording.loadingSoFarSpoken(noun, soFar) },
-                        )
-                    } else if (tally.total > 0 && !preview) {
+                    if (tally.total > 0 && !preview) {
                         Text(
                             Wording.progress(tally.checked, tally.total, noun),
                             style = MaterialTheme.typography.bodyMedium,
@@ -777,12 +707,6 @@ private fun PlaceRow(
 }
 
 /** The last fix, as a pair of doubles, so it survives leaving for a place and coming back. */
-/** logcat tag for open-time steps (`adb logcat -s StreetTallyTime`). */
-internal const val TRACE = "StreetTallyTime"
-
-/** The least time between two shown steps of a loading campaign. */
-private const val STEP_MS = 500L
-
 private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
     save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
     restore = { mutableStateOf(LatLon(it[0], it[1])) },

@@ -46,9 +46,6 @@ class WordingTest {
         assertEquals("0 stops", stop.count(0))
         assertEquals("Stop", stop.capitalized)
         assertEquals("The tally: 2 of 7 stops checked", Wording.progress(2, 7, stop))
-        assertEquals("Loading stops… 5,000 so far", Wording.loadingSoFar(stop, 5000, java.util.Locale.US))
-        assertEquals("Loading stops… 5.000 so far", Wording.loadingSoFar(stop, 5000, java.util.Locale.forLanguageTag("nl-NL")))
-        assertEquals("Loading stops, 600 so far", Wording.loadingSoFarSpoken(stop, 600, java.util.Locale.US))
         assertEquals("Nearest stop · 120 m", Wording.nearest(stop, "120 m"))
         assertEquals("Nearest stop", Wording.nearest(stop, null))
     }

@@ -20,9 +20,8 @@ data class LatLon(val lat: Double, val lon: Double)
 /** A challenge task with where it is. */
 data class LocatedTask(val task: Task, val position: LatLon?) {
     val id: Long get() = task.id.value
-    /** Answerable in place: a valid, open, unbundled choice task. Worked out once: it parses the
-     * task's choice payload, and the tally asks for every place several times (AE6b, 5,000 places). */
-    val isOpen: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) { task.mobileSupport() == MobileSupport.IN_PLACE }
+    /** Answerable in place: a valid, open, unbundled choice task. */
+    val isOpen: Boolean get() = task.mobileSupport() == MobileSupport.IN_PLACE
     /** Already checked: fixed, not an issue or already fixed. */
     val isDone: Boolean get() = task.status?.code in DONE
 
@@ -64,9 +63,7 @@ object Places {
     fun sorted(tasks: List<LocatedTask>, origin: LatLon?): List<LocatedTask> {
         val byId = tasks.sortedBy { it.id }
         if (origin == null) return byId
-        // Each distance once, not per comparison: 5,000 places re-sort on every fix (AE6b).
-        return byId.map { t -> t to t.position?.let { meters(origin, it) } }
-            .sortedWith(compareBy(nullsLast()) { it.second }).map { it.first }
+        return byId.sortedWith(compareBy(nullsLast()) { t -> t.position?.let { meters(origin, it) } })
     }
 
     /** Great-circle distance in meters (haversine). */

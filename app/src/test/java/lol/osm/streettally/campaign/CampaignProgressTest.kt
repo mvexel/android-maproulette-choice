@@ -128,6 +128,13 @@ class CampaignProgressTest {
         assertNull(HeldTasks.fromFlags(emptyList()))
     }
 
+    @Test fun boundsArePaddedSoOnePlaceMakesABox() {
+        val box = HeldTasks.bounds(listOf(LatLon(40.76, -111.89)))!!
+        assertEquals(40.7595, box.south, 1e-9)
+        assertEquals(-111.8895, box.east, 1e-9)
+        assertNull(HeldTasks.bounds(emptyList()))
+    }
+
     private fun guest(pending: Int, byChallenge: Map<ChallengeId, ChallengeAnswerCounts>) = GuestStatus(
         guestId = "g", state = GuestState.ACTIVE, email = GuestEmailState.NONE, pendingCount = pending,
         publishedCount = 0, expiresAt = Instant.EPOCH, byChallenge = byChallenge,

@@ -69,11 +69,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
@@ -185,7 +183,7 @@ fun PlaceScreen(
             val registering = scope.async { session.ensureGuest() }
             // With the place on the phone, a hanging registration waits at most SLOW_MS: the phone's
             // copy opens, and keeps its answers when the registration lands (below; iOS 34e13ad).
-            if (withContext(Dispatchers.IO) { cache?.task(taskId) } == null) {
+            if (cache?.task(taskId) == null) {
                 registering.await()
             } else {
                 hung = withTimeoutOrNull(SLOW_MS) { registering.await() } == null

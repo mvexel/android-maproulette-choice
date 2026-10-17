@@ -105,12 +105,4 @@ class CampaignCacheTest {
         assertFalse(CampaignCache.isOffline(MapRouletteException(ErrorKind.NOT_FOUND, 404)))
         assertFalse(CampaignCache.isOffline(IllegalStateException()))
     }
-
-    /** L1-MEM: the kept copy is about 1 KB a place (5.3 MB at 5,000), most of it each task's own
-     * choice payload, which answering offline needs. This keeps it from growing unnoticed. */
-    @Test fun theCopyStaysAboutAKilobyteAPlace() = runTest {
-        val places = places()
-        val bytes = CampaignCache.encode(CampaignCache.Snapshot(places, Held(), 0)).length
-        assertTrue("${bytes / places.tasks.size} bytes a place", bytes / places.tasks.size < 1_400)
-    }
 }

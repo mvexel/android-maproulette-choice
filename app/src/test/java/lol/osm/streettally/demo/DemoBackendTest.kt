@@ -67,20 +67,6 @@ class DemoBackendTest {
         assertFalse(all.use("benches"))
     }
 
-    /** Open-time checks (L1): the trees survey copied to any number of places, each its own node. */
-    @Test fun theLargeCampaignServesAsManyPlacesAsAsked() = runTest {
-        val all = DemoBackend(DemoBackend.ASSETS.mapValues { (_, asset) -> File("src/demo/assets/$asset").readText() })
-        val client = MapRouletteClient(config.environment(), all)
-        all.places = 1_234
-        assertTrue(all.use(DemoBackend.LARGE))
-        assertEquals(6L, all.campaignId)
-        val large = Campaigns.places(client, ChallengeId(all.campaignId))
-        assertEquals(1_234, large.tasks.size)
-        assertEquals(1_234, large.tasks.map { it.task.name }.toSet().size)
-        assertEquals(1_234, large.tasks.mapNotNull { it.position }.toSet().size)
-        assertTrue(large.tasks.all { it.isOpen })
-    }
-
     /** Each demo campaign has its own id, so "checked today" isn't shared (Tess, #40); after a
      * relaunch the app asks for the last one by id. */
     @Test fun aCampaignIsServedByItsOwnId() = runTest {
