@@ -162,7 +162,8 @@ class WordingTest {
     }
 
     @Test fun aLongCampaignSaysItShowsTheFirstOnes() {
-        assertEquals("Showing the first 5,000 benches. This campaign has more.", Wording.truncatedPlaces(Noun("bench", "benches")))
+        assertEquals("Showing 5,000 benches. This campaign has more.", Wording.truncatedPlaces(5_000, Noun("bench", "benches"), java.util.Locale.US))
+        assertEquals("Showing 5.000 benches. This campaign has more.", Wording.truncatedPlaces(5_000, Noun("bench", "benches"), java.util.Locale.GERMANY))
         assertEquals(50, Campaigns.MAX_TASK_PAGES)
     }
 }

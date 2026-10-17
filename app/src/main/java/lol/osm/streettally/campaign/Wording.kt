@@ -154,8 +154,10 @@ object Wording {
         IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
         else -> alreadyChecked(noun)
     }
-    /** A campaign longer than the app reads (L1; Swift's placeholder, iOS #54, until Iris confirms). */
-    fun truncatedPlaces(noun: Noun): String = "Showing the first 5,000 ${noun.many}. This campaign has more."
+    /** A campaign longer than the app reads, [count] places read (L1; Iris, as iOS #54). No "first":
+     * the server sends places by id, not distance. The number follows the phone's locale. */
+    fun truncatedPlaces(count: Int, noun: Noun, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "Showing ${java.text.NumberFormat.getIntegerInstance(locale).format(count)} ${noun.many}. This campaign has more."
     /** The picker couldn't load for lack of signal; the kept campaign is listed below (Iris,
      * offline-copy.md O2; as iOS #53). */
     const val PICKER_KEPT = "No signal. Showing the campaign kept on this phone."
