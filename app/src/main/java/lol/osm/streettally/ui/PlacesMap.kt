@@ -2,7 +2,10 @@ package lol.osm.streettally.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Bundle
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -10,12 +13,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.doOnLayout
+import androidx.customview.widget.ExploreByTouchHelper
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -40,7 +47,9 @@ import org.maplibre.geojson.Point
 
 
 /** A campaign's places on a MapLibre map with OpenFreeMap tiles, drawn as the brand pins ([Pin]).
- * Tapping a place calls [onPlace] with its task id; tapping elsewhere calls [onBackground]. */
+ * Tapping a place calls [onPlace] with its task id; tapping elsewhere calls [onBackground].
+ * TalkBack reaches each pin on screen, nearest [origin] first, read as [describe] says; a double tap
+ * calls [onActivate] (A11y1). */
 @Composable
 fun PlacesMap(
     styleUrl: String,
@@ -58,6 +67,9 @@ fun PlacesMap(
     onPlace: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onBackground: () -> Unit = {},
+    origin: LatLon? = null,
+    describe: (LocatedTask) -> String = { it.id.toString() },
+    onActivate: (Long) -> Unit = onPlace,
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier, {})
@@ -67,6 +79,8 @@ fun PlacesMap(
     val holder = remember { PlacesMapHolder(context, styleUrl) }
     holder.onPlace = onPlace
     holder.onBackground = onBackground
+    holder.onActivate = onActivate
+    holder.describe = describe
     LaunchedEffect(locationPermitted) { holder.syncLocation() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -89,7 +103,7 @@ fun PlacesMap(
         }
     }
     AndroidView(factory = { holder.view }, modifier = modifier, update = {
-        holder.show(Shown(places, done, pending, look, unsent, movedTo))
+        holder.show(Shown(places, done, pending, look, unsent, movedTo, origin))
         holder.syncLocation()
     })
 }
@@ -98,6 +112,11 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     val view: MapView
     var onPlace: (Long) -> Unit = {}
     var onBackground: () -> Unit = {}
+    var onActivate: (Long) -> Unit = {}
+    var describe: (LocatedTask) -> String = { it.id.toString() }
+    /** The pins TalkBack can reach, nearest first; their index is the node id. */
+    private var pins: List<LocatedTask> = emptyList()
+    private val access: PinAccess
     private var map: MapLibreMap? = null
     private var source: GeoJsonSource? = null
     private var movedSource: GeoJsonSource? = null
@@ -107,7 +126,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     init {
         MapLibre.getInstance(context)
         val dark = MapStyle.isDark(context)
-        view = MapView(context)
+        // MapLibre draws the pins as pixels: hover events go to [access], which gives TalkBack a node per pin.
+        view = object : MapView(context) {
+            override fun dispatchHoverEvent(event: MotionEvent): Boolean =
+                access.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
+        }
+        access = PinAccess()
+        ViewCompat.setAccessibilityDelegate(view, access)
         view.onCreate(null)
         view.getMapAsync { map ->
             this.map = map
@@ -148,6 +173,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 syncLocation()
                 waiting?.let { show(it) }
             }
+            // Nodes follow the pins once the map stops moving; panning itself announces nothing.
+            map.addOnCameraIdleListener { access.invalidateRoot() }
             map.addOnMapClickListener { latLng ->
                 val point = map.projection.toScreenLocation(latLng)
                 val slop = 24 * view.resources.displayMetrics.density
@@ -194,8 +221,10 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             return
         }
         waiting = null
-        val (places, done, pending, look, unsent, movedTo) = shown
+        val (places, done, pending, look, unsent, movedTo, origin) = shown
         val located = places.filter { it.position != null }
+        pins = Places.sorted(located, origin)
+        access.invalidateRoot()
         movedSource?.setGeoJson(
             FeatureCollection.fromFeatures(
                 located.filter { it.id in look }.flatMap { place ->
@@ -241,6 +270,43 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         }
     }
 
+    /** Where pin [index] is on screen, or null when it's off the map's visible area. */
+    private fun spot(index: Int): Rect? {
+        val map = map ?: return null
+        val p = pins.getOrNull(index)?.position ?: return null
+        val point = map.projection.toScreenLocation(LatLng(p.lat, p.lon))
+        if (point.x < 0 || point.y < 0 || point.x > view.width || point.y > view.height) return null
+        val half = (24 * view.resources.displayMetrics.density).toInt()
+        return Rect(point.x.toInt() - half, point.y.toInt() - half, point.x.toInt() + half, point.y.toInt() + half)
+    }
+
+    private inner class PinAccess : ExploreByTouchHelper(view) {
+        override fun getVirtualViewAt(x: Float, y: Float): Int =
+            pins.indices.filter { spot(it)?.contains(x.toInt(), y.toInt()) == true }
+                .minByOrNull { spot(it)!!.let { r -> (r.exactCenterX() - x).let { dx -> dx * dx } + (r.exactCenterY() - y).let { dy -> dy * dy } } }
+                ?: INVALID_ID
+
+        override fun getVisibleVirtualViews(ids: MutableList<Int>) {
+            pins.indices.filterTo(ids) { spot(it) != null }
+        }
+
+        override fun onPopulateNodeForVirtualView(id: Int, node: AccessibilityNodeInfoCompat) {
+            val pin = pins.getOrNull(id)
+            // A node must have bounds even if the pin moved off screen since the last refresh.
+            @Suppress("DEPRECATION")
+            node.setBoundsInParent(spot(id) ?: Rect(0, 0, 1, 1))
+            node.contentDescription = pin?.let(describe) ?: ""
+            node.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+        }
+
+        override fun onPerformActionForVirtualView(id: Int, action: Int, arguments: Bundle?): Boolean {
+            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+            val pin = pins.getOrNull(id) ?: return false
+            onActivate(pin.id)
+            return true
+        }
+    }
+
     private companion object {
         const val SOURCE = "places"
         const val LAYER = "places-pins"
@@ -253,5 +319,5 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
 
 private data class Shown(
     val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,
-    val movedTo: Map<Long, LatLon>,
+    val movedTo: Map<Long, LatLon>, val origin: LatLon?,
 )

@@ -461,6 +461,22 @@ fun CampaignScreen(
                                 onPlace = { id -> selected = id },
                                 onBackground = { selected = null },
                                 modifier = Modifier.fillMaxSize(),
+                                // TalkBack reads each pin as its row in the list does; a double tap opens it
+                                // where the card would, else shows the card (A11y1).
+                                origin = origin,
+                                describe = { place ->
+                                    placeDescription(
+                                        place, origin, noun, done = place.id in done, pending = place.id in tally.pending,
+                                        look = place.id in tally.look, waiting = place.id in tally.waiting,
+                                    )
+                                },
+                                onActivate = { id ->
+                                    val place = shown.firstOrNull { it.id == id }
+                                    if (place != null && place.isOpen && id !in done && id !in tally.waiting) {
+                                        selected = null
+                                        open(place)
+                                    } else selected = id
+                                },
                             )
                             shown.firstOrNull { it.id == selected }?.let { place ->
                                 val opens = place.isOpen && place.id !in done && place.id !in tally.waiting
@@ -596,6 +612,14 @@ private fun PlaceList(
     }
 }
 
+/** A place as TalkBack reads it, in the list and on the map: name, distance, state. */
+private fun placeDescription(
+    task: LocatedTask, origin: LatLon?, noun: lol.osm.streettally.campaign.Noun,
+    done: Boolean, pending: Boolean, look: Boolean = false, waiting: Boolean = false,
+): String = listOfNotNull(
+    Wording.placeName(task.task, noun), Places.rowText(origin, task.position), placeState(done, pending, look, waiting),
+).joinToString(", ")
+
 /** A place's state for TalkBack, as iOS's VoiceOver value. */
 private fun placeState(done: Boolean, pending: Boolean, look: Boolean = false, waiting: Boolean = false): String? = when {
     look -> Wording.NEEDS_LOOK
@@ -626,6 +650,7 @@ private fun PlaceRow(
 ) {
     val name = Wording.placeName(task.task, noun)
     val distance = Places.rowText(origin, task.position)
+    val description = placeDescription(task, origin, noun, done, pending, look, waiting)
     val color = if (done || waiting) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier
@@ -634,7 +659,7 @@ private fun PlaceRow(
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(name, distance, placeState(done, pending, look, waiting)).joinToString(", ")
+                contentDescription = description
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

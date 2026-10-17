@@ -128,6 +128,8 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk:13.6.1")
     // LocationManagerCompat.getCurrentLocation for the nearest-first list.
     implementation("androidx.core:core-ktx:1.16.0")
+    // ExploreByTouchHelper: TalkBack nodes for the map's pins, which MapLibre draws as pixels.
+    implementation("androidx.customview:customview:1.1.0")
     // QR codes for sharing a campaign link.
     implementation("com.google.zxing:core:3.5.3")
 
