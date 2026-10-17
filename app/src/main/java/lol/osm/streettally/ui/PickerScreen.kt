@@ -80,8 +80,8 @@ fun PickerScreen(
         if (!state.restored) return@LaunchedEffect
         loading = true
         failed = false
-        kept = null
-        status = "Loading campaigns…"
+        // A retry keeps the kept campaign listed until the live list replaces it.
+        status = if (kept != null) Wording.PICKER_KEPT else "Loading campaigns…"
         // A hanging load lists the kept campaign after SLOW_MS, as iOS #55; the server's list
         // replaces it if it still arrives.
         val slow = launch {
@@ -105,6 +105,18 @@ fun PickerScreen(
             slow.cancel()
             loading = false
         }
+    }
+
+    // In a dead spot with only the kept campaign showing, try again by itself: 10 s, doubling to a
+    // minute, while the picker is on screen (as iOS #58, Tess's AB11). The live list replaces it.
+    var retries by remember { mutableStateOf(0) }
+    LaunchedEffect(failed, kept) {
+        if (!failed || kept == null) {
+            if (list != null) retries = 0
+            return@LaunchedEffect
+        }
+        delay(retryDelayMs(retries++))
+        reload++
     }
 
     val shown = list?.campaigns.orEmpty().filter { search.isBlank() || it.name.contains(search.trim(), ignoreCase = true) }
@@ -209,4 +221,7 @@ private fun CampaignRow(challenge: Challenge, onClick: () -> Unit) {
 }
 
 /** The campaign list, for tests. */
+/** The picker's own retry with no signal: 10 s, then doubling, at most a minute. */
+internal fun retryDelayMs(attempt: Int): Long = (10_000L shl attempt.coerceAtMost(3)).coerceAtMost(60_000L)
+
 internal const val CAMPAIGN_LIST_TAG = "campaign-list"

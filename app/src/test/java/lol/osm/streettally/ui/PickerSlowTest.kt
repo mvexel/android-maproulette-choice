@@ -96,4 +96,8 @@ class PickerSlowTest {
         waitForText("Woodbine entrance doors")
         compose.onNodeWithText(Wording.PICKER_KEPT).assertDoesNotExist()
     }
+
+    @Test fun theNoSignalRetryBacksOffToAMinute() {
+        org.junit.Assert.assertEquals(listOf(10_000L, 20_000L, 40_000L, 60_000L, 60_000L, 60_000L), (0..5).map(::retryDelayMs))
+    }
 }
