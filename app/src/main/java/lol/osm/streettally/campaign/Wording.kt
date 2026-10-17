@@ -154,6 +154,9 @@ object Wording {
         IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
         else -> alreadyChecked(noun)
     }
+    /** A live save refused because the place now asks something new (Ada; Swift's placeholder until
+     * Iris's line lands in offline-copy.md next to row 17). */
+    fun changedWhileAnswering(noun: Noun): String = "This ${noun.one} changed on the map while you were answering. Thanks anyway!"
     /** A guest on a place the server won't keep guest answers for (Iris, copy-fixes-2026-10-11.md). */
     fun guestSignIn(noun: Noun): String = "Sign in to check this ${noun.one}"
     fun guestSignInDetail(noun: Noun): String =

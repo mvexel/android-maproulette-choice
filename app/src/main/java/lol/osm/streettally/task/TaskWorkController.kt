@@ -149,7 +149,7 @@ sealed interface TaskScreen {
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown).
      * [dropped]: a guest's answers, refused because the place now asks something they don't answer
-     * (row 17's line, not "already checked"; iOS AB7). */
+     * (not "already checked"; iOS AB7). */
     data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null,
                               val dropped: Boolean = false) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.

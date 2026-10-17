@@ -379,7 +379,7 @@ fun PlaceScreen(
                         nextButtons(false)
                     }
                     is TaskScreen.NoLongerNeeded -> {
-                        Text(if (s.dropped) Wording.notSent(1) else Wording.noLongerNeeded(s.reason, noun),
+                        Text(if (s.dropped) Wording.changedWhileAnswering(noun) else Wording.noLongerNeeded(s.reason, noun),
                             style = MaterialTheme.typography.titleMedium)
                         nextButtons(true)
                     }
