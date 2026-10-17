@@ -67,6 +67,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import lol.osm.streettally.auth.AppSession
@@ -240,7 +241,8 @@ fun CampaignScreen(
             // until the new one is in. A busy screen skips steps.
             val fresh = places == null
             var complete: CampaignPlaces? = null
-            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).conflate().collect { step ->
+            // Reading and parsing the pages, and the places' sort, run off the main thread.
+            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).flowOn(Dispatchers.Default).conflate().collect { step ->
                 if (step.complete) {
                     complete = step.places
                 } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false) {
@@ -267,7 +269,7 @@ fun CampaignScreen(
                 return@LaunchedEffect
             }
             // Preview hides the tally, so held places aren't looked up.
-            val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
+            val heldNow = if (preview) Held() else withContext(Dispatchers.Default) { HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks) }
             places = loaded
             held = heldNow
             keptFrom = null

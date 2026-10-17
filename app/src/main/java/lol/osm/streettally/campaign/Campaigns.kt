@@ -79,7 +79,8 @@ object Campaigns {
             return CampaignPlaces(challenge, tasks, Noun.from(tasks.map { it.task }), truncated)
         }
         client.listAllTasks(id, MAX_TASK_PAGES).collect { page ->
-            page.items.forEach { byId[it.id.value] = LocatedTask.of(it) }
+            // isOpen parses the choice payload: worked out here, off the main thread, not by the tally.
+            page.items.forEach { byId[it.id.value] = LocatedTask.of(it).also { place -> place.isOpen } }
             if (page.items.size == TASK_PAGE_SIZE) full++
             emit(Loading(snapshot(truncated = false), complete = false))
         }
