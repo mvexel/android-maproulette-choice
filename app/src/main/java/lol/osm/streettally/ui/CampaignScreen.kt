@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -235,17 +236,26 @@ fun CampaignScreen(
             delay((SLOW_MS - (System.currentTimeMillis() - since)).coerceAtLeast(0))
             if (places == null) withContext(Dispatchers.IO) { cache?.get(campaignId) }?.let { if (places == null) showKept(it) }
         }
+        // The held search needs no places, so it runs while their pages load (as iOS #57).
+        // Preview hides the tally, so held places aren't looked up.
+        val flagged = if (preview) null else async(Dispatchers.Default) { HeldTasks.flagged(session.client(), ChallengeId(campaignId)) }
         try {
             // Places show as their pages land (L1 step 2), unless the phone's copy is already up or
             // this is a preview, which first decides what to show. A reload keeps the full list
             // until the new one is in. A busy screen skips steps.
             val fresh = places == null
             var complete: CampaignPlaces? = null
+            // The first page shows at once, later ones at most every STEP_MS: each redraws every
+            // pin and the tally (as iOS #57).
+            var shownAt = 0L
             // Reading and parsing the pages, and the places' sort, run off the main thread.
             Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).flowOn(Dispatchers.Default).conflate().collect { step ->
                 if (step.complete) {
                     complete = step.places
-                } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false) {
+                } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false &&
+                    System.currentTimeMillis() - shownAt >= STEP_MS
+                ) {
+                    shownAt = System.currentTimeMillis()
                     places = step.places
                     status = ""
                     if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
@@ -268,8 +278,7 @@ fun CampaignScreen(
                 status = Wording.NOT_PUBLISHED
                 return@LaunchedEffect
             }
-            // Preview hides the tally, so held places aren't looked up.
-            val heldNow = if (preview) Held() else withContext(Dispatchers.Default) { HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks) }
+            val heldNow = if (flagged == null) Held() else withContext(Dispatchers.Default) { HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks, flagged.await()) }
             places = loaded
             held = heldNow
             keptFrom = null
@@ -310,6 +319,7 @@ fun CampaignScreen(
             failed = true
         } finally {
             slow?.cancel()
+            flagged?.cancel()
             loading = false
         }
     }
@@ -737,6 +747,9 @@ private fun PlaceRow(
 }
 
 /** The last fix, as a pair of doubles, so it survives leaving for a place and coming back. */
+/** The least time between two shown steps of a loading campaign. */
+private const val STEP_MS = 2_000L
+
 private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
     save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
     restore = { mutableStateOf(LatLon(it[0], it[1])) },

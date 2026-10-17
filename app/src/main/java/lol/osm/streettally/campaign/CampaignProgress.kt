@@ -77,20 +77,6 @@ data class Held(
 /** Which open tasks a guest's saved answer or report holds until it goes on the map or expires. */
 object HeldTasks {
     private const val MAX_PAGES = 50
-    private const val PAD = 0.0005
-
-    /** The box around [points], padded so a single place still makes a valid box. */
-    fun bounds(points: List<LatLon>): Bounds? {
-        if (points.isEmpty()) return null
-        return runCatching {
-            Bounds(
-                west = maxOf(points.minOf { it.lon } - PAD, -180.0),
-                south = maxOf(points.minOf { it.lat } - PAD, -90.0),
-                east = minOf(points.maxOf { it.lon } + PAD, 180.0),
-                north = minOf(points.maxOf { it.lat } + PAD, 90.0),
-            )
-        }.getOrNull()
-    }
 
     /** From an `includePending` search: the rows flagged pending, and which of them a report holds;
      * null when the backend didn't report the flag on every row (an older backend, or no rows). */
@@ -104,21 +90,30 @@ object HeldTasks {
         )
     }
 
-    /** The bounds search with `includePending` says so per task (backend #16). A backend without it
-     * sends no `pending`, so the held set is then what the `excludePending` search leaves out. Best
-     * effort: on failure, none. A search cut off at [MAX_PAGES] keeps the holds it read, but what's
-     * offered is then unknown; the `excludePending` fallback needs a complete read (L1; as iOS #54). */
-    suspend fun load(client: MapRouletteClient, id: ChallengeId, tasks: List<LocatedTask>): Held {
+    /** The whole world: with the campaign filter, the search needs no places, so it can run while
+     * their pages load (as iOS #57). */
+    private val WORLD = Bounds(west = -180.0, south = -90.0, east = 180.0, north = 90.0)
+
+    /** The bounds search with `includePending`, which says per task whether it's held (backend #16).
+     * Null on failure. */
+    suspend fun flagged(client: MapRouletteClient, id: ChallengeId): Rows? =
+        search(client, TaskFilter(listOf(id), WORLD, choiceOnly = true, includePending = true))
+
+    /** A backend without `includePending` sends no `pending`, so the held set is then what the
+     * `excludePending` search leaves out. Best effort: on failure, none. A search cut off at
+     * [MAX_PAGES] keeps the holds it read, but what's offered is then unknown; the `excludePending`
+     * fallback needs a complete read (L1; as iOS #54). [withFlags] is [flagged], when already read. */
+    suspend fun load(client: MapRouletteClient, id: ChallengeId, tasks: List<LocatedTask>, withFlags: Rows? = null): Held {
         val open = tasks.filter { it.isOpen }
-        val bounds = bounds(open.mapNotNull { it.position }) ?: return Held()
-        val withFlags = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, includePending = true)) ?: return Held()
-        fromFlags(withFlags.rows)?.let { return if (withFlags.complete) it else it.copy(offered = null) }
-        val unheld = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, excludePending = true))
+        if (open.none { it.position != null }) return Held()
+        val flags = withFlags ?: flagged(client, id) ?: return Held()
+        fromFlags(flags.rows)?.let { return if (flags.complete) it else it.copy(offered = null) }
+        val unheld = search(client, TaskFilter(listOf(id), WORLD, choiceOnly = true, excludePending = true))
             ?.takeIf { it.complete } ?: return Held()
         return Held(open.map { it.id }.toSet() - unheld.rows.map { it.id.value }.toSet())
     }
 
-    private class Rows(val rows: List<TaskSummary>, val complete: Boolean)
+    class Rows(val rows: List<TaskSummary>, val complete: Boolean)
 
     /** The pages of a bounds search, up to [MAX_PAGES]; null on failure. */
     private suspend fun search(client: MapRouletteClient, filter: TaskFilter): Rows? {
