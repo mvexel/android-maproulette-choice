@@ -55,7 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -560,7 +562,9 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
 @Composable
 private fun PlaceCallout(name: String, subtitle: String, distance: String?, onOpen: (() -> Unit)?, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.fillMaxWidth().let { if (onOpen != null) it.clickable(onClick = onOpen) else it },
+        // Read out when it appears, so a TalkBack user activating a pin hears the card (A11y1).
+        modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+            .let { if (onOpen != null) it.clickable(onClick = onOpen) else it },
         shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
         shadowElevation = 3.dp,
