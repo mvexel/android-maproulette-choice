@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
@@ -222,7 +223,21 @@ fun CampaignScreen(
             if (places == null) cache?.get(campaignId)?.let(::showKept)
         }
         try {
-            val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
+            // Places show as their pages land (L1 step 2), unless the phone's copy is already up or
+            // this is a preview, which first decides what to show. A reload keeps the full list
+            // until the new one is in. A busy screen skips steps.
+            val fresh = places == null
+            var complete: CampaignPlaces? = null
+            Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).conflate().collect { step ->
+                if (step.complete) {
+                    complete = step.places
+                } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false) {
+                    places = step.places
+                    status = ""
+                    if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+                }
+            }
+            val loaded = checkNotNull(complete)
             waitingSince = null
             if (preview) {
                 val published = Campaigns.isPublished(loaded.challenge)
