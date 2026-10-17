@@ -7,11 +7,13 @@
 #      "Nearest …" without tapping "Update my location".
 #   3. No ANR, no crash, no E/ lines under the StreetTally log tag.
 # Locations come from test providers: `adb emu geo fix` doesn't reach the app on recent images.
-# Usage: scripts/ci/emulator-smoke.sh <demoDebug apk> [output dir]
+#   4. With the test APK: PinAccessTest, the map pins' TalkBack double-tap (A11y1).
+# Usage: scripts/ci/emulator-smoke.sh <demoDebug apk> [output dir] [demoDebug androidTest apk]
 set -uo pipefail
 
-APK=${1:?usage: emulator-smoke.sh <demoDebug apk> [output dir]}
+APK=${1:?usage: emulator-smoke.sh <demoDebug apk> [output dir] [androidTest apk]}
 OUT=${2:-smoke-out}
+TEST_APK=${3:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
 PKG=lol.osm.maproulette.choice
 ACT=$PKG/lol.osm.streettally.MainActivity
@@ -181,6 +183,15 @@ else
 fi
 shot fresh-buildings
 feed_stop
+
+# 4. Pins and TalkBack: the accessibility action a double-tap sends (TalkBack can't be driven from adb).
+if [ -n "$TEST_APK" ]; then
+  adb install -r -g "$TEST_APK" >/dev/null || fail "pin access: test APK didn't install"
+  adb shell pm clear $PKG >/dev/null; grant   # no location prompt over the map
+  adb shell am instrument -w -e class lol.osm.streettally.PinAccessTest $PKG.test/androidx.test.runner.AndroidJUnitRunner >"$OUT/pin-access.txt" 2>&1
+  if grep -q "^OK (" "$OUT/pin-access.txt"; then log "pin access: $(grep '^OK (' "$OUT/pin-access.txt")"
+  else fail "pin access test"; sed 's/^/[smoke]   /' "$OUT/pin-access.txt" | head -40; shot pin-access; fi
+fi
 
 # 3. Crashes, ANRs and app errors.
 anrs=$(adb logcat -d -b events | grep -c "am_anr.*$PKG")

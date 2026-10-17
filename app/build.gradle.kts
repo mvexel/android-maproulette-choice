@@ -19,6 +19,9 @@ val guests = prop("maprouletteGuests", "false").toBoolean()
 // true shows other people's not-here and moved reports (parity row 4). Off until the backend's
 // reports read (E1/E2) exists; until then nothing feeds it but tests.
 val serverReports = prop("maprouletteServerReports", "false").toBoolean()
+// true (debug builds only) lets the base URL be http://127.0.0.1:<port>, for a test proxy reached
+// through `adb reverse` (Tess's dead-spot runs; iOS MAPROULETTE_ALLOW_LOOPBACK). Release: never.
+val allowLoopback = prop("maprouletteAllowLoopback", "false").toBoolean()
 
 // Robolectric's Android 15 jar (the tests' sdk 35), fetched by Gradle, which caches it and retries
 // Maven Central's rate limits, then handed to Robolectric offline. Its own download got 403/404/429
@@ -50,6 +53,8 @@ android {
         buildConfigField("String", "MAP_STYLE_URL", quoted(prop("mapStyleUrl", "https://tiles.openfreemap.org/styles/positron")))
         buildConfigField("String", "CAMPAIGN_LINK_HOST", quoted(prop("campaignLinkHost", "streettally.osm.lol")))
         buildConfigField("boolean", "DEMO", "false")
+        // PinAccessTest (the emulator smoke runs it on the demo build).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // A shared debug key (standard public debug credentials, not a secret), so APKs from
     // different CI runs and machines install over each other and keep the sign-in.
@@ -73,7 +78,11 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            buildConfigField("boolean", "ALLOW_LOOPBACK", allowLoopback.toString())
+        }
         getByName("release") {
+            buildConfigField("boolean", "ALLOW_LOOPBACK", "false")
             // Unsigned without the release key; the release workflow refuses to publish that.
             signingConfig = signingConfigs.findByName("release")
         }
@@ -167,4 +176,6 @@ dependencies {
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("junit:junit:4.13.2")
 }
