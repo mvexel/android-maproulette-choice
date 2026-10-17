@@ -148,8 +148,8 @@ sealed interface TaskScreen {
     /** Campaign preview mode: what would have been sent. Nothing was. */
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
     /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown).
-     * [dropped]: a guest's answers, refused because the place now asks something they don't answer
-     * (not "already checked"; iOS AB7). */
+     * [dropped]: answers refused because the place, still open, now asks something they don't answer
+     * (not "already checked"; iOS #52). */
     data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null,
                               val dropped: Boolean = false) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.
@@ -435,26 +435,42 @@ class TaskWorkController(
         Result.failure(e)
     }
 
-    /** Refused because the place's questions changed (409 key_changed): resent quietly with the answers
-     * it still asks, when they cover all of it (row 17 for live saves too; Ada, iOS AB7). Otherwise, or
-     * if the check fails, the first failure stands. */
+    /** Refused because the place's questions changed (409 key_changed): checked again, and resent
+     * quietly with the answers it still asks when they cover all of it (row 17 for live saves too; Ada,
+     * iOS #52). Otherwise a [ChangedPlace] says what the check found; if the check fails, the first
+     * failure stands. */
     private suspend fun <T> Result<T>.recoverNarrowed(task: Task, action: ChoiceAction, resend: suspend (ChoiceSubmission) -> T): Result<T> {
         val error = exceptionOrNull() as? MapRouletteException ?: return this
-        val submission = action.submission ?: return this
-        val narrowed = try {
-            GuestOutbox.narrowed(error, task.id, submission, ops)
+        val answers = action.submission as? ChoiceSubmission.Answers ?: return this
+        if (error.problem != ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) return this
+        val now = try {
+            ops.checkChoice(task.id)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            null
-        } ?: return this
+            return this
+        }
+        val asked = now.questionIds?.takeIf { now.eligible && it.isNotEmpty() }
+        if (asked == null || !asked.all { it in answers.byQuestion }) return Result.failure(ChangedPlace(now, error))
         return try {
-            Result.success(resend(narrowed))
+            Result.success(resend(ChoiceSubmission.Answers(answers.byQuestion.filterKeys { it in asked })))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /** A save refused because its place changed, with what the place is [now]. */
+    private class ChangedPlace(val now: ChoiceEligibility, cause: MapRouletteException) : Exception(cause)
+
+    /** A refused save's place screen (offline-copy.md, next to row 17): still open but asking something
+     * new, or checked by someone else / gone. Null for any other failure. */
+    private fun refusedPlace(task: Task, challenge: Challenge, error: Exception): TaskScreen? = when {
+        error is ChangedPlace && error.now.eligible -> TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.KEY_CHANGED, dropped = true)
+        error is ChangedPlace -> TaskScreen.NoLongerNeeded(task, challenge, error.now.reason)
+        error is MapRouletteException && error.kind == ErrorKind.NOT_FOUND -> TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.ELEMENT_GONE)
+        else -> null
     }
 
     /** A guest's submission: stored as a pending answer (never an OSM edit, never a lock). Skipping
@@ -503,6 +519,7 @@ class TaskWorkController(
         task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction, submission: ChoiceSubmission, error: Exception,
     ): TaskScreen {
         fun answering(notice: String) = TaskScreen.Answering(task, challenge, form, notice)
+        refusedPlace(task, challenge, error)?.let { return it }
         // No connection, or the reply was lost after the server may have stored it: keep it on the
         // phone and send the same request later, rather than say "Couldn't connect" (BACKLOG O1).
         val unsent = error is MapRouletteException && (error.problem == WriteProblem.OutcomeUnknown || error.kind == ErrorKind.NETWORK)
@@ -512,9 +529,6 @@ class TaskWorkController(
         }
         if (error !is MapRouletteException) return answering("Couldn't save your answers. Try again.")
         if (error.reason == "task_completed") return notAccepted(task, challenge)
-        if (error.problem == ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED) && submission is ChoiceSubmission.Answers) {
-            return TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.KEY_CHANGED, dropped = true)
-        }
         if (error.problem == ChoiceProblem.UnsupportedTask) return TaskScreen.GuestSignIn(task, challenge)
         if (error.kind == ErrorKind.RATE_LIMIT && error.reason == "pending_limit") return answering(Wording.pendingLimit(noun))
         if (error.kind == ErrorKind.PERMISSION && error.reason == "challenge_not_published") {
@@ -537,6 +551,7 @@ class TaskWorkController(
         fun checkAgain(message: String, pending: TaskScreen.Pending, changesetId: Long? = null) =
             TaskScreen.CheckAgain(task, challenge, form, action, message, changesetId, checking = false, pending = pending,
                 canResend = pending == TaskScreen.Pending.STATUS_PENDING)
+        refusedPlace(task, challenge, error)?.let { return it }
         if (error is IllegalArgumentException) {
             // The SDK checks the submission against the payload before sending anything.
             return answering("Something went wrong. Nothing was saved. Try again.")

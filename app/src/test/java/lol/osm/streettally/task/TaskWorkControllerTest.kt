@@ -836,12 +836,13 @@ class TaskWorkControllerTest {
         problem = ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED), reason = "task_ineligible")
 
     /** A guest's live save refused with key_changed; after the first check, the place asks [now]. */
-    private fun TestScope.liveKeyChanged(vararg now: String): Pair<FakeOps, TaskWorkController> {
+    private fun TestScope.liveKeyChanged(vararg now: String, eligible: Boolean = true, reason: IneligibleReason? = null): Pair<FakeOps, TaskWorkController> {
         val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         var checks = 0
         ops.check = {
             checks += 1
-            ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null, questionIds = if (checks == 1) null else setOf(*now))
+            if (checks == 1) ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null)
+            else ChoiceEligibility(eligible = eligible, deleteAllowed = eligible, reason = reason, questionIds = setOf(*now).takeIf { eligible })
         }
         var sent = 0
         ops.pending = { sent += 1; if (sent == 1) throw keyChanged; PendingChoice(ID, state = PendingState.PENDING, answeredAt = Instant.EPOCH) }
@@ -860,11 +861,29 @@ class TaskWorkControllerTest {
     }
 
     @Test
-    fun aLiveSaveTheChangedPlaceAsksMoreOfIsDroppedWithRow17() = runTest {
+    fun aLiveSaveTheChangedPlaceAsksMoreOfIsDropped() = runTest {
         val (ops, c) = liveKeyChanged("backrest", "armrest")
-        val gone = c.state.value as TaskScreen.NoLongerNeeded
-        assertTrue(gone.dropped)
+        val changed = c.state.value as TaskScreen.NoLongerNeeded
+        assertTrue(changed.dropped)
         assertEquals(1, ops.submissions.size)
+    }
+
+    @Test
+    fun aLiveSaveOnAPlaceSomeoneElseFilledSaysAlreadyChecked() = runTest {
+        val (_, c) = liveKeyChanged(eligible = false, reason = IneligibleReason.KEY_CHANGED)
+        val checked = c.state.value as TaskScreen.NoLongerNeeded
+        assertFalse(checked.dropped)
+        assertEquals(IneligibleReason.KEY_CHANGED, checked.reason)
+    }
+
+    @Test
+    fun aLiveSaveOnAGonePlaceSaysItIsNoLongerOnTheMap() = runTest {
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.pending = { throw MapRouletteException(ErrorKind.NOT_FOUND, 404) }
+        val c = controller(ops, writer = Writer.GUEST, outbox = GuestOutbox(MemoryStore()))
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertEquals(IneligibleReason.ELEMENT_GONE, (c.state.value as TaskScreen.NoLongerNeeded).reason)
     }
 
     @Test
