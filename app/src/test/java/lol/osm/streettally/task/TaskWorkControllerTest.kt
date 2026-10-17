@@ -805,6 +805,19 @@ class TaskWorkControllerTest {
     }
 
     @Test
+    fun timeSpentRegisteringComesOffTheWait() = runTest {
+        val keptTask = task(cooperativeWork = GUEST_BENCH)
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.check = { delay(30_000); ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }
+        val c = TaskWorkController(ops, Writer.GUEST, this, StandardTestDispatcher(testScheduler),
+            outbox = GuestOutbox(MemoryStore()), kept = { keptTask to CHALLENGE })
+        c.load(ID, budgetMs = 2_000)
+        advanceTimeBy(2_001)
+        assertTrue(c.state.value is TaskScreen.Answering)
+        assertEquals(2_001L, testScheduler.currentTime)
+    }
+
+    @Test
     fun withoutThePhonesCopyASlowReadIsWaitedFor() = runTest {
         val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         ops.check = { delay(20_000); ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }

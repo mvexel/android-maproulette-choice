@@ -233,8 +233,10 @@ class TaskWorkController(
     /** In preview, as if it could: the organizer sees every answer the campaign offers. */
     val canEditOsm: Boolean get() = previewing || writer?.canEditOsm == true
 
-    /** [offline]: the connection is known to hang already, so a guest goes straight to the phone's copy. */
-    fun load(id: TaskId, offline: Boolean = false) {
+    /** [offline]: the connection is known to hang already, so a guest goes straight to the phone's copy.
+     * [budgetMs]: how long a guest with the phone's copy waits; less than the whole when time already
+     * went into registering, so opening a place waits one budget in all (as iOS #51). */
+    fun load(id: TaskId, offline: Boolean = false, budgetMs: Long = slowMs) {
         if (busy) return
         mutableState.value = TaskScreen.Loading
         job = scope.launch {
@@ -246,7 +248,7 @@ class TaskWorkController(
                     return opened(task, challenge)
                 }
                 // With the phone's copy to fall back on, a hanging connection counts as none.
-                if (keepsAnswers && kept(id) != null) withTimeoutOrNull(slowMs) { read() } ?: throw MapRouletteException(ErrorKind.NETWORK)
+                if (keepsAnswers && kept(id) != null) withTimeoutOrNull(budgetMs.coerceAtLeast(0)) { read() } ?: throw MapRouletteException(ErrorKind.NETWORK)
                 else read()
             } catch (e: CancellationException) {
                 throw e

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -170,6 +171,9 @@ fun PlaceScreen(
         report = null
     }
 
+    // One wait for opening a place, registration and load together (iOS #51).
+    val openedAt = remember { SystemClock.elapsedRealtime() }
+    fun budgetLeft(): Long = SLOW_MS - (SystemClock.elapsedRealtime() - openedAt)
     LaunchedEffect(Unit) {
         // Registering a guest changes the session generation; do it before binding the controller.
         // Never in preview: that would leave a guest behind (design/preview-mode.md §2).
@@ -187,7 +191,7 @@ fun PlaceScreen(
         }
         // A new generation (the guest just registered) rebinds and loads in the effect below, once.
         if (session.state.value.generation != bound) return@LaunchedEffect
-        controller.load(TaskId(taskId), offline = hung)
+        controller.load(TaskId(taskId), offline = hung, budgetMs = budgetLeft())
     }
     // Account switch or sign-out: discard the old account's controller and any late result.
     LaunchedEffect(state.generation) {
@@ -202,6 +206,7 @@ fun PlaceScreen(
         if (registered && old.state.value.let { it !is TaskScreen.Answering && it !is TaskScreen.Loading && it !is TaskScreen.LoadFailed }) {
             return@LaunchedEffect
         }
+        val opening = registered && old.state.value is TaskScreen.Loading
         old.cancel()
         confirmation = null
         controller = newController(session, scope, noun, previewing, outbox, cache)
@@ -216,7 +221,8 @@ fun PlaceScreen(
             answers = HashMap()
             resetReport()
         }
-        controller.load(TaskId(taskId))
+        // Registered while the place was still opening: the load gets what's left of the opening's wait.
+        if (opening) controller.load(TaskId(taskId), budgetMs = budgetLeft()) else controller.load(TaskId(taskId))
     }
     val c = controller
     val screen by c.state.collectAsState()
