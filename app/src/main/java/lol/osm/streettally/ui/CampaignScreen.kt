@@ -144,6 +144,8 @@ fun CampaignScreen(
     var reload by remember { mutableStateOf(0) }
     // Shown from the phone's copy (no connection): when the server last sent it.
     var keptFrom by remember { mutableStateOf<Long?>(null) }
+    // Places are showing while more pages still load: the tally says so instead (as iOS #57).
+    var partial by remember { mutableStateOf(false) }
     /** When the current hang began: a reload during it doesn't restart the wait for the kept copy. */
     var waitingSince by remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
     var showList by rememberSaveable { mutableStateOf(false) }
@@ -252,11 +254,13 @@ fun CampaignScreen(
             Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).flowOn(Dispatchers.Default).conflate().collect { step ->
                 if (step.complete) {
                     complete = step.places
+                    partial = false
                 } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false &&
                     System.currentTimeMillis() - shownAt >= STEP_MS
                 ) {
                     shownAt = System.currentTimeMillis()
                     places = step.places
+                    partial = true
                     status = ""
                     if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
                 }
@@ -320,6 +324,7 @@ fun CampaignScreen(
         } finally {
             slow?.cancel()
             flagged?.cancel()
+            partial = false
             loading = false
         }
     }
@@ -450,7 +455,16 @@ fun CampaignScreen(
                     if (notSent > 0) Text(Wording.notSent(notSent), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
-                    if (tally.total > 0 && !preview) {
+                    if (partial && !preview) {
+                        // Not a live region: TalkBack doesn't re-announce it for every page.
+                        val soFar = current?.tasks?.size ?: 0
+                        Text(
+                            Wording.loadingSoFar(noun, soFar),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.semantics { contentDescription = Wording.loadingSoFarSpoken(noun, soFar) },
+                        )
+                    } else if (tally.total > 0 && !preview) {
                         Text(
                             Wording.progress(tally.checked, tally.total, noun),
                             style = MaterialTheme.typography.bodyMedium,
@@ -748,7 +762,7 @@ private fun PlaceRow(
 
 /** The last fix, as a pair of doubles, so it survives leaving for a place and coming back. */
 /** The least time between two shown steps of a loading campaign. */
-private const val STEP_MS = 2_000L
+private const val STEP_MS = 500L
 
 private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
     save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
