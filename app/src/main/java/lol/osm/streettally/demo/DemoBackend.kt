@@ -4,6 +4,8 @@ import java.io.IOException
 import java.net.URI
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -30,6 +32,8 @@ import org.maproulette.sdk.Transport
  * in file order, named after their OSM element (`node/<id>`, `way/<id>`). [surveys] maps a demo name (trees, crossings, buildings) to
  * its file; [use] switches campaign and starts afresh. In trees, 1090 and 1094 are checked and
  * another guest holds 1095 with a report, so the cluster around 1092 shows every neighbour dot.
+ * [LARGE] is the trees survey copied side by side up to [places] tasks, for open-time checks at
+ * thousands of places (L1, AE6b); [latencyMs] holds every answer back as a slow connection would.
  */
 class DemoBackend(
     private val surveys: Map<String, String>,
@@ -40,7 +44,8 @@ class DemoBackend(
 
     private class Tree(val id: Long, val element: String, val lat: Double, val lon: Double, val properties: JsonObject)
 
-    private class Campaign(survey: String, seeded: Boolean) {
+    /** [count]: the file's features copied side by side up to that many tasks, each its own node. */
+    private class Campaign(survey: String, seeded: Boolean, count: Int? = null) {
         val file = Json.parseToJsonElement(survey).jsonObject
         val challenge = file["challenge"]!!.jsonObject
         val trees = file["features"]!!.jsonObject["features"]!!.jsonArray.mapIndexed { i, f ->
@@ -53,6 +58,12 @@ class DemoBackend(
                 coordinates[0].jsonPrimitive.double,
                 JsonObject(properties - "@id"),
             )
+        }.let { base ->
+            if (count == null) base else List(count) { i ->
+                val copy = i / base.size
+                val tree = base[i % base.size]
+                Tree(FIRST_TASK + i, "node/${SYNTHETIC_NODE + i}", tree.lat + copy / 8 * COPY_LAT, tree.lon + copy % 8 * COPY_LON, tree.properties)
+            }
         }
         val status = trees.associate { it.id to 0 }.toMutableMap().apply {
             if (seeded) {
@@ -69,8 +80,18 @@ class DemoBackend(
     private val campaign: Campaign
         get() = synchronized(this) {
             parsed?.takeIf { it.first == name }?.second
-                ?: Campaign(surveys.getValue(name), seeded = name == TREES).also { parsed = name to it }
+                ?: Campaign(surveys.getValue(name), seeded = name == TREES, count = places.takeIf { name == LARGE })
+                    .also { parsed = name to it }
         }
+
+    /** How many tasks [LARGE] has (the `places` extra); a change takes effect on its next [use]. */
+    @Volatile var places: Int = LARGE_PLACES
+
+    /** How long every request waits before its answer, as on a slow connection (the `latency` extra). */
+    @Volatile var latencyMs: Long = 0
+
+    /** Every request waits and never answers, as on one bar of signal (the `hang` extra). */
+    @Volatile var hang: Boolean = false
 
     /** Task id to the request body of this guest's saved answer. */
     val pending: MutableMap<Long, String> = Collections.synchronizedMap(linkedMapOf())
@@ -108,6 +129,8 @@ class DemoBackend(
             log("${request.method} ${request.url} -> no connection (offline extra)")
             throw IOException("demo: offline")
         }
+        if (hang) awaitCancellation()
+        if (latencyMs > 0) delay(latencyMs)
         answer(request).also { log("${request.method} ${request.url} -> ${it.status}") }
     }
 
@@ -228,16 +251,26 @@ class DemoBackend(
     companion object {
         /** The trees campaign's id; crossings and buildings have their own ([IDS]). */
         const val CAMPAIGN = 3L
-        val IDS = mapOf(TREES to CAMPAIGN, "crossings" to 4L, "buildings" to 5L)
+        val IDS = mapOf(TREES to CAMPAIGN, "crossings" to 4L, "buildings" to 5L, LARGE to 6L)
         const val FIRST_TASK = 1001L
         /** The demo build's backend origin. Never resolved: requests stop at [DemoBackend]. */
         const val ORIGIN = "https://demo.invalid"
         /** The bundled survey file, in the demo flavor's assets. */
         const val ASSET = "demo/woodbine-trees.json"
         const val TREES = "trees"
+        /** The trees survey at [places] tasks. */
+        const val LARGE = "large"
+        /** Tess's AE6b campaign size. */
+        const val LARGE_PLACES = 5_200
+        /** [LARGE]'s copies: OSM ids no real node has, and about 670 m apart, eight to a row. */
+        private const val SYNTHETIC_NODE = 90_000_000_000L
+        private const val COPY_LAT = 0.006
+        private const val COPY_LON = 0.008
         /** The bounds search's statuses (SDK TaskFilter default): to check, skipped, needs another look. */
         private val BOX_STATUSES = setOf(0, 3, 6)
         /** The demo campaigns, by the name the `demo` launch extra takes, and their bundled files. */
-        val ASSETS = linkedMapOf(TREES to ASSET, "crossings" to "demo/woodbine-crossings.json", "buildings" to "demo/woodbine-buildings.json")
+        val ASSETS = linkedMapOf(
+            TREES to ASSET, "crossings" to "demo/woodbine-crossings.json", "buildings" to "demo/woodbine-buildings.json", LARGE to ASSET,
+        )
     }
 }

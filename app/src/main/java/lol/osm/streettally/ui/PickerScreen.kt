@@ -1,5 +1,7 @@
 package lol.osm.streettally.ui
 
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,8 +38,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.BuildConfig
 import lol.osm.streettally.auth.AppSession
@@ -76,18 +80,30 @@ fun PickerScreen(
     var reload by remember { mutableStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
 
+    // A hanging load lists the kept campaign SLOW_MS after the picker opens, as iOS #55, even while
+    // the session's own restore is still waiting on the network (Tess's AE6b: ~12 s). The server's
+    // list replaces it if it still arrives. The copy is read off the main thread.
+    val opened = remember { SystemClock.elapsedRealtime() }
+    fun trace(step: String) = Log.i(TRACE, "picker +${SystemClock.elapsedRealtime() - opened} ms: $step")
+    LaunchedEffect(Unit) {
+        delay(SLOW_MS)
+        trace("kept-campaign timer (list ${list != null}, kept ${kept != null})")
+        if (list != null || kept != null) return@LaunchedEffect
+        val copy = withContext(Dispatchers.IO) { cache?.keptCampaign() } ?: return@LaunchedEffect
+        trace("kept campaign read")
+        if (list == null) {
+            kept = copy
+            status = Wording.PICKER_KEPT
+        }
+    }
+
     LaunchedEffect(state.restored, state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
+        trace("load starts (generation ${state.generation}, reload $reload)")
         loading = true
         failed = false
-        kept = null
-        status = "Loading campaigns…"
-        // A hanging load lists the kept campaign after SLOW_MS, as iOS #55; the server's list
-        // replaces it if it still arrives.
-        val slow = launch {
-            delay(SLOW_MS)
-            if (list == null) cache?.keptCampaign()?.let { kept = it; status = Wording.PICKER_KEPT }
-        }
+        // A retry keeps the kept campaign listed until the live list replaces it.
+        status = if (kept != null) Wording.PICKER_KEPT else "Loading campaigns…"
         try {
             val loaded = Campaigns.load(session.client())
             list = loaded
@@ -97,14 +113,26 @@ fun PickerScreen(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            trace("load failed: ${e.javaClass.simpleName}")
             list = null
-            kept = if (CampaignCache.isOffline(e)) cache?.keptCampaign() else null
+            kept = if (CampaignCache.isOffline(e)) withContext(Dispatchers.IO) { cache?.keptCampaign() } else null
             status = if (kept != null) Wording.PICKER_KEPT else errorMessage(e)
             failed = true
         } finally {
-            slow.cancel()
             loading = false
         }
+    }
+
+    // In a dead spot with only the kept campaign showing, try again by itself: 10 s, doubling to a
+    // minute, while the picker is on screen (as iOS #58, Tess's AB11). The live list replaces it.
+    var retries by remember { mutableStateOf(0) }
+    LaunchedEffect(failed, kept) {
+        if (!failed || kept == null) {
+            if (list != null) retries = 0
+            return@LaunchedEffect
+        }
+        delay(retryDelayMs(retries++))
+        reload++
     }
 
     val shown = list?.campaigns.orEmpty().filter { search.isBlank() || it.name.contains(search.trim(), ignoreCase = true) }
@@ -209,4 +237,7 @@ private fun CampaignRow(challenge: Challenge, onClick: () -> Unit) {
 }
 
 /** The campaign list, for tests. */
+/** The picker's own retry with no signal: 10 s, then doubling, at most a minute. */
+internal fun retryDelayMs(attempt: Int): Long = (10_000L shl attempt.coerceAtMost(3)).coerceAtMost(60_000L)
+
 internal const val CAMPAIGN_LIST_TAG = "campaign-list"

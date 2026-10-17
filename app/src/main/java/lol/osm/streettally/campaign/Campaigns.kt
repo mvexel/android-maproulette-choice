@@ -1,5 +1,8 @@
 package lol.osm.streettally.campaign
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.last
 import org.maproulette.sdk.Challenge
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.ChoiceQuestion
@@ -30,6 +33,7 @@ object Campaigns {
     private const val MAX_CHALLENGE_PAGES = 5
     /** 5,000 places (L1; as iOS #54). A longer campaign shows its first ones and says so. */
     const val MAX_TASK_PAGES = 50
+    private const val TASK_PAGE_SIZE = 100
 
     /** Published for participants (preview-mode §6): enabled and tagged [PUBLISHED_TAG]. Anything
      * else is a draft, so an unknown `enabled` never lets a preview write. */
@@ -56,18 +60,33 @@ object Campaigns {
         return CampaignList(choice, all.size - choice.size, cursor != null)
     }
 
-    suspend fun places(client: MapRouletteClient, id: ChallengeId): CampaignPlaces {
+    /** A campaign's places, all pages read (up to [MAX_TASK_PAGES]). */
+    suspend fun places(client: MapRouletteClient, id: ChallengeId): CampaignPlaces =
+        placesLoading(client, id).last().places
+
+    /** One step of [placesLoading]: the places so far, and whether every page is in. */
+    data class Loading(val places: CampaignPlaces, val complete: Boolean)
+
+    /** A campaign's places as their pages land (L1 step 2): read a few pages at a time and merged by
+     * task id (a task can shift between pages while they load), in id order, so the map can draw
+     * before all 5,000 are in. The last step is [Loading.complete] and says whether it was cut off. */
+    fun placesLoading(client: MapRouletteClient, id: ChallengeId, onPage: (places: Int) -> Unit = {}): Flow<Loading> = flow {
         val challenge = client.getChallenge(id)
-        val all = mutableListOf<Task>()
-        var cursor: PageCursor? = null
-        var pages = 0
-        do {
-            val page = client.listTasks(id, pageSize = 100, after = cursor)
-            all += page.items
-            cursor = page.next
-            pages += 1
-        } while (cursor != null && pages < MAX_TASK_PAGES)
-        return CampaignPlaces(challenge, all.map(LocatedTask::of), Noun.from(all), cursor != null)
+        val byId = HashMap<Long, LocatedTask>()
+        var full = 0
+        fun snapshot(truncated: Boolean): CampaignPlaces {
+            val tasks = byId.values.sortedBy { it.id }
+            return CampaignPlaces(challenge, tasks, Noun.from(tasks.map { it.task }), truncated)
+        }
+        client.listAllTasks(id, MAX_TASK_PAGES).collect { page ->
+            // isOpen parses the choice payload: worked out here, off the main thread, not by the tally.
+            page.items.forEach { byId[it.id.value] = LocatedTask.of(it).also { place -> place.isOpen } }
+            if (page.items.size == TASK_PAGE_SIZE) full++
+            onPage(byId.size)
+            emit(Loading(snapshot(truncated = false), complete = false))
+        }
+        // Every page full: the campaign has more than this phone shows.
+        emit(Loading(snapshot(truncated = full == MAX_TASK_PAGES), complete = true))
     }
 
     /** Every question asked in the campaign, in first-seen order, for the welcome card. */

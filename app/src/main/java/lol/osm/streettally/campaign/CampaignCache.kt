@@ -70,6 +70,14 @@ class CampaignCache(private val store: Store, private val clock: () -> Long = Sy
         if (kept.places.challenge.id.value != id) clear()
     }
 
+    /** Drops the copy held in memory, so the next use reads the file again, as after a restart (the
+     * demo build's `cold` extra, for open-time checks). */
+    @Synchronized
+    fun forget() {
+        cached = null
+        loaded = false
+    }
+
     @Synchronized
     fun clear() {
         cached = null
@@ -124,7 +132,8 @@ class CampaignCache(private val store: Store, private val clock: () -> Long = Sy
             val tasks = o.getValue("tasks").jsonArray.map { task(it.jsonObject) }
             val places = CampaignPlaces(
                 challenge = challenge(o.getValue("challenge").jsonObject),
-                tasks = tasks.map(LocatedTask::of),
+                // isOpen parses each choice payload: here, off the main thread, not by the tally (AE7).
+                tasks = tasks.map { LocatedTask.of(it).also { place -> place.isOpen } },
                 noun = Noun.from(tasks),
                 truncated = o["truncated"]?.jsonPrimitive?.booleanOrNull ?: false,
             )
