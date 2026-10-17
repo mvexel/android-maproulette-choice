@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
                         session = app.session,
                         appScope = app.scope,
                         outbox = app.outbox,
+                        cache = app.cache,
                         signIn = { app.signIn(authenticate) },
                         onDeletedMyData = { app.checked.forgetAll() },
                         onCampaign = {

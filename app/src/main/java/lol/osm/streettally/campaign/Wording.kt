@@ -154,6 +154,9 @@ object Wording {
         IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
         else -> alreadyChecked(noun)
     }
+    /** The picker couldn't load for lack of signal; the kept campaign is listed below (Swift's
+     * placeholder, iOS #53, until Iris confirms). */
+    const val PICKER_KEPT = "No signal. Showing the campaign kept on this phone."
     /** A place that 404s when opened: nothing was answered, so no thanks (Iris, offline-copy.md). */
     fun goneAtOpen(noun: Noun): String = "This ${noun.one} is no longer on the map."
     /** A live save refused because the place now asks something new (Ada; Swift's placeholder until

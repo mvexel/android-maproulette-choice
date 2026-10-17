@@ -42,6 +42,7 @@ import lol.osm.streettally.auth.guestDiagnostic
 import lol.osm.streettally.campaign.CampaignList
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.task.GuestOutbox
 import org.maproulette.sdk.Challenge
@@ -54,6 +55,8 @@ fun PickerScreen(
     appScope: CoroutineScope,
     /** A guest's answers still on this phone: sent with a sign-in, removed by "Delete my data". */
     outbox: GuestOutbox?,
+    /** The campaign kept on this phone (BACKLOG O2): listed when there's no signal; null in tests. */
+    cache: CampaignCache? = null,
     signIn: suspend () -> Unit,
     /** After "Delete my data": the places this phone saved are open again. */
     onDeletedMyData: () -> Unit = {},
@@ -63,6 +66,8 @@ fun PickerScreen(
     var list by remember { mutableStateOf<CampaignList?>(null) }
     var status by remember { mutableStateOf("Loading campaigns…") }
     var failed by remember { mutableStateOf(false) }
+    // No signal: the campaign kept on this phone, which opens from its copy (as iOS #53).
+    var kept by remember { mutableStateOf<Challenge?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
@@ -71,6 +76,7 @@ fun PickerScreen(
         if (!state.restored) return@LaunchedEffect
         loading = true
         failed = false
+        kept = null
         status = "Loading campaigns…"
         try {
             val loaded = Campaigns.load(session.client())
@@ -81,7 +87,8 @@ fun PickerScreen(
             throw e
         } catch (e: Exception) {
             list = null
-            status = errorMessage(e)
+            kept = if (CampaignCache.isOffline(e)) cache?.keptCampaign() else null
+            status = if (kept != null) Wording.PICKER_KEPT else errorMessage(e)
             failed = true
         } finally {
             loading = false
@@ -126,6 +133,12 @@ fun PickerScreen(
                             Text(status.ifEmpty { "No campaign matches." }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (failed) TextButton(onClick = { reload++ }, modifier = Modifier.padding(start = 8.dp)) { Text("Retry") }
+                    }
+                    kept?.let { challenge ->
+                        item(key = "kept") {
+                            CampaignRow(challenge) { onCampaign(challenge.id.value) }
+                            HorizontalDivider()
+                        }
                     }
                 }
                 items(shown, key = { it.id.value }) { challenge ->
