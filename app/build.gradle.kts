@@ -20,6 +20,16 @@ val guests = prop("maprouletteGuests", "false").toBoolean()
 // reports read (E1/E2) exists; until then nothing feeds it but tests.
 val serverReports = prop("maprouletteServerReports", "false").toBoolean()
 
+// Robolectric's Android 15 jar (the tests' sdk 35), fetched by Gradle, which caches it and retries
+// Maven Central's rate limits, then handed to Robolectric offline. Its own download got 403/404/429
+// from Central on CI (#45, #47). Keep the version in step with the Robolectric release.
+val robolectricJars: Configuration by configurations.creating { isTransitive = false }
+val robolectricDir = layout.buildDirectory.dir("robolectric-jars")
+val syncRobolectricJars by tasks.registering(Sync::class) {
+    from(robolectricJars)
+    into(robolectricDir)
+}
+
 android {
     namespace = "lol.osm.streettally"
     compileSdk = 36
@@ -107,6 +117,9 @@ android {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
             it.systemProperty("roborazzi.test.record", "true")
+            it.dependsOn(syncRobolectricJars)
+            it.systemProperty("robolectric.offline", "true")
+            it.systemProperty("robolectric.dependency.dir", robolectricDir.get().asFile.absolutePath)
             // Full failure messages in the CI log: a UI test's timeout names the text it waited for.
             it.testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
         }
@@ -149,6 +162,7 @@ dependencies {
     // Screen snapshots on the JVM: Compose rendered by Robolectric's native graphics, saved as
     // PNGs by Roborazzi.
     testImplementation("org.robolectric:robolectric:4.17")
+    robolectricJars("org.robolectric:android-all-instrumented:15-robolectric-13954326-i7")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.75.0")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
