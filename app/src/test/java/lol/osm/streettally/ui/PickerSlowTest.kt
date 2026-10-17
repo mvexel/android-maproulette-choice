@@ -87,12 +87,12 @@ class PickerSlowTest {
         compose.mainClock.advanceTimeBy(SLOW_MS - 1_000)
         compose.onNodeWithText(Wording.PICKER_KEPT).assertDoesNotExist()
         compose.mainClock.advanceTimeBy(2_000)
-        compose.mainClock.advanceTimeByFrame()
+        // The copy is read off the main thread; let the screen settle on its own from here.
+        compose.mainClock.autoAdvance = true
         waitForText(Wording.PICKER_KEPT)
         compose.onNodeWithText(kept).assertExists()
 
         wire.answer.complete(Unit)
-        compose.mainClock.autoAdvance = true
         waitForText("Woodbine entrance doors")
         compose.onNodeWithText(Wording.PICKER_KEPT).assertDoesNotExist()
     }

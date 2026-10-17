@@ -64,9 +64,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CampaignLink
@@ -141,7 +143,7 @@ fun CampaignScreen(
     // Shown from the phone's copy (no connection): when the server last sent it.
     var keptFrom by remember { mutableStateOf<Long?>(null) }
     /** When the current hang began: a reload during it doesn't restart the wait for the kept copy. */
-    var waitingSince by remember { mutableStateOf<Long?>(null) }
+    var waitingSince by remember { mutableStateOf<Long?>(System.currentTimeMillis()) }
     var showList by rememberSaveable { mutableStateOf(false) }
     // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
     // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
@@ -180,7 +182,7 @@ fun CampaignScreen(
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
         // One campaign kept: opening another lets the old copy go.
-        cache?.keepOnly(campaignId)
+        withContext(Dispatchers.IO) { cache?.keepOnly(campaignId) }
         if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
@@ -197,6 +199,24 @@ fun CampaignScreen(
     LaunchedEffect(networkBack) {
         if (keptFrom != null || failed) reload++
     }
+    fun showKept(kept: CampaignCache.Snapshot) {
+        // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+        places = kept.places
+        held = kept.held
+        keptFrom = kept.savedAt
+        status = ""
+        if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+    }
+    // The first open of a hang counts from the screen opening, not from the session's restore,
+    // which can wait on the network too (Tess's AE6b: ~20 s from a cold launch). Read off the main
+    // thread: a 5,000-place copy takes a while to decode.
+    LaunchedEffect(Unit) {
+        if (preview) return@LaunchedEffect
+        delay(SLOW_MS)
+        if (places != null) return@LaunchedEffect
+        val copy = withContext(Dispatchers.IO) { cache?.get(campaignId) } ?: return@LaunchedEffect
+        if (places == null) showKept(copy)
+    }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
         if (preview && state.account == null) {
@@ -207,20 +227,12 @@ fun CampaignScreen(
         loading = true
         failed = false
         if (!preview) launch { session.refreshGuestStatus() }
-        fun showKept(kept: CampaignCache.Snapshot) {
-            // A dead spot: the phone's copy, answered through the outbox until the connection is back.
-            places = kept.places
-            held = kept.held
-            keptFrom = kept.savedAt
-            status = ""
-            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
-        }
         // A hanging connection (weak signal) isn't refused for a long while: the kept copy shows
         // after a few seconds instead, until the load lands (as iOS).
         val since = waitingSince ?: System.currentTimeMillis().also { waitingSince = it }
         val slow = if (preview || places != null) null else launch {
             delay((SLOW_MS - (System.currentTimeMillis() - since)).coerceAtLeast(0))
-            if (places == null) cache?.get(campaignId)?.let(::showKept)
+            if (places == null) withContext(Dispatchers.IO) { cache?.get(campaignId) }?.let { if (places == null) showKept(it) }
         }
         try {
             // Places show as their pages land (L1 step 2), unless the phone's copy is already up or
@@ -260,7 +272,7 @@ fun CampaignScreen(
             held = heldNow
             keptFrom = null
             if (!preview) {
-                cache?.save(loaded, heldNow)
+                withContext(Dispatchers.IO) { cache?.save(loaded, heldNow) }
                 onReachable()
             }
             // With the places, not after the reports below: the welcome never pops up over a tally
@@ -286,7 +298,7 @@ fun CampaignScreen(
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
             }
-            val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
+            val kept = if (preview || !CampaignCache.isOffline(e)) null else withContext(Dispatchers.IO) { cache?.get(campaignId) }
             if (kept != null) {
                 showKept(kept)
                 return@LaunchedEffect
@@ -336,10 +348,11 @@ fun CampaignScreen(
     }
     val shown = tally.shown
     val done = tally.done
-    val open = Places.sorted(tally.open, origin)
-    val checked = Places.sorted(shown.filter { it.id in done }, origin)
-    val look = Places.sorted(shown.filter { it.id in tally.look }, origin)
-    val unsent = Places.sorted(shown.filter { it.id in tally.waiting }, origin)
+    // Sorted once per tally or fix, not on every recomposition (5,000 places, AE6b).
+    val open = remember(tally, origin) { Places.sorted(tally.open, origin) }
+    val checked = remember(tally, origin) { Places.sorted(shown.filter { it.id in done }, origin) }
+    val look = remember(tally, origin) { Places.sorted(shown.filter { it.id in tally.look }, origin) }
+    val unsent = remember(tally, origin) { Places.sorted(shown.filter { it.id in tally.waiting }, origin) }
     // Held and gone places are not offered by "Next nearest" either.
     fun open(task: LocatedTask) {
         current?.let { onPlace(task, it.copy(tasks = it.tasks.filter { t -> t.id !in held.ids && t.id !in tally.gone }, reports = serverReports), origin) }

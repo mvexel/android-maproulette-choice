@@ -63,7 +63,9 @@ object Places {
     fun sorted(tasks: List<LocatedTask>, origin: LatLon?): List<LocatedTask> {
         val byId = tasks.sortedBy { it.id }
         if (origin == null) return byId
-        return byId.sortedWith(compareBy(nullsLast()) { t -> t.position?.let { meters(origin, it) } })
+        // Each distance once, not per comparison: 5,000 places re-sort on every fix (AE6b).
+        return byId.map { t -> t to t.position?.let { meters(origin, it) } }
+            .sortedWith(compareBy(nullsLast()) { it.second }).map { it.first }
     }
 
     /** Great-circle distance in meters (haversine). */

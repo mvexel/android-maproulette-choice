@@ -36,8 +36,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.BuildConfig
 import lol.osm.streettally.auth.AppSession
@@ -76,18 +78,25 @@ fun PickerScreen(
     var reload by remember { mutableStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
 
+    // A hanging load lists the kept campaign SLOW_MS after the picker opens, as iOS #55, even while
+    // the session's own restore is still waiting on the network (Tess's AE6b: ~12 s). The server's
+    // list replaces it if it still arrives. The copy is read off the main thread.
+    LaunchedEffect(Unit) {
+        delay(SLOW_MS)
+        if (list != null || kept != null) return@LaunchedEffect
+        val copy = withContext(Dispatchers.IO) { cache?.keptCampaign() } ?: return@LaunchedEffect
+        if (list == null) {
+            kept = copy
+            status = Wording.PICKER_KEPT
+        }
+    }
+
     LaunchedEffect(state.restored, state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
         loading = true
         failed = false
         // A retry keeps the kept campaign listed until the live list replaces it.
         status = if (kept != null) Wording.PICKER_KEPT else "Loading campaigns…"
-        // A hanging load lists the kept campaign after SLOW_MS, as iOS #55; the server's list
-        // replaces it if it still arrives.
-        val slow = launch {
-            delay(SLOW_MS)
-            if (list == null) cache?.keptCampaign()?.let { kept = it; status = Wording.PICKER_KEPT }
-        }
         try {
             val loaded = Campaigns.load(session.client())
             list = loaded
@@ -102,7 +111,6 @@ fun PickerScreen(
             status = if (kept != null) Wording.PICKER_KEPT else errorMessage(e)
             failed = true
         } finally {
-            slow.cancel()
             loading = false
         }
     }
