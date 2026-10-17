@@ -161,6 +161,8 @@ object Wording {
     /** The picker couldn't load for lack of signal; the kept campaign is listed below (Iris,
      * offline-copy.md O2; as iOS #53). */
     const val PICKER_KEPT = "No signal. Showing the campaign kept on this phone."
+    /** TalkBack label for the picker's Retry button (Iris, as iOS #55). */
+    const val RETRY_CAMPAIGNS = "Retry loading campaigns"
     /** A place that 404s when opened: nothing was answered, so no thanks (Iris, offline-copy.md). */
     fun goneAtOpen(noun: Noun): String = "This ${noun.one} is no longer on the map."
     /** A live save refused because the place now asks something new (Ada; Swift's placeholder until
