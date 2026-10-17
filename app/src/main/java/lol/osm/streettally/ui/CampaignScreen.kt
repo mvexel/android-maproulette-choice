@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
@@ -200,6 +201,20 @@ fun CampaignScreen(
         loading = true
         failed = false
         if (!preview) launch { session.refreshGuestStatus() }
+        fun showKept(kept: CampaignCache.Snapshot) {
+            // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+            places = kept.places
+            held = kept.held
+            keptFrom = kept.savedAt
+            status = ""
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+        }
+        // A hanging connection (weak signal) isn't refused for a long while: the kept copy shows
+        // after a few seconds instead, until the load lands (as iOS).
+        val slow = if (preview || places != null) null else launch {
+            delay(SLOW_LOAD_MS)
+            if (places == null) cache?.get(campaignId)?.let(::showKept)
+        }
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
             if (preview) {
@@ -247,18 +262,14 @@ fun CampaignScreen(
             }
             val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
             if (kept != null) {
-                // A dead spot: the phone's copy, answered through the outbox until the connection is back.
-                places = kept.places
-                held = kept.held
-                keptFrom = kept.savedAt
-                status = ""
-                if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+                showKept(kept)
                 return@LaunchedEffect
             }
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
         } finally {
+            slow?.cancel()
             loading = false
         }
     }
@@ -548,6 +559,9 @@ private enum class PreviewPhase {
     /** A refresh found the campaign published. Preview answers are still never sent. */
     PUBLISHED_NOW,
 }
+
+/** How long a campaign may take to load before the kept copy shows instead (iOS: 6 s). */
+private const val SLOW_LOAD_MS = 6_000L
 
 /** A draft's read refused (§6: 404 for anyone without organize rights, like an unknown id). */
 private fun refused(error: Exception): Boolean = when ((error as? MapRouletteException)?.kind) {
