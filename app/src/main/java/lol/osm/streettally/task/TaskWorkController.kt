@@ -216,6 +216,9 @@ class TaskWorkController(
     /** How long a guest waits on a hanging connection before the phone's copy opens or the answer
      * waits on the phone (Ada: no network step blocks more than about 6 s; iOS 34e13ad). */
     private val slowMs: Long = SLOW_MS,
+    /** The phone answers as a guest but hasn't registered yet: its answers wait in [outbox], which
+     * registers first, instead of going out without a token (Tess AE3; iOS de203e8). */
+    private val unregistered: Boolean = false,
 ) {
     private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
     private val writer: Writer? = if (previewing) null else writer
@@ -439,6 +442,12 @@ class TaskWorkController(
         }
         changed = true
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
+        if (outbox != null && unregistered) {
+            job = scope.launch {
+                mutableState.value = failedForLater(task, challenge, form, action, submission, MapRouletteException(ErrorKind.NETWORK))
+            }
+            return
+        }
         job = scope.launch {
             val sending = scope.async(NonCancellable + io) {
                 try {

@@ -611,6 +611,7 @@ private fun newController(
     scope, noun = noun, previewing = previewing,
     outbox = outbox.takeUnless { previewing },
     kept = { id -> cache?.task(id.value) },
+    unregistered = session.writer() == null,
 )
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {

@@ -818,6 +818,21 @@ class TaskWorkControllerTest {
     }
 
     @Test
+    fun anAnswerBeforeTheGuestRegisteredWaitsOnThePhone() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        val c = TaskWorkController(ops, Writer.GUEST, this, StandardTestDispatcher(testScheduler),
+            outbox = outbox, unregistered = true)
+        c.load(ID)
+        advanceUntilIdle()
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceUntilIdle()
+        assertTrue((c.state.value as TaskScreen.Done).queued)
+        assertFalse("pending" in ops.calls)
+        assertEquals(listOf(ID.value), outbox.entries.value.map { it.taskId })
+    }
+
+    @Test
     fun withoutThePhonesCopyASlowReadIsWaitedFor() = runTest {
         val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
         ops.check = { delay(20_000); ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }
