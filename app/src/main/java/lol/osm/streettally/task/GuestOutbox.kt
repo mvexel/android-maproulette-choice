@@ -3,6 +3,7 @@ package lol.osm.streettally.task
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -19,8 +20,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.maproulette.sdk.ChoiceOutcome
+import org.maproulette.sdk.ChoiceProblem
 import org.maproulette.sdk.ChoiceSubmission
 import org.maproulette.sdk.ErrorKind
+import org.maproulette.sdk.IneligibleReason
 import org.maproulette.sdk.MapRouletteException
 import org.maproulette.sdk.MovedLocation
 import org.maproulette.sdk.TaskId
@@ -56,6 +59,14 @@ class GuestOutbox(
 
     fun limitShown() { mutableLimitReached.value = false }
 
+    private val mutableNotSent = MutableStateFlow<Map<Long, Int>>(emptyMap())
+    /** Per campaign, how many waiting answers were refused because their place changed, was checked
+     * or is gone (409, 404). Kept until that campaign's screen has said so once, whichever screen was
+     * up when they were refused, then [notSentShown] (offline-copy.md row 17). */
+    val notSent: StateFlow<Map<Long, Int>> = mutableNotSent
+
+    fun notSentShown(campaignId: Long) = mutableNotSent.update { it - campaignId }
+
     /** Forgets every waiting answer ("Delete my data"); their places are open again ([onDropped]). */
     @Synchronized
     fun clear() {
@@ -74,13 +85,20 @@ class GuestOutbox(
     /** Sends what's queued, oldest first, through [ops]. Stops at the first answer that still can't
      * get through, keeping it and the rest. An answer the server refuses for good (the place was
      * checked meanwhile, the campaign closed, the phone's answer limit) is dropped: it can never be
-     * saved, and its place goes back to open ([onDropped]). Returns how many were saved. */
+     * saved, and its place goes back to open ([onDropped]); [limitReached] or [notSent] says so.
+     * When a place's questions changed meanwhile (some got mapped), answers that still cover every
+     * question it asks now are resent, trimmed to those, without a word. Returns how many were saved. */
     suspend fun send(ops: TaskOps): Int = sending.withLock {
         var saved = 0
         for (entry in mutableEntries.value) {
             try {
                 val task = ops.getTask(TaskId(entry.taskId))
-                ops.submitPendingChoice(task, entry.submission)
+                try {
+                    ops.submitPendingChoice(task, entry.submission)
+                } catch (e: MapRouletteException) {
+                    val trimmed = trimmed(e, entry, ops) ?: throw e
+                    ops.submitPendingChoice(task, trimmed)
+                }
                 saved += 1
                 remove(entry)
             } catch (e: CancellationException) {
@@ -88,11 +106,25 @@ class GuestOutbox(
             } catch (e: Exception) {
                 if (retryLater(e)) break
                 if (e is MapRouletteException && e.kind == ErrorKind.RATE_LIMIT) mutableLimitReached.value = true
+                else if (e is MapRouletteException && e.kind in STALE) {
+                    mutableNotSent.update { it + (entry.campaignId to (it[entry.campaignId] ?: 0) + 1) }
+                }
                 onDropped(entry)
                 remove(entry)
             }
         }
         saved
+    }
+
+    /** After [error], [entry]'s answers cut down to the questions its place still asks, when they
+     * answer each of them; null when it can't be resent. Errors reading the place propagate. */
+    private suspend fun trimmed(error: MapRouletteException, entry: Entry, ops: TaskOps): ChoiceSubmission? {
+        if (error.problem != ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) return null
+        val answers = entry.submission as? ChoiceSubmission.Answers ?: return null
+        val now = ops.checkChoice(TaskId(entry.taskId))
+        val asked = now.questionIds?.takeIf { now.eligible && it.isNotEmpty() } ?: return null
+        if (!asked.all { it in answers.byQuestion }) return null
+        return ChoiceSubmission.Answers(answers.byQuestion.filterKeys { it in asked })
     }
 
     private fun save(entries: List<Entry>) {
@@ -101,8 +133,15 @@ class GuestOutbox(
     }
 
     companion object {
+        private val STALE = setOf(ErrorKind.CONFLICT, ErrorKind.NOT_FOUND)
+
         /** Worth trying again later: the connection, an unknown outcome, the server or its rate limit
          * (but not the per-phone answer limit), or a token to renew. Anything else won't change. */
+        /** How long to wait before trying the waiting answers again, after [attempt] tries that left
+         * some waiting: 30 s, doubling, at most 5 min. The connection can be up while the server
+         * isn't reachable, so a connectivity change alone won't do. */
+        fun retryDelayMs(attempt: Int): Long = (30_000L shl attempt.coerceIn(0, 4)).coerceAtMost(300_000L)
+
         fun retryLater(error: Exception): Boolean {
             if (error !is MapRouletteException) return false
             if (error.problem == WriteProblem.OutcomeUnknown) return true

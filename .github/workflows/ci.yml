@@ -34,9 +34,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # The runner image ships the Android SDK (ANDROID_HOME); AGP installs missing platforms.
       # assembleProdRelease (unsigned here) checks the release build the release workflow signs.
-      # assembleDemoDebug: the in-process "Woodbine trees" demo (no backend), for field checks on an emulator.
+      # assembleDemoDebug: the in-process "Woodbine trees" demo (no backend), for field checks on an emulator;
+      # its androidTest APK holds PinAccessTest, which the emulator smoke runs.
       - name: Assemble (dev, stage and demo debug, prod release), unit tests, lint
-        run: ./gradlew assembleDevDebug assembleStageDebug assembleDemoDebug assembleProdRelease testDevDebugUnitTest lintDevDebug -PmaprouletteGuests=true -PversionCode=${{ github.run_number }} --console=plain
+        run: ./gradlew assembleDevDebug assembleStageDebug assembleDemoDebug assembleDemoDebugAndroidTest assembleProdRelease testDevDebugUnitTest lintDevDebug -PmaprouletteGuests=true -PversionCode=${{ github.run_number }} --console=plain
       # PNGs of the report screens from the snapshot tests (ReportSnapshotTest), for design review.
       - name: Upload report screen snapshots
         if: ${{ !cancelled() }}
@@ -97,7 +98,7 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: bash scripts/ci/emulator-smoke.sh "$(find apks -name '*demo-debug*.apk' | head -1)" smoke-out
+          script: bash scripts/ci/emulator-smoke.sh "$(find apks -name '*demo-debug.apk' | head -1)" smoke-out "$(find apks -name '*demo-debug-androidTest.apk' | head -1)"
       - name: Upload smoke screenshots and logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

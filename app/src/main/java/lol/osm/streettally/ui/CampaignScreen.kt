@@ -48,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,12 +56,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
@@ -101,6 +105,8 @@ fun CampaignScreen(
     cache: CampaignCache? = null,
     /** Goes up each time the connection comes back: a campaign shown from [cache] refreshes. */
     networkBack: Int = 0,
+    /** The server answered a campaign load: a chance to send answers still waiting on the phone. */
+    onReachable: () -> Unit = {},
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -197,6 +203,20 @@ fun CampaignScreen(
         loading = true
         failed = false
         if (!preview) launch { session.refreshGuestStatus() }
+        fun showKept(kept: CampaignCache.Snapshot) {
+            // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+            places = kept.places
+            held = kept.held
+            keptFrom = kept.savedAt
+            status = ""
+            if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+        }
+        // A hanging connection (weak signal) isn't refused for a long while: the kept copy shows
+        // after a few seconds instead, until the load lands (as iOS).
+        val slow = if (preview || places != null) null else launch {
+            delay(SLOW_LOAD_MS)
+            if (places == null) cache?.get(campaignId)?.let(::showKept)
+        }
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
             if (preview) {
@@ -219,7 +239,10 @@ fun CampaignScreen(
             places = loaded
             held = heldNow
             keptFrom = null
-            if (!preview) cache?.save(loaded, heldNow)
+            if (!preview) {
+                cache?.save(loaded, heldNow)
+                onReachable()
+            }
             // With the places, not after the reports below: the welcome never pops up over a tally
             // already showing.
             if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
@@ -244,18 +267,14 @@ fun CampaignScreen(
             }
             val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
             if (kept != null) {
-                // A dead spot: the phone's copy, answered through the outbox until the connection is back.
-                places = kept.places
-                held = kept.held
-                keptFrom = kept.savedAt
-                status = ""
-                if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+                showKept(kept)
                 return@LaunchedEffect
             }
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
         } finally {
+            slow?.cancel()
             loading = false
         }
     }
@@ -268,6 +287,10 @@ fun CampaignScreen(
     val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
     val limitReached = outbox?.limitReached?.collectAsState()?.value == true
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
+    val notSent = if (preview) 0 else outbox?.notSent?.collectAsState()?.value?.get(campaignId) ?: 0
+    // Keyed once: a count that grows while shown is kept until the screen goes.
+    val notSentNow by rememberUpdatedState(notSent)
+    DisposableEffect(outbox) { onDispose { if (notSentNow > 0) outbox?.notSentShown(campaignId) } }
     // A phone that answered in a dead spot before it could register is a guest too, as far as its
     // waiting answers go (Tess, #45): they register it when they send.
     val guest = state.guest || (!preview && queued.isNotEmpty() && session.canAnswerAsGuest)
@@ -377,6 +400,8 @@ fun CampaignScreen(
                     }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
                     if (limitReached && guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
+                    // Waiting answers whose places changed meanwhile: said once, never dropped silently (row 17).
+                    if (notSent > 0) Text(Wording.notSent(notSent), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
                     if (tally.total > 0 && !preview) {
@@ -540,6 +565,9 @@ private enum class PreviewPhase {
     PUBLISHED_NOW,
 }
 
+/** How long a campaign may take to load before the kept copy shows instead (iOS: 6 s). */
+private const val SLOW_LOAD_MS = 6_000L
+
 /** A draft's read refused (§6: 404 for anyone without organize rights, like an unknown id). */
 private fun refused(error: Exception): Boolean = when ((error as? MapRouletteException)?.kind) {
     ErrorKind.NOT_FOUND, ErrorKind.PERMISSION, ErrorKind.AUTHENTICATION -> true
@@ -560,7 +588,9 @@ private fun PreviewCard(title: String, text: String, primary: Pair<String, () ->
 @Composable
 private fun PlaceCallout(name: String, subtitle: String, distance: String?, onOpen: (() -> Unit)?, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.fillMaxWidth().let { if (onOpen != null) it.clickable(onClick = onOpen) else it },
+        // Read out when it appears, so a TalkBack user activating a pin hears the card (A11y1).
+        modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+            .let { if (onOpen != null) it.clickable(onClick = onOpen) else it },
         shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
         shadowElevation = 3.dp,

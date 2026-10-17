@@ -296,6 +296,10 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             @Suppress("DEPRECATION")
             node.setBoundsInParent(spot(id) ?: Rect(0, 0, 1, 1))
             node.contentDescription = pin?.let(describe) ?: ""
+            // Clickable, or TalkBack's double-tap falls back to a tap on the map under the pin.
+            node.isClickable = true
+            // A stable id for PinAccessTest; TalkBack doesn't read it.
+            node.viewIdResourceName = "${view.context.packageName}:id/pin"
             node.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
         }
 
