@@ -326,8 +326,9 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         const val MOVED_LINES = "moved-lines"
         const val MOVED_DOTS = "moved-dots"
         const val MOVED_GRAY = "#8A8F98"
-        /** TalkBack nodes for at most this many pins on screen, nearest first. */
-        const val MAX_PIN_NODES = 100
+        /** TalkBack nodes for at most this many pins on screen, nearest first: enough for a whole
+         * Woodbine survey (139 trees, which PinAccessTest walks), not thousands. */
+        const val MAX_PIN_NODES = 200
     }
 }
 
