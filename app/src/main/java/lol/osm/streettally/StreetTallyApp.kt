@@ -9,6 +9,8 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -70,6 +72,15 @@ class StreetTallyApp : Application() {
             // A guest who signed in but whose answers weren't claimed yet (offline then): try again.
             session.claimKeptGuest()
             sendQueued()
+            // Network up but the server not reachable doesn't change connectivity: keep trying
+            // while answers wait, backing off.
+            outbox.entries.collectLatest { waiting ->
+                var attempt = 0
+                if (waiting.isNotEmpty()) while (true) {
+                    delay(GuestOutbox.retryDelayMs(attempt++))
+                    sendQueuedNow()
+                }
+            }
         }
         // Back online: send what's waiting. Best effort; the app opening tries again.
         (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.registerDefaultNetworkCallback(

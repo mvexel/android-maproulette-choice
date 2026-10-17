@@ -105,6 +105,8 @@ fun CampaignScreen(
     cache: CampaignCache? = null,
     /** Goes up each time the connection comes back: a campaign shown from [cache] refreshes. */
     networkBack: Int = 0,
+    /** The server answered a campaign load: a chance to send answers still waiting on the phone. */
+    onReachable: () -> Unit = {},
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -237,7 +239,10 @@ fun CampaignScreen(
             places = loaded
             held = heldNow
             keptFrom = null
-            if (!preview) cache?.save(loaded, heldNow)
+            if (!preview) {
+                cache?.save(loaded, heldNow)
+                onReachable()
+            }
             // With the places, not after the reports below: the welcome never pops up over a tally
             // already showing.
             if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME

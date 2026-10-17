@@ -202,4 +202,9 @@ class GuestOutboxTest {
         assertFalse(GuestOutbox.retryLater(MapRouletteException(ErrorKind.PERMISSION, 403, reason = "challenge_not_published")))
         assertFalse(GuestOutbox.retryLater(IllegalArgumentException("bad answer")))
     }
+
+    @Test fun retriesBackOffToFiveMinutes() {
+        assertEquals(listOf(30_000L, 60_000L, 120_000L, 240_000L, 300_000L, 300_000L),
+            (0..5).map(GuestOutbox::retryDelayMs))
+    }
 }

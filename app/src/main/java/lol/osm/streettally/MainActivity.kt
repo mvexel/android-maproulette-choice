@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
                             outbox = app.outbox,
                             cache = app.cache,
                             networkBack = app.networkReturns.collectAsState().value,
+                            onReachable = { app.sendQueued() },
                             campaignId = id,
                             onBack = { exitPreview() },
                             onPlace = { task, places, origin ->

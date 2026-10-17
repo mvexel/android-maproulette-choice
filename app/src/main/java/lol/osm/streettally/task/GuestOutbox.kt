@@ -133,6 +133,11 @@ class GuestOutbox(
 
         /** Worth trying again later: the connection, an unknown outcome, the server or its rate limit
          * (but not the per-phone answer limit), or a token to renew. Anything else won't change. */
+        /** How long to wait before trying the waiting answers again, after [attempt] tries that left
+         * some waiting: 30 s, doubling, at most 5 min. The connection can be up while the server
+         * isn't reachable, so a connectivity change alone won't do. */
+        fun retryDelayMs(attempt: Int): Long = (30_000L shl attempt.coerceIn(0, 4)).coerceAtMost(300_000L)
+
         fun retryLater(error: Exception): Boolean {
             if (error !is MapRouletteException) return false
             if (error.problem == WriteProblem.OutcomeUnknown) return true
