@@ -121,6 +121,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     private var source: GeoJsonSource? = null
     private var movedSource: GeoJsonSource? = null
     private var waiting: Shown? = null
+    /** What the map last drew: a recomposition with the same places redraws nothing (5,000 pins, AE6). */
+    private var drawn: Shown? = null
     private var framed = false
 
     init {
@@ -221,10 +223,15 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             return
         }
         waiting = null
+        val last = drawn
+        if (shown == last) return
+        drawn = shown
         val (places, done, pending, look, unsent, movedTo, origin) = shown
         val located = places.filter { it.position != null }
         pins = Places.sorted(located, origin)
         access.invalidateRoot()
+        // Walking only reorders TalkBack's pins; the map itself is unchanged.
+        if (last != null && last.copy(origin = origin) == shown) return
         movedSource?.setGeoJson(
             FeatureCollection.fromFeatures(
                 located.filter { it.id in look }.flatMap { place ->
@@ -282,12 +289,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
 
     private inner class PinAccess : ExploreByTouchHelper(view) {
         override fun getVirtualViewAt(x: Float, y: Float): Int =
-            pins.indices.filter { spot(it)?.contains(x.toInt(), y.toInt()) == true }
-                .minByOrNull { spot(it)!!.let { r -> (r.exactCenterX() - x).let { dx -> dx * dx } + (r.exactCenterY() - y).let { dy -> dy * dy } } }
-                ?: INVALID_ID
+            pins.indices.mapNotNull { i -> spot(i)?.takeIf { it.contains(x.toInt(), y.toInt()) }?.let { i to it } }
+                .minByOrNull { (_, r) -> (r.exactCenterX() - x).let { dx -> dx * dx } + (r.exactCenterY() - y).let { dy -> dy * dy } }
+                ?.first ?: INVALID_ID
 
+        // The nearest on-screen pins only: thousands of nodes swamp TalkBack and the system (AE6).
         override fun getVisibleVirtualViews(ids: MutableList<Int>) {
-            pins.indices.filterTo(ids) { spot(it) != null }
+            pins.indices.asSequence().filter { spot(it) != null }.take(MAX_PIN_NODES).toCollection(ids)
         }
 
         override fun onPopulateNodeForVirtualView(id: Int, node: AccessibilityNodeInfoCompat) {
@@ -318,6 +326,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         const val MOVED_LINES = "moved-lines"
         const val MOVED_DOTS = "moved-dots"
         const val MOVED_GRAY = "#8A8F98"
+        /** TalkBack nodes for at most this many pins on screen, nearest first. */
+        const val MAX_PIN_NODES = 100
     }
 }
 
