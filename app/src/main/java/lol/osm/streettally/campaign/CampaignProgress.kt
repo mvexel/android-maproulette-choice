@@ -7,7 +7,6 @@ import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.GuestStatus
 import org.maproulette.sdk.HeldKind
 import org.maproulette.sdk.MapRouletteClient
-import org.maproulette.sdk.PageCursor
 import org.maproulette.sdk.TaskFilter
 import org.maproulette.sdk.TaskSummary
 
@@ -77,6 +76,7 @@ data class Held(
 /** Which open tasks a guest's saved answer or report holds until it goes on the map or expires. */
 object HeldTasks {
     private const val MAX_PAGES = 50
+    private const val PAGE_SIZE = 100
 
     /** From an `includePending` search: the rows flagged pending, and which of them a report holds;
      * null when the backend didn't report the flag on every row (an older backend, or no rows). */
@@ -115,24 +115,25 @@ object HeldTasks {
 
     class Rows(val rows: List<TaskSummary>, val complete: Boolean)
 
-    /** The pages of a bounds search, up to [MAX_PAGES]; null on failure. */
+    /** The pages of a bounds search, up to [MAX_PAGES], four at a time (read one by one, 5,000
+     * places waited about 15 s on a slow connection after their pages were in: AE7); null on failure.
+     * Complete when every row the server counts was read, or, without a count, a page came back short. */
     private suspend fun search(client: MapRouletteClient, filter: TaskFilter): Rows? {
         val rows = mutableListOf<TaskSummary>()
-        var cursor: PageCursor? = null
-        var pages = 0
+        var total: Long? = null
+        var full = 0
         try {
-            do {
-                val page = client.findTasksInBounds(filter, pageSize = 100, after = cursor)
+            client.findAllTasksInBounds(filter, MAX_PAGES).collect { page ->
                 rows += page.items
-                cursor = page.next
-                pages += 1
-            } while (cursor != null && pages < MAX_PAGES)
+                if (page.total != null) total = page.total
+                if (page.items.size == PAGE_SIZE) full++
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             return null
         }
-        return Rows(rows, cursor == null)
+        return Rows(rows, total?.let { rows.size >= it } ?: (full < MAX_PAGES))
     }
 }
 
