@@ -154,8 +154,10 @@ object Wording {
         IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
         else -> alreadyChecked(noun)
     }
-    /** The picker couldn't load for lack of signal; the kept campaign is listed below (Swift's
-     * placeholder, iOS #53, until Iris confirms). */
+    /** A campaign longer than the app reads (L1; Swift's placeholder, iOS #54, until Iris confirms). */
+    fun truncatedPlaces(noun: Noun): String = "Showing the first 5,000 ${noun.many}. This campaign has more."
+    /** The picker couldn't load for lack of signal; the kept campaign is listed below (Iris,
+     * offline-copy.md O2; as iOS #53). */
     const val PICKER_KEPT = "No signal. Showing the campaign kept on this phone."
     /** A place that 404s when opened: nothing was answered, so no thanks (Iris, offline-copy.md). */
     fun goneAtOpen(noun: Noun): String = "This ${noun.one} is no longer on the map."

@@ -160,4 +160,9 @@ class WordingTest {
     @Test fun aPlaceGoneWhenOpenedHasNoThanks() {
         assertEquals("This bench is no longer on the map.", Wording.goneAtOpen(Noun("bench", "benches")))
     }
+
+    @Test fun aLongCampaignSaysItShowsTheFirstOnes() {
+        assertEquals("Showing the first 5,000 benches. This campaign has more.", Wording.truncatedPlaces(Noun("bench", "benches")))
+        assertEquals(50, Campaigns.MAX_TASK_PAGES)
+    }
 }

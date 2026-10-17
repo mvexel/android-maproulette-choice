@@ -76,7 +76,7 @@ data class Held(
 
 /** Which open tasks a guest's saved answer or report holds until it goes on the map or expires. */
 object HeldTasks {
-    private const val MAX_PAGES = 10
+    private const val MAX_PAGES = 50
     private const val PAD = 0.0005
 
     /** The box around [points], padded so a single place still makes a valid box. */
@@ -106,18 +106,22 @@ object HeldTasks {
 
     /** The bounds search with `includePending` says so per task (backend #16). A backend without it
      * sends no `pending`, so the held set is then what the `excludePending` search leaves out. Best
-     * effort: on failure or a short read, none. */
+     * effort: on failure, none. A search cut off at [MAX_PAGES] keeps the holds it read, but what's
+     * offered is then unknown; the `excludePending` fallback needs a complete read (L1; as iOS #54). */
     suspend fun load(client: MapRouletteClient, id: ChallengeId, tasks: List<LocatedTask>): Held {
         val open = tasks.filter { it.isOpen }
         val bounds = bounds(open.mapNotNull { it.position }) ?: return Held()
         val withFlags = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, includePending = true)) ?: return Held()
-        fromFlags(withFlags)?.let { return it }
-        val unheld = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, excludePending = true)) ?: return Held()
-        return Held(open.map { it.id }.toSet() - unheld.map { it.id.value }.toSet())
+        fromFlags(withFlags.rows)?.let { return if (withFlags.complete) it else it.copy(offered = null) }
+        val unheld = search(client, TaskFilter(listOf(id), bounds, choiceOnly = true, excludePending = true))
+            ?.takeIf { it.complete } ?: return Held()
+        return Held(open.map { it.id }.toSet() - unheld.rows.map { it.id.value }.toSet())
     }
 
-    /** Every page of a bounds search, or null on failure or a short read. */
-    private suspend fun search(client: MapRouletteClient, filter: TaskFilter): List<TaskSummary>? {
+    private class Rows(val rows: List<TaskSummary>, val complete: Boolean)
+
+    /** The pages of a bounds search, up to [MAX_PAGES]; null on failure. */
+    private suspend fun search(client: MapRouletteClient, filter: TaskFilter): Rows? {
         val rows = mutableListOf<TaskSummary>()
         var cursor: PageCursor? = null
         var pages = 0
@@ -133,7 +137,7 @@ object HeldTasks {
         } catch (_: Exception) {
             return null
         }
-        return if (cursor == null) rows else null
+        return Rows(rows, cursor == null)
     }
 }
 
