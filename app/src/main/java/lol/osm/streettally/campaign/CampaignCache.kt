@@ -49,6 +49,9 @@ class CampaignCache(private val store: Store, private val clock: () -> Long = Sy
     /** The copy of campaign [id], if that's the one kept. */
     fun get(id: Long): Snapshot? = current()?.takeIf { it.places.challenge.id.value == id }
 
+    /** The campaign kept on this phone, if any: listed when the picker can't load (no signal). */
+    fun keptCampaign(): Challenge? = current()?.places?.challenge
+
     /** The kept copy's place [id] with its campaign, for opening a place in a dead spot. */
     fun task(id: Long): Pair<Task, Challenge>? =
         current()?.let { s -> s.places.tasks.firstOrNull { it.id == id }?.let { it.task to s.places.challenge } }

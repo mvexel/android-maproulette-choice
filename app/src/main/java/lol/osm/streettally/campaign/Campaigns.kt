@@ -28,7 +28,8 @@ object Campaigns {
     /** The tag the admin's "Publish" adds. */
     const val PUBLISHED_TAG = "mobile-survey-v1"
     private const val MAX_CHALLENGE_PAGES = 5
-    private const val MAX_TASK_PAGES = 10
+    /** 5,000 places (L1; as iOS #54). A longer campaign shows its first ones and says so. */
+    const val MAX_TASK_PAGES = 50
 
     /** Published for participants (preview-mode §6): enabled and tagged [PUBLISHED_TAG]. Anything
      * else is a draft, so an unknown `enabled` never lets a preview write. */

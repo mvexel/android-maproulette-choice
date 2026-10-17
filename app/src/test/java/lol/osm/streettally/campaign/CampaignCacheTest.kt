@@ -64,6 +64,13 @@ class CampaignCacheTest {
         assertNull(cache.task(99_999L))
     }
 
+    @Test fun thePickerListsTheKeptCampaign() = runTest {
+        val cache = CampaignCache(Memory())
+        assertNull(cache.keptCampaign())
+        cache.save(places(), Held())
+        assertEquals(DemoBackend.CAMPAIGN, cache.keptCampaign()?.id?.value)
+    }
+
     @Test fun onlyOneCampaignIsKept() = runTest {
         val store = Memory()
         val cache = CampaignCache(store)

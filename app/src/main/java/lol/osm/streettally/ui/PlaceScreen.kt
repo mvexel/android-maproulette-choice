@@ -481,9 +481,11 @@ fun PlaceScreen(
                                 "✓ " + if (s.savedForLater) Wording.savedForLater(today, noun) else Wording.saved(today, noun),
                                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                             )
-                            // Waiting on this phone: always said, since it isn't on the server yet.
+                            // Waiting on this phone: always said, since it isn't on the server yet. Once it
+                            // leaves the outbox (sent, or dropped under row 17), only "Saved" stays (Iris, AE5).
                             if (s.queued) {
-                                Text(Wording.SAVED_ON_PHONE, style = MaterialTheme.typography.bodySmall,
+                                val waitingHere = outbox?.entries?.collectAsState()?.value.orEmpty().any { it.taskId == s.task.id.value }
+                                if (waitingHere) Text(Wording.SAVED_ON_PHONE, style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else if (s.savedForLater && today <= 3) {
                                 // Only the first few times: by then the participant knows.

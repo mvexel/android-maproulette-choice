@@ -15,8 +15,9 @@ import org.maproulette.sdk.work
 /** What a campaign's tasks are called on screen ("stop", "bench"), from the identity tag the
  * challenge's payload guards on (`match`). Falls back to "place". Same table as the iOS app. */
 data class Noun(val one: String, val many: String) {
-    /** "1 stop", "7 stops". */
-    fun count(n: Int): String = "$n ${if (n == 1) one else many}"
+    /** "1 stop", "7 stops", "5,000 benches": the number in the phone's locale. */
+    fun count(n: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "${number(n, locale)} ${if (n == 1) one else many}"
     val capitalized: String get() = one.replaceFirstChar { it.uppercase() }
     /** "an entrance", "a stop": "an" before a vowel letter (as iOS `Noun.aOne`). */
     val aOne: String get() = (if (one.firstOrNull()?.lowercaseChar()?.let { it in "aeiou" } == true) "an " else "a ") + one
@@ -73,7 +74,7 @@ object Wording {
     }
 
     fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
-    fun progress(done: Int, total: Int, noun: Noun): String = "The tally: $done of ${noun.count(total)} checked"
+    fun progress(done: Int, total: Int, noun: Noun): String = "The tally: ${number(done)} of ${noun.count(total)} checked"
     /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
     fun choose(noun: Noun): String = "Choose ${noun.aOne}"
     fun noLocation(noun: Noun, permitted: Boolean): String =
@@ -154,6 +155,15 @@ object Wording {
         IneligibleReason.MATCH_FAILED -> "This ${noun.one} changed on the map since the campaign started. Thanks anyway!"
         else -> alreadyChecked(noun)
     }
+    /** A campaign longer than the app reads, [count] places read (L1; Iris, as iOS #54). No "first":
+     * the server sends places by id, not distance. The number follows the phone's locale. */
+    fun truncatedPlaces(count: Int, noun: Noun, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "Showing ${number(count, locale)} ${noun.many}. This campaign has more."
+    /** The picker couldn't load for lack of signal; the kept campaign is listed below (Iris,
+     * offline-copy.md O2; as iOS #53). */
+    const val PICKER_KEPT = "No signal. Showing the campaign kept on this phone."
+    /** TalkBack label for the picker's Retry button (Iris, as iOS #55). */
+    const val RETRY_CAMPAIGNS = "Retry loading campaigns"
     /** A place that 404s when opened: nothing was answered, so no thanks (Iris, offline-copy.md). */
     fun goneAtOpen(noun: Noun): String = "This ${noun.one} is no longer on the map."
     /** A live save refused because the place now asks something new (Ada; Swift's placeholder until
@@ -191,16 +201,16 @@ object Wording {
     /** The pin and list row of a place whose answer waits on the phone. */
     const val WAITING_TO_SEND = "Waiting to send"
     /** Your answers row, first line, while any wait on the phone. */
-    fun waitingForSignal(count: Int): String = "$count waiting for signal"
+    fun waitingForSignal(count: Int): String = "${number(count)} waiting for signal"
     /** Day summary, after the tally line, while any wait on the phone. */
     fun stillOnPhone(count: Int, noun: Noun): String =
         if (count == 1) "1 ${noun.one} is still on this phone. It sends by itself when you have signal, so keep Street Tally installed until then."
-        else "$count ${noun.many} are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then."
+        else "${number(count)} ${noun.many} are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then."
     /** Waiting answers refused when sent because their places changed, were checked or are gone
      * (offline-copy.md row 17, iOS 37b0311): said once, under the tally. */
     fun notSent(count: Int): String =
         if (count == 1) "1 waiting answer wasn't needed. The place changed on the map before it was sent."
-        else "$count waiting answers weren't needed. The places changed on the map before they were sent."
+        else "${number(count)} waiting answers weren't needed. The places changed on the map before they were sent."
     fun pendingLimit(noun: Noun): String =
         "That's as many ${noun.many} as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
@@ -214,16 +224,17 @@ object Wording {
     const val SIGN_IN_PUTS_ON_MAP = "Sign in now and your saved answers go on the map right away."
     fun savedNotOnMap(count: Int, noun: Noun): String = "${noun.count(count)} saved and counted."
     /** "✓ 3 on the map": this campaign's answers local mappers have added; shown only when there are some. */
-    fun onTheMap(count: Int): String = "\u2713 $count on the map"
+    fun onTheMap(count: Int): String = "\u2713 ${number(count)} on the map"
     /** What a screen reader says for [onTheMap], without the check mark. */
-    fun onTheMapSpoken(count: Int): String = "$count on the map"
+    fun onTheMapSpoken(count: Int): String = "${number(count)} on the map"
     /** Once local mappers have added some of this phone's answers; nothing for skipped ones. */
     const val DAY_SUMMARY_TITLE = "Nice work today."
     /** With nothing checked today (only answers from before, or on the map), no "Nice work today". */
     fun daySummaryTitle(checked: Int): String = if (checked > 0) DAY_SUMMARY_TITLE else "Your answers"
     /** "You checked 14 stops. The tally: 212 of 410." */
     fun daySummary(checked: Int, done: Int, total: Int, noun: Noun): String =
-        if (checked > 0) "You checked ${noun.count(checked)}. The tally: $done of $total." else "The tally: $done of $total."
+        if (checked > 0) "You checked ${noun.count(checked)}. The tally: ${number(done)} of ${number(total)}."
+        else "The tally: ${number(done)} of ${number(total)}."
     const val DAY_SUMMARY_SAVED = "Local mappers will check them and add them to the map."
     /** A guest's saved place on the map and in the list (the pending pin). */
     const val SAVED_NOT_ON_MAP = "Saved, not on the map yet"
@@ -263,7 +274,7 @@ object Wording {
         val onMap = when (count) {
             0 -> ""
             1 -> " Your answer is on the map."
-            else -> " Your $count answers are on the map."
+            else -> " Your ${number(count)} answers are on the map."
         }
         return "$who$onMap New answers go straight on the map from now on."
     }
@@ -377,3 +388,7 @@ fun errorMessage(error: Throwable): String {
         else -> "Something went wrong on our side. Please try again."
     }
 }
+
+/** A count as people read it: grouped in the phone's locale ("5,000"; Tess's AE6). */
+fun number(n: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+    java.text.NumberFormat.getIntegerInstance(locale).format(n)

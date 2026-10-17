@@ -420,6 +420,9 @@ fun CampaignScreen(
                             progress = { tally.checked.toFloat() / tally.total },
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        // Cut off at the app's read limit: the tally covers only the places read (L1).
+                        if (current?.truncated == true) Text(Wording.truncatedPlaces(current.tasks.size, noun), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                         val today = checkedLog.today(campaignId)
                         if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                         val saved = guestInfo.status

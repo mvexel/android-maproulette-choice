@@ -30,10 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.BuildConfig
@@ -42,8 +45,10 @@ import lol.osm.streettally.auth.guestDiagnostic
 import lol.osm.streettally.campaign.CampaignList
 import lol.osm.streettally.campaign.Campaigns
 import lol.osm.streettally.campaign.Wording
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.task.GuestOutbox
+import lol.osm.streettally.task.SLOW_MS
 import org.maproulette.sdk.Challenge
 
 /** Account and the backend's published mapping campaigns, like the iOS picker. */
@@ -54,6 +59,8 @@ fun PickerScreen(
     appScope: CoroutineScope,
     /** A guest's answers still on this phone: sent with a sign-in, removed by "Delete my data". */
     outbox: GuestOutbox?,
+    /** The campaign kept on this phone (BACKLOG O2): listed when there's no signal; null in tests. */
+    cache: CampaignCache? = null,
     signIn: suspend () -> Unit,
     /** After "Delete my data": the places this phone saved are open again. */
     onDeletedMyData: () -> Unit = {},
@@ -63,6 +70,8 @@ fun PickerScreen(
     var list by remember { mutableStateOf<CampaignList?>(null) }
     var status by remember { mutableStateOf("Loading campaigns…") }
     var failed by remember { mutableStateOf(false) }
+    // No signal: the campaign kept on this phone, which opens from its copy (as iOS #53).
+    var kept by remember { mutableStateOf<Challenge?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
@@ -71,19 +80,29 @@ fun PickerScreen(
         if (!state.restored) return@LaunchedEffect
         loading = true
         failed = false
+        kept = null
         status = "Loading campaigns…"
+        // A hanging load lists the kept campaign after SLOW_MS, as iOS #55; the server's list
+        // replaces it if it still arrives.
+        val slow = launch {
+            delay(SLOW_MS)
+            if (list == null) cache?.keptCampaign()?.let { kept = it; status = Wording.PICKER_KEPT }
+        }
         try {
             val loaded = Campaigns.load(session.client())
             list = loaded
+            kept = null
             status = if (loaded.campaigns.isEmpty()) Wording.NO_CAMPAIGNS else ""
             loading = false
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             list = null
-            status = errorMessage(e)
+            kept = if (CampaignCache.isOffline(e)) cache?.keptCampaign() else null
+            status = if (kept != null) Wording.PICKER_KEPT else errorMessage(e)
             failed = true
         } finally {
+            slow.cancel()
             loading = false
         }
     }
@@ -125,7 +144,16 @@ fun PickerScreen(
                             if (loading) CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                             Text(status.ifEmpty { "No campaign matches." }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (failed) TextButton(onClick = { reload++ }, modifier = Modifier.padding(start = 8.dp)) { Text("Retry") }
+                        if (failed) TextButton(
+                            onClick = { reload++ },
+                            modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = Wording.RETRY_CAMPAIGNS },
+                        ) { Text("Retry") }
+                    }
+                    kept?.let { challenge ->
+                        item(key = "kept") {
+                            CampaignRow(challenge) { onCampaign(challenge.id.value) }
+                            HorizontalDivider()
+                        }
                     }
                 }
                 items(shown, key = { it.id.value }) { challenge ->

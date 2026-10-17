@@ -160,4 +160,14 @@ class WordingTest {
     @Test fun aPlaceGoneWhenOpenedHasNoThanks() {
         assertEquals("This bench is no longer on the map.", Wording.goneAtOpen(Noun("bench", "benches")))
     }
+
+    @Test fun aLongCampaignSaysItShowsTheFirstOnes() {
+        assertEquals("Showing 5,000 benches. This campaign has more.", Wording.truncatedPlaces(5_000, Noun("bench", "benches"), java.util.Locale.US))
+        assertEquals("Showing 5.000 benches. This campaign has more.", Wording.truncatedPlaces(5_000, Noun("bench", "benches"), java.util.Locale.GERMANY))
+        // Tally and welcome-card counts are grouped too (Tess's AE6: "4 of 5000 benches").
+        assertEquals("5,000 benches", Noun("bench", "benches").count(5_000, java.util.Locale.US))
+        assertEquals("5.000 benches", Noun("bench", "benches").count(5_000, java.util.Locale.GERMANY))
+        assertEquals("1 bench", Noun("bench", "benches").count(1, java.util.Locale.US))
+        assertEquals(50, Campaigns.MAX_TASK_PAGES)
+    }
 }

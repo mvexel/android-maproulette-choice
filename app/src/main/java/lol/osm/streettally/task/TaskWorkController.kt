@@ -593,7 +593,6 @@ class TaskWorkController(
             WriteProblem.InvalidTransition -> notAccepted(task, challenge)
             else -> when (error.kind) {
                 ErrorKind.AUTHENTICATION -> answering("Your sign-in wasn't accepted, so nothing was saved. Try again. If it keeps happening, sign in again.")
-                ErrorKind.NOT_FOUND -> TaskScreen.LoadFailed("This ${noun.one} is no longer in the campaign.")
                 else -> answering(writeError(error))
             }
         }
