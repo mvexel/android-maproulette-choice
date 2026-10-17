@@ -152,4 +152,12 @@ class WordingTest {
         assertEquals("1 waiting answer wasn't needed. The place changed on the map before it was sent.", Wording.notSent(1))
         assertEquals("3 waiting answers weren't needed. The places changed on the map before they were sent.", Wording.notSent(3))
     }
+
+    @Test fun aLiveSaveTheChangedPlaceRefusedMatchesIos() {
+        assertEquals("This bench changed on the map while you were answering. Thanks anyway!", Wording.changedWhileAnswering(Noun("bench", "benches")))
+    }
+
+    @Test fun aPlaceGoneWhenOpenedHasNoThanks() {
+        assertEquals("This bench is no longer on the map.", Wording.goneAtOpen(Noun("bench", "benches")))
+    }
 }

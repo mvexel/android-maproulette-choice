@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,8 +69,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import lol.osm.streettally.auth.AppSession
 import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CheckedLog
@@ -88,6 +91,7 @@ import lol.osm.streettally.task.ChoiceAction
 import lol.osm.streettally.task.ChoiceForm
 import lol.osm.streettally.task.ClientTaskOps
 import lol.osm.streettally.task.GuestOutbox
+import lol.osm.streettally.task.SLOW_MS
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
@@ -136,6 +140,7 @@ fun PlaceScreen(
     var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
+    var wasGuest by remember { mutableStateOf(state.guest) }
     var controller by remember { mutableStateOf(newController(session, scope, noun, previewing, outbox, cache)) }
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
@@ -166,14 +171,27 @@ fun PlaceScreen(
         report = null
     }
 
+    // One wait for opening a place, registration and load together (iOS #51).
+    val openedAt = remember { SystemClock.elapsedRealtime() }
+    fun budgetLeft(): Long = SLOW_MS - (SystemClock.elapsedRealtime() - openedAt)
     LaunchedEffect(Unit) {
         // Registering a guest changes the session generation; do it before binding the controller.
         // Never in preview: that would leave a guest behind (design/preview-mode.md §2).
         val bound = generation
-        if (!previewing && session.canAnswerAsGuest) session.ensureGuest()
+        var hung = false
+        if (!previewing && session.canAnswerAsGuest) {
+            val registering = scope.async { session.ensureGuest() }
+            // With the place on the phone, a hanging registration waits at most SLOW_MS: the phone's
+            // copy opens, and keeps its answers when the registration lands (below; iOS 34e13ad).
+            if (cache?.task(taskId) == null) {
+                registering.await()
+            } else {
+                hung = withTimeoutOrNull(SLOW_MS) { registering.await() } == null
+            }
+        }
         // A new generation (the guest just registered) rebinds and loads in the effect below, once.
         if (session.state.value.generation != bound) return@LaunchedEffect
-        controller.load(TaskId(taskId))
+        controller.load(TaskId(taskId), offline = hung, budgetMs = budgetLeft())
     }
     // Account switch or sign-out: discard the old account's controller and any late result.
     LaunchedEffect(state.generation) {
@@ -181,17 +199,30 @@ fun PlaceScreen(
         generation = state.generation
         val old = controller
         val interrupted = old.busy || old.state.value is TaskScreen.CheckAgain
+        // The guest registration landed after the form opened: the same person, so the answers stay.
+        val registered = !interrupted && !wasGuest && state.guest && state.account == null
+        wasGuest = state.guest
+        // Already saved (it waits on the phone): nothing to redo; the next place binds the guest.
+        if (registered && old.state.value.let { it !is TaskScreen.Answering && it !is TaskScreen.Loading && it !is TaskScreen.LoadFailed }) {
+            return@LaunchedEffect
+        }
+        val opening = registered && old.state.value is TaskScreen.Loading
         old.cancel()
         confirmation = null
         controller = newController(session, scope, noun, previewing, outbox, cache)
         switchNotice = if (interrupted) {
             "Your sign-in changed while your answers were being saved, so we can't tell whether they were."
         } else null
-        step = 0
-        notSure = emptySet()
-        answers = HashMap()
-        resetReport()
-        controller.load(TaskId(taskId))
+        if (registered) {
+            replayed = false
+        } else {
+            step = 0
+            notSure = emptySet()
+            answers = HashMap()
+            resetReport()
+        }
+        // Registered while the place was still opening: the load gets what's left of the opening's wait.
+        if (opening) controller.load(TaskId(taskId), budgetMs = budgetLeft()) else controller.load(TaskId(taskId))
     }
     val c = controller
     val screen by c.state.collectAsState()
@@ -331,7 +362,8 @@ fun PlaceScreen(
                     TaskScreen.Loading -> Busy("Loading…")
                     is TaskScreen.LoadFailed -> {
                         Text(s.message)
-                        BigButton("Try again") { c.load(TaskId(taskId)) }
+                        // Gone: a retry won't bring it back, and the campaign drops it when it reloads.
+                        if (!s.gone) BigButton("Try again") { c.load(TaskId(taskId)) }
                         BackButton(noun, onBack)
                     }
                     is TaskScreen.NotAvailable -> {
@@ -348,7 +380,8 @@ fun PlaceScreen(
                         nextButtons(false)
                     }
                     is TaskScreen.NoLongerNeeded -> {
-                        Text(Wording.noLongerNeeded(s.reason, noun), style = MaterialTheme.typography.titleMedium)
+                        Text(if (s.dropped) Wording.changedWhileAnswering(noun) else Wording.noLongerNeeded(s.reason, noun),
+                            style = MaterialTheme.typography.titleMedium)
                         nextButtons(true)
                     }
                     is TaskScreen.Answering -> {
@@ -580,6 +613,7 @@ private fun newController(
     scope, noun = noun, previewing = previewing,
     outbox = outbox.takeUnless { previewing },
     kept = { id -> cache?.task(id.value) },
+    unregistered = session.writer() == null,
 )
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {

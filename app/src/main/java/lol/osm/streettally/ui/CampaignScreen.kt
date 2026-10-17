@@ -86,6 +86,7 @@ import lol.osm.streettally.campaign.errorMessage
 import lol.osm.streettally.location.LocateResult
 import lol.osm.streettally.location.Locator
 import lol.osm.streettally.task.GuestOutbox
+import lol.osm.streettally.task.SLOW_MS
 import org.maproulette.sdk.ChallengeAnswerCounts
 import org.maproulette.sdk.ChallengeId
 import org.maproulette.sdk.ErrorKind
@@ -138,6 +139,8 @@ fun CampaignScreen(
     var reload by remember { mutableStateOf(0) }
     // Shown from the phone's copy (no connection): when the server last sent it.
     var keptFrom by remember { mutableStateOf<Long?>(null) }
+    /** When the current hang began: a reload during it doesn't restart the wait for the kept copy. */
+    var waitingSince by remember { mutableStateOf<Long?>(null) }
     var showList by rememberSaveable { mutableStateOf(false) }
     // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
     // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
@@ -213,12 +216,14 @@ fun CampaignScreen(
         }
         // A hanging connection (weak signal) isn't refused for a long while: the kept copy shows
         // after a few seconds instead, until the load lands (as iOS).
+        val since = waitingSince ?: System.currentTimeMillis().also { waitingSince = it }
         val slow = if (preview || places != null) null else launch {
-            delay(SLOW_LOAD_MS)
+            delay((SLOW_MS - (System.currentTimeMillis() - since)).coerceAtLeast(0))
             if (places == null) cache?.get(campaignId)?.let(::showKept)
         }
         try {
             val loaded = Campaigns.places(session.client(), ChallengeId(campaignId))
+            waitingSince = null
             if (preview) {
                 val published = Campaigns.isPublished(loaded.challenge)
                 if (published && !previewing) {
@@ -261,6 +266,7 @@ fun CampaignScreen(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            waitingSince = null
             if (preview && !previewing && refused(e)) {
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
@@ -564,9 +570,6 @@ private enum class PreviewPhase {
     /** A refresh found the campaign published. Preview answers are still never sent. */
     PUBLISHED_NOW,
 }
-
-/** How long a campaign may take to load before the kept copy shows instead (iOS: 6 s). */
-private const val SLOW_LOAD_MS = 6_000L
 
 /** A draft's read refused (§6: 404 for anyone without organize rights, like an unknown id). */
 private fun refused(error: Exception): Boolean = when ((error as? MapRouletteException)?.kind) {

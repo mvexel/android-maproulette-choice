@@ -6,11 +6,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
@@ -37,6 +39,9 @@ import org.maproulette.sdk.canSkip
 import org.maproulette.sdk.mobileSupport
 import org.maproulette.sdk.verifyResolution
 import org.maproulette.sdk.work
+
+/** How long any network step may keep a participant waiting before the app moves on without it. */
+const val SLOW_MS = 6_000L
 
 /** The SDK operations the task screen uses; a fake replaces it in unit tests. */
 interface TaskOps {
@@ -135,15 +140,19 @@ data class ChoiceForm(
 /** Screen states (docs/design/task-completion.md §11, docs/design/mobile-choice-challenges.md §7 app rules). */
 sealed interface TaskScreen {
     data object Loading : TaskScreen
-    data class LoadFailed(val message: String) : TaskScreen
+    /** [gone]: the place isn't there any more (404); a retry won't bring it back. */
+    data class LoadFailed(val message: String, val gone: Boolean = false) : TaskScreen
     /** Not a choice task, or nothing left to do: read-only, "Not available on mobile". */
     data class NotAvailable(val task: Task, val challenge: Challenge, val reason: String) : TaskScreen
     /** Signed out or read-only: the questions without actions. No eligibility check is made. */
     data class Preview(val task: Task, val challenge: Challenge, val work: TaskWork.Choice) : TaskScreen
     /** Campaign preview mode: what would have been sent. Nothing was. */
     data class PreviewSaved(val task: Task, val challenge: Challenge, val form: ChoiceForm, val action: ChoiceAction) : TaskScreen
-    /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown). */
-    data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null) : TaskScreen
+    /** Ineligible (stale) at open or submit. No actions. [reason] picks the line (null: unknown).
+     * [dropped]: answers refused because the place, still open, now asks something they don't answer
+     * (not "already checked"; iOS #52). */
+    data class NoLongerNeeded(val task: Task, val challenge: Challenge, val reason: IneligibleReason? = null,
+                              val dropped: Boolean = false) : TaskScreen
     /** The eligibility check failed (network, OSM unavailable, …): not actionable until a retry succeeds.
      * [paused]: the backend's mobile writes are switched off (403 mobile_writes_disabled), so a retry won't help. */
     data class CheckFailed(val task: Task, val challenge: Challenge, val paused: Boolean = false) : TaskScreen
@@ -208,6 +217,12 @@ class TaskWorkController(
     /** The phone's copy of a place and its campaign (BACKLOG O2), opened when there is no connection.
      * A guest's answer from it waits in [outbox]; the server checks the place when it is sent. */
     private val kept: (TaskId) -> Pair<Task, Challenge>? = { null },
+    /** How long a guest waits on a hanging connection before the phone's copy opens or the answer
+     * waits on the phone (Ada: no network step blocks more than about 6 s; iOS 34e13ad). */
+    private val slowMs: Long = SLOW_MS,
+    /** The phone answers as a guest but hasn't registered yet: its answers wait in [outbox], which
+     * registers first, instead of going out without a token (Tess AE3; iOS de203e8). */
+    private val unregistered: Boolean = false,
 ) {
     private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
     private val writer: Writer? = if (previewing) null else writer
@@ -225,26 +240,38 @@ class TaskWorkController(
     /** In preview, as if it could: the organizer sees every answer the campaign offers. */
     val canEditOsm: Boolean get() = previewing || writer?.canEditOsm == true
 
-    fun load(id: TaskId) {
+    /** [offline]: the connection is known to hang already, so a guest goes straight to the phone's copy.
+     * [budgetMs]: how long a guest with the phone's copy waits; less than the whole when time already
+     * went into registering, so opening a place waits one budget in all (as iOS #51). */
+    fun load(id: TaskId, offline: Boolean = false, budgetMs: Long = slowMs) {
         if (busy) return
         mutableState.value = TaskScreen.Loading
         job = scope.launch {
             mutableState.value = try {
-                val task = ops.getTask(id)
-                val challenge = ops.getChallenge(task)
-                opened(task, challenge)
+                if (offline) throw MapRouletteException(ErrorKind.NETWORK)
+                suspend fun read(): TaskScreen {
+                    val task = ops.getTask(id)
+                    val challenge = ops.getChallenge(task)
+                    return opened(task, challenge)
+                }
+                // With the phone's copy to fall back on, a hanging connection counts as none.
+                if (keepsAnswers && kept(id) != null) withTimeoutOrNull(budgetMs.coerceAtLeast(0)) { read() } ?: throw MapRouletteException(ErrorKind.NETWORK)
+                else read()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                openedKept(id, e) ?: TaskScreen.LoadFailed(readError(e))
+                openedKept(id, e) ?: TaskScreen.LoadFailed(readError(e), gone = (e as? MapRouletteException)?.kind == ErrorKind.NOT_FOUND)
             }
         }
     }
 
+    /** A guest whose answers can wait on the phone. */
+    private val keepsAnswers: Boolean get() = !previewing && outbox != null && writer?.guest == true
+
     /** No connection: a guest answers the phone's copy, with no eligibility check (there is none to
      * reach); the answer waits on the phone, and the server checks it when it's sent. Null otherwise. */
     private fun openedKept(id: TaskId, error: Exception): TaskScreen? {
-        if (previewing || outbox == null || writer?.guest != true || !CampaignCache.isOffline(error)) return null
+        if (!keepsAnswers || !CampaignCache.isOffline(error)) return null
         val (task, challenge) = kept(id) ?: return null
         val work = task.work()
         if (task.mobileSupport() != MobileSupport.IN_PLACE || work !is TaskWork.Choice) {
@@ -348,7 +375,7 @@ class TaskWorkController(
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
             // Only the write itself outlives cancellation; its result is discarded if cancelled.
-            val outcome = withContext(NonCancellable + io) { send(task, action) }
+            val outcome = withContext(NonCancellable + io) { send(task, action).recoverNarrowed(task, action) { ops.submitChoice(task, it) } }
             ensureActive()
             mutableState.value = outcome.fold(
                 onSuccess = { result -> succeeded(task, challenge, action, me, result) },
@@ -409,6 +436,44 @@ class TaskWorkController(
         Result.failure(e)
     }
 
+    /** Refused because the place's questions changed (409 key_changed): checked again, and resent
+     * quietly with the answers it still asks when they cover all of it (row 17 for live saves too; Ada,
+     * iOS #52). Otherwise a [ChangedPlace] says what the check found; if the check fails, the first
+     * failure stands. */
+    private suspend fun <T> Result<T>.recoverNarrowed(task: Task, action: ChoiceAction, resend: suspend (ChoiceSubmission) -> T): Result<T> {
+        val error = exceptionOrNull() as? MapRouletteException ?: return this
+        val answers = action.submission as? ChoiceSubmission.Answers ?: return this
+        if (error.problem != ChoiceProblem.TaskIneligible(IneligibleReason.KEY_CHANGED)) return this
+        val now = try {
+            ops.checkChoice(task.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return this
+        }
+        val asked = now.questionIds?.takeIf { now.eligible && it.isNotEmpty() }
+        if (asked == null || !asked.all { it in answers.byQuestion }) return Result.failure(ChangedPlace(now, error))
+        return try {
+            Result.success(resend(ChoiceSubmission.Answers(answers.byQuestion.filterKeys { it in asked })))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** A save refused because its place changed, with what the place is [now]. */
+    private class ChangedPlace(val now: ChoiceEligibility, cause: MapRouletteException) : Exception(cause)
+
+    /** A refused save's place screen (offline-copy.md, next to row 17): still open but asking something
+     * new, or checked by someone else / gone. Null for any other failure. */
+    private fun refusedPlace(task: Task, challenge: Challenge, error: Exception): TaskScreen? = when {
+        error is ChangedPlace && error.now.eligible -> TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.KEY_CHANGED, dropped = true)
+        error is ChangedPlace -> TaskScreen.NoLongerNeeded(task, challenge, error.now.reason)
+        error is MapRouletteException && error.kind == ErrorKind.NOT_FOUND -> TaskScreen.NoLongerNeeded(task, challenge, IneligibleReason.ELEMENT_GONE)
+        else -> null
+    }
+
     /** A guest's submission: stored as a pending answer (never an OSM edit, never a lock). Skipping
      * only moves on. Resending after a failure is safe: the server keeps one answer per task. */
     private fun saveForLater(task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction) {
@@ -419,16 +484,26 @@ class TaskWorkController(
         }
         changed = true
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
+        if (outbox != null && unregistered) {
+            job = scope.launch {
+                mutableState.value = failedForLater(task, challenge, form, action, submission, MapRouletteException(ErrorKind.NETWORK))
+            }
+            return
+        }
         job = scope.launch {
-            val outcome = withContext(NonCancellable + io) {
+            val sending = scope.async(NonCancellable + io) {
                 try {
                     Result.success(ops.submitPendingChoice(task, submission))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Result.failure(e)
-                }
+                }.recoverNarrowed(task, action) { ops.submitPendingChoice(task, it) }
             }
+            // No reply in time: it waits on the phone like an unsent one. A late result is dropped;
+            // the resend is safe, as the server keeps one answer per task.
+            val outcome = (if (outbox != null) withTimeoutOrNull(slowMs) { sending.await() } else sending.await())
+                ?: Result.failure(MapRouletteException(ErrorKind.NETWORK))
             ensureActive()
             mutableState.value = outcome.fold(
                 onSuccess = {
@@ -445,6 +520,7 @@ class TaskWorkController(
         task: Task, challenge: Challenge, form: ChoiceForm, action: ChoiceAction, submission: ChoiceSubmission, error: Exception,
     ): TaskScreen {
         fun answering(notice: String) = TaskScreen.Answering(task, challenge, form, notice)
+        refusedPlace(task, challenge, error)?.let { return it }
         // No connection, or the reply was lost after the server may have stored it: keep it on the
         // phone and send the same request later, rather than say "Couldn't connect" (BACKLOG O1).
         val unsent = error is MapRouletteException && (error.problem == WriteProblem.OutcomeUnknown || error.kind == ErrorKind.NETWORK)
@@ -476,6 +552,7 @@ class TaskWorkController(
         fun checkAgain(message: String, pending: TaskScreen.Pending, changesetId: Long? = null) =
             TaskScreen.CheckAgain(task, challenge, form, action, message, changesetId, checking = false, pending = pending,
                 canResend = pending == TaskScreen.Pending.STATUS_PENDING)
+        refusedPlace(task, challenge, error)?.let { return it }
         if (error is IllegalArgumentException) {
             // The SDK checks the submission against the payload before sending anything.
             return answering("Something went wrong. Nothing was saved. Try again.")
@@ -590,7 +667,7 @@ class TaskWorkController(
     }
 
     private fun readError(error: Exception): String = when ((error as? MapRouletteException)?.kind) {
-        ErrorKind.NOT_FOUND -> "This ${noun.one} is no longer in the campaign."
+        ErrorKind.NOT_FOUND -> Wording.goneAtOpen(noun)
         ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
         ErrorKind.AUTHENTICATION -> "Your sign-in has expired. Sign in again."
         else -> "Couldn't load this ${noun.one}. Try again."
