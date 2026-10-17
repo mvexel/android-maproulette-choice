@@ -179,7 +179,9 @@ class MainActivity : ComponentActivity() {
      * (a task id, 1001 onwards, or the feature's OSM id). `--ei onmap 1` has a local mapper already put
      * that many of the guest's answers on the map. `--ez offline true` is a dead spot: every request
      * fails as if there were no connection, until `--ez offline false`, which also sends what's waiting
-     * and refreshes a campaign shown from the phone's copy. */
+     * and refreshes a campaign shown from the phone's copy. `--es demo large --ei places 5200` serves
+     * the trees survey copied to that many places, and `--ei latency 300` holds every answer back that
+     * many milliseconds (open-time checks; L1). */
     private fun demoFrom(intent: Intent?) {
         if (!BuildConfig.DEMO || intent == null) return
         if (intent.hasExtra(DEMO_ON_MAP)) (application as StreetTallyApp).demo?.onMap = intent.getIntExtra(DEMO_ON_MAP, 0).coerceAtLeast(0)
@@ -189,6 +191,8 @@ class MainActivity : ComponentActivity() {
             app.demo?.offline = offline
             if (!offline) app.networkBack()
         }
+        if (intent.hasExtra(DEMO_PLACES)) (application as StreetTallyApp).demo?.places = intent.getIntExtra(DEMO_PLACES, DemoBackend.LARGE_PLACES).coerceAtLeast(1)
+        if (intent.hasExtra(DEMO_LATENCY)) (application as StreetTallyApp).demo?.latencyMs = intent.getIntExtra(DEMO_LATENCY, 0).coerceAtLeast(0).toLong()
         val switched = intent.getStringExtra(DEMO_CAMPAIGN)?.let { (application as StreetTallyApp).demo?.use(it) } == true
         // A task id, or the feature's OSM element: node/<id>, way/<id> or the bare id.
         val task = intent.getStringExtra(DEMO_TASK)?.substringAfterLast('/')?.toLongOrNull()
@@ -208,3 +212,5 @@ private const val DEMO_TASK = "task"
 private const val DEMO_CAMPAIGN = "demo"
 private const val DEMO_ON_MAP = "onmap"
 private const val DEMO_OFFLINE = "offline"
+private const val DEMO_PLACES = "places"
+private const val DEMO_LATENCY = "latency"

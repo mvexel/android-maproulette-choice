@@ -7,7 +7,8 @@
 #      "Nearest …" without tapping "Update my location".
 #   3. No ANR, no crash, no E/ lines under the StreetTally log tag.
 # Locations come from test providers: `adb emu geo fix` doesn't reach the app on recent images.
-#   4. With the test APK: PinAccessTest, the map pins' TalkBack double-tap (A11y1).
+#   4. With the test APK: PinAccessTest, the map pins' TalkBack double-tap (A11y1). CI runs it in
+#      the instrumented job instead (emulator-instrumented.sh).
 # Usage: scripts/ci/emulator-smoke.sh <demoDebug apk> [output dir] [demoDebug androidTest apk]
 set -uo pipefail
 

@@ -1,5 +1,6 @@
 package lol.osm.streettally.ui
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -214,11 +215,16 @@ fun CampaignScreen(
     // The first open of a hang counts from the screen opening, not from the session's restore,
     // which can wait on the network too (Tess's AE6b: ~20 s from a cold launch). Read off the main
     // thread: a 5,000-place copy takes a while to decode.
+    val opened = remember { SystemClock.elapsedRealtime() }
+    // Open-time steps in logcat (AE7): when each one lands, from the screen opening.
+    fun trace(step: String) = Log.i(TRACE, "campaign $campaignId +${SystemClock.elapsedRealtime() - opened} ms: $step")
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect
         delay(SLOW_MS)
         if (places != null) return@LaunchedEffect
+        trace("kept-copy timer")
         val copy = withContext(Dispatchers.IO) { cache?.get(campaignId) } ?: return@LaunchedEffect
+        trace("kept copy read, ${copy.places.tasks.size} places")
         if (places == null) showKept(copy)
     }
     LaunchedEffect(state.generation, reload) {
@@ -228,6 +234,7 @@ fun CampaignScreen(
             phase = PreviewPhase.SIGN_IN_NEEDED
             return@LaunchedEffect
         }
+        trace("load starts (generation ${state.generation}, reload $reload, shown ${places?.tasks?.size})")
         loading = true
         failed = false
         if (!preview) launch { session.refreshGuestStatus() }
@@ -253,14 +260,19 @@ fun CampaignScreen(
             // Reading and parsing the pages, and the places' sort, run off the main thread.
             Campaigns.placesLoading(session.client(), ChallengeId(campaignId)).flowOn(Dispatchers.Default).conflate().collect { step ->
                 if (step.complete) {
+                    trace("all ${step.places.tasks.size} places read")
                     complete = step.places
                     partial = false
+                } else if (shownAt == 0L && !(fresh && !preview && keptFrom == null)) {
+                    trace("first page not shown: fresh $fresh, kept ${keptFrom != null}")
+                    shownAt = -1L
                 } else if (fresh && !preview && keptFrom == null && step.places.challenge.enabled != false &&
                     System.currentTimeMillis() - shownAt >= STEP_MS
                 ) {
                     shownAt = System.currentTimeMillis()
                     places = step.places
                     partial = true
+                    trace("${step.places.tasks.size} places so far")
                     status = ""
                     if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
                 }
@@ -286,8 +298,10 @@ fun CampaignScreen(
             places = loaded
             held = heldNow
             keptFrom = null
+            trace("held read; all places shown")
             if (!preview) {
                 withContext(Dispatchers.IO) { cache?.save(loaded, heldNow) }
+                trace("copy kept")
                 onReachable()
             }
             // With the places, not after the reports below: the welcome never pops up over a tally
@@ -318,6 +332,7 @@ fun CampaignScreen(
                 showKept(kept)
                 return@LaunchedEffect
             }
+            trace("load failed: ${e.javaClass.simpleName}")
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
             if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
@@ -761,6 +776,9 @@ private fun PlaceRow(
 }
 
 /** The last fix, as a pair of doubles, so it survives leaving for a place and coming back. */
+/** logcat tag for open-time steps (`adb logcat -s StreetTallyTime`). */
+internal const val TRACE = "StreetTallyTime"
+
 /** The least time between two shown steps of a loading campaign. */
 private const val STEP_MS = 500L
 
