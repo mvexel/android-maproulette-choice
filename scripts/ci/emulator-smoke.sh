@@ -136,6 +136,10 @@ adb install -r -g "$APK" >/dev/null || { echo "[smoke] FAIL: install"; exit 1; }
 # "isn't responding" dialogs cover ours and swallow taps (runs on e3fc68d, 068b39d). Hide background
 # apps' ANR dialogs; Street Tally runs in front, so its own still show, and step 3 counts it from logcat.
 adb shell settings put global anr_show_background 0 || true
+# The launcher counts as in front just after boot, so its ANR dialogs still showed and covered ours
+# every few seconds (run on 2758ba8). Hide every app's error dialogs; step 3 still counts ANRs and
+# crashes from logcat, ours included.
+adb shell settings put global hide_error_dialogs 1 || true
 adb shell pm disable-user --user 0 com.google.android.googlesdksetup >/dev/null 2>&1 || true
 adb logcat -c
 providers_on
