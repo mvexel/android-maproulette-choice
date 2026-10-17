@@ -71,6 +71,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CheckedLog
 import lol.osm.streettally.campaign.Footprint
 import lol.osm.streettally.campaign.LatLon
@@ -90,6 +91,7 @@ import lol.osm.streettally.task.GuestOutbox
 import lol.osm.streettally.task.TaskScreen
 import lol.osm.streettally.task.TaskText
 import lol.osm.streettally.task.TaskWorkController
+import lol.osm.streettally.task.Writer
 import lol.osm.streettally.task.isReport
 import lol.osm.streettally.task.needsLook
 import org.maproulette.sdk.ChoiceOutcome
@@ -109,6 +111,8 @@ fun PlaceScreen(
     checked: CheckedLog,
     /** Where a guest's answers wait when they can't be sent; null in previews and tests. */
     outbox: GuestOutbox? = null,
+    /** The phone's copy of the campaign, for opening a place in a dead spot (guests only). */
+    cache: CampaignCache? = null,
     campaignId: Long,
     firstTaskId: Long,
     /** The campaign's places, for "Next nearest". */
@@ -132,7 +136,7 @@ fun PlaceScreen(
     var taskId by rememberSaveable { mutableStateOf(firstTaskId) }
     val visited = remember { mutableSetOf(firstTaskId) }
     var generation by remember { mutableIntStateOf(state.generation) }
-    var controller by remember { mutableStateOf(newController(session, scope, noun, previewing, outbox)) }
+    var controller by remember { mutableStateOf(newController(session, scope, noun, previewing, outbox, cache)) }
     var switchNotice by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
     // The question on screen; questions.size is the review step.
@@ -179,7 +183,7 @@ fun PlaceScreen(
         val interrupted = old.busy || old.state.value is TaskScreen.CheckAgain
         old.cancel()
         confirmation = null
-        controller = newController(session, scope, noun, previewing, outbox)
+        controller = newController(session, scope, noun, previewing, outbox, cache)
         switchNotice = if (interrupted) {
             "Your sign-in changed while your answers were being saved, so we can't tell whether they were."
         } else null
@@ -232,7 +236,7 @@ fun PlaceScreen(
         notSure = emptySet()
         answers = HashMap()
         resetReport()
-        controller = newController(session, scope, noun, previewing, outbox)
+        controller = newController(session, scope, noun, previewing, outbox, cache)
         controller.load(TaskId(place.id))
     }
 
@@ -567,10 +571,15 @@ private class Confirmation(
 
 /** A controller is bound to one account's client; results of a replaced one are never shown. */
 private fun newController(
-    session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean, outbox: GuestOutbox?,
+    session: AppSession, scope: CoroutineScope, noun: Noun, previewing: Boolean, outbox: GuestOutbox?, cache: CampaignCache?,
 ): TaskWorkController = TaskWorkController(
-    ClientTaskOps(session.client()), session.writer(), scope, noun = noun, previewing = previewing,
+    // A phone that hasn't registered as a guest yet (it registers before the first answer, and can't in
+    // a dead spot) still answers as one; its answers wait on the phone until it can (Tess, #45).
+    ClientTaskOps(session.client()),
+    session.writer() ?: Writer.GUEST.takeIf { !previewing && outbox != null && session.canAnswerAsGuest },
+    scope, noun = noun, previewing = previewing,
     outbox = outbox.takeUnless { previewing },
+    kept = { id -> cache?.task(id.value) },
 )
 
 private fun loadedTask(screen: TaskScreen): Task? = when (screen) {

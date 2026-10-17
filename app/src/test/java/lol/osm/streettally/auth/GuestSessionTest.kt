@@ -1,6 +1,7 @@
 package lol.osm.streettally.auth
 
 import java.net.URI
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import lol.osm.streettally.AppConfig
 import lol.osm.streettally.task.Writer
@@ -117,5 +118,41 @@ class GuestSessionTest {
         session.restore()
         assertFalse(session.ensureGuest())
         assertTrue(session.canAnswerAsGuest)
+    }
+
+    /** The first status read hangs until released; later ones answer at once with one more answer. */
+    private class SlowFirstRead : Transport {
+        val first = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val firstSent = kotlinx.coroutines.CompletableDeferred<Unit>()
+        private val reads = java.util.concurrent.atomic.AtomicInteger()
+        override suspend fun execute(request: HttpRequest): HttpResponse = when (URI(request.url).path) {
+            "/oauth/mobile/guest" -> HttpResponse(201, body = """{"guestId":"guest-1","guestSecret":"secret-secret-secret-1"}""")
+            "/oauth/mobile/token" -> HttpResponse(200, body = """{"token_type":"Bearer","access_token":"guest-access-token-0001","expires_in":900,"scope":"guest"}""")
+            "/api/v2/mobile-guest/me" -> {
+                val pending = reads.getAndIncrement()
+                if (pending == 0) {
+                    firstSent.complete(Unit)
+                    first.await()
+                }
+                HttpResponse(200, body = """{"guestId":"guest-1","state":"active","email":"none","pending":$pending,"published":0,""" +
+                    """"expiresAt":"2099-01-01T00:00:00Z","byChallenge":{"3":{"pending":$pending,"onMap":0}}}""")
+            }
+            else -> HttpResponse(404)
+        }
+    }
+
+    @Test fun anOlderStatusReadNeverHidesANewerCount() = runTest {
+        val backend = SlowFirstRead()
+        val session = AppSession(config(), InMemoryCredentialStore(), backend)
+        session.restore()
+        assertTrue(session.ensureGuest())
+        // A campaign loading reads the status; meanwhile a waiting answer sends and reads it again.
+        val loading = backgroundScope.launch { session.refreshGuestStatus() }
+        backend.firstSent.await()
+        session.refreshGuestStatus()
+        assertEquals(1, session.guest.value.status?.pendingCount)
+        backend.first.complete(Unit)
+        loading.join()
+        assertEquals(1, session.guest.value.status?.pendingCount)
     }
 }

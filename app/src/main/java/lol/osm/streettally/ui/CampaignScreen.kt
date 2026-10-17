@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import lol.osm.streettally.auth.AppSession
+import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.CampaignLink
 import lol.osm.streettally.campaign.CampaignPlaces
 import lol.osm.streettally.campaign.CampaignProgress
@@ -96,6 +97,10 @@ fun CampaignScreen(
     checkedLog: CheckedLog,
     /** A guest's answers still on this phone: shown as waiting to send, not counted until sent. */
     outbox: GuestOutbox? = null,
+    /** The last campaign opened, kept for dead spots (BACKLOG O2); null in previews and tests. */
+    cache: CampaignCache? = null,
+    /** Goes up each time the connection comes back: a campaign shown from [cache] refreshes. */
+    networkBack: Int = 0,
     campaignId: Long,
     onBack: () -> Unit,
     /** The tapped place, the campaign's places, and where the person is (if known). */
@@ -125,6 +130,8 @@ fun CampaignScreen(
     var failed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
+    // Shown from the phone's copy (no connection): when the server last sent it.
+    var keptFrom by remember { mutableStateOf<Long?>(null) }
     var showList by rememberSaveable { mutableStateOf(false) }
     // Kept while a place is open: coming back must not lose "Nearest" if the new fix is slow or
     // doesn't come (Tess, #38 emulator pass). A new fix still replaces it.
@@ -162,6 +169,8 @@ fun CampaignScreen(
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
         prefs.lastCampaign = campaignId
+        // One campaign kept: opening another lets the old copy go.
+        cache?.keepOnly(campaignId)
         if (!welcomeDue) askLocation()
     }
     LaunchedEffect(phase) {
@@ -172,6 +181,11 @@ fun CampaignScreen(
         if (preview) previewWelcomeSeen = true else prefs.markWelcomeSeen(campaignId)
         sheet = null
         if (first || origin == null) askLocation()
+    }
+    // Back online while showing the phone's copy (or after failing to load): load the server's,
+    // which drops places checked or gone meanwhile.
+    LaunchedEffect(networkBack) {
+        if (keptFrom != null || failed) reload++
     }
     LaunchedEffect(state.generation, reload) {
         if (!state.restored) return@LaunchedEffect
@@ -204,6 +218,8 @@ fun CampaignScreen(
             val heldNow = if (preview) Held() else HeldTasks.load(session.client(), ChallengeId(campaignId), loaded.tasks)
             places = loaded
             held = heldNow
+            keptFrom = null
+            if (!preview) cache?.save(loaded, heldNow)
             // With the places, not after the reports below: the welcome never pops up over a tally
             // already showing.
             if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
@@ -226,8 +242,18 @@ fun CampaignScreen(
                 phase = PreviewPhase.NO_ACCESS
                 return@LaunchedEffect
             }
+            val kept = if (preview || !CampaignCache.isOffline(e)) null else cache?.get(campaignId)
+            if (kept != null) {
+                // A dead spot: the phone's copy, answered through the outbox until the connection is back.
+                places = kept.places
+                held = kept.held
+                keptFrom = kept.savedAt
+                status = ""
+                if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+                return@LaunchedEffect
+            }
             Log.w("StreetTally", "Campaign $campaignId didn't load", e)
-            if (places == null) status = errorMessage(e)
+            if (places == null) status = if (!preview && cache != null && CampaignCache.isOffline(e)) Wording.NOT_KEPT_NO_SIGNAL else errorMessage(e)
             failed = true
         } finally {
             loading = false
@@ -242,7 +268,10 @@ fun CampaignScreen(
     val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
     val limitReached = outbox?.limitReached?.collectAsState()?.value == true
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
-    val waiting = if (state.guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
+    // A phone that answered in a dead spot before it could register is a guest too, as far as its
+    // waiting answers go (Tess, #45): they register it when they send.
+    val guest = state.guest || (!preview && queued.isNotEmpty() && session.canAnswerAsGuest)
+    val waiting = if (guest && !preview) queued.filter { it.campaignId == campaignId }.map { it.taskId }.toSet() else emptySet()
     val justDone = if (preview) emptySet() else checkedLog.done(campaignId).toSet()
     // Some sent: reload, so a place sent after a restart shows as saved (the held set says so).
     var lastWaiting by remember { mutableStateOf(waiting) }
@@ -256,9 +285,9 @@ fun CampaignScreen(
     // Where a moved place was reported to be: a gray dot on the map, joined to its pin.
     val movedTo = if (preview) emptyMap() else (serverReports + checkedLog.reports(campaignId))
         .mapNotNull { (id, r) -> (r as? TaskReport.Moved)?.let { id to it.spot } }.toMap()
-    val tally = remember(current, held, justDone, reported, state.guest, waiting) {
+    val tally = remember(current, held, justDone, reported, guest, waiting) {
         CampaignProgress(
-            current?.tasks.orEmpty(), held.ids, justDone, guest = state.guest, reported = reported, waiting = waiting, offered = held.offered,
+            current?.tasks.orEmpty(), held.ids, justDone, guest = guest, reported = reported, waiting = waiting, offered = held.offered,
         )
     }
     val shown = tally.shown
@@ -342,8 +371,12 @@ fun CampaignScreen(
                     notice?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    keptFrom?.let {
+                        Text(Wording.keptCopy(keptTime(context, it)), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
-                    if (limitReached && state.guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
+                    if (limitReached && guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
                     if (tally.total > 0 && !preview) {
@@ -359,7 +392,7 @@ fun CampaignScreen(
                         val today = checkedLog.today(campaignId)
                         if (today > 0) Text("You've checked $today today", style = MaterialTheme.typography.bodyMedium)
                         val saved = guestInfo.status
-                        if (state.guest && (saved != null || tally.waiting.isNotEmpty())) {
+                        if (guest && (saved != null || tally.waiting.isNotEmpty())) {
                             GuestSavedSection(
                                 saved?.answersHere(campaignId) ?: ChallengeAnswerCounts.ZERO, noun,
                                 onLink = { sheet = Sheet.PUT_ON_MAP }, onDoneForToday = { sheet = Sheet.DAY_SUMMARY },
@@ -369,7 +402,8 @@ fun CampaignScreen(
                     } else if (tally.total == 0 || loading || failed) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (loading) CircularProgressIndicator()
-                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Weighted, so a long line wraps and leaves room for Retry (Tess, #45).
+                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
                             if (failed) TextButton(onClick = { reload++ }) { Text("Retry") }
                         }
                     }
@@ -615,4 +649,14 @@ private fun PlaceRow(
 private val OriginSaver = Saver<MutableState<LatLon?>, DoubleArray>(
     save = { state -> state.value?.let { doubleArrayOf(it.lat, it.lon) } },
     restore = { mutableStateOf(LatLon(it[0], it[1])) },
+)
+
+/** [Wording.keptTime] with the device's own clock and date formats. */
+private fun keptTime(context: android.content.Context, savedAt: Long): String = Wording.keptTime(
+    savedAt, System.currentTimeMillis(), java.time.ZoneId.systemDefault(),
+    clock = { android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it)) },
+    day = {
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "MMMd")
+        java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(it))
+    },
 )

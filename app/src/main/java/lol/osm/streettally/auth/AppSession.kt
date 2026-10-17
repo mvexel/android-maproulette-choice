@@ -150,9 +150,18 @@ class AppSession(
             mutableGuest.value = GuestInfo()
             return
         }
+        // Reads can overlap (a campaign loading while waiting answers send): one started earlier never
+        // replaces a later one's count, so an answer sent in between stays shown (Tess, #45).
+        val read = statusReads.incrementAndGet()
         val status = quietly { client().getGuestStatus() } ?: return
-        if (state.value.guest) mutableGuest.update { it.copy(status = status) }
+        synchronized(statusReads) {
+            if (!state.value.guest || read < statusLanded) return
+            statusLanded = read
+            mutableGuest.update { it.copy(status = status) }
+        }
     }
+    private val statusReads = java.util.concurrent.atomic.AtomicInteger()
+    private var statusLanded = 0
 
     /** Sends the "finish on a computer" link to [email]. No screen offers it since the handback
      * model (design/handback-copy.md §1: no mail provider); kept until the backend drops the route. */
