@@ -123,6 +123,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     private var waiting: Shown? = null
     /** What the map last drew: a recomposition with the same places redraws nothing (5,000 pins, AE6). */
     private var drawn: Shown? = null
+    /** Pin builds started on the main thread; only the latest one is drawn. */
+    private var builds = 0
     private var framed = false
 
     init {
@@ -232,18 +234,20 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         access.invalidateRoot()
         // Walking only reorders TalkBack's pins; the map itself is unchanged.
         if (last != null && last.copy(origin = origin) == shown) return
-        movedSource?.setGeoJson(
-            FeatureCollection.fromFeatures(
+        // The 5,000-feature collection is built off the main thread; only handing its JSON to MapLibre
+        // happens here, and a newer build replaces one that finished late (AE6b).
+        val build = ++builds
+        val moved = movedSource
+        BUILDER.execute {
+            val movedJson = FeatureCollection.fromFeatures(
                 located.filter { it.id in look }.flatMap { place ->
                     val spot = movedTo[place.id] ?: return@flatMap emptyList()
                     val from = Point.fromLngLat(place.position!!.lon, place.position.lat)
                     val to = Point.fromLngLat(spot.lon, spot.lat)
                     listOf(Feature.fromGeometry(LineString.fromLngLats(listOf(from, to))), Feature.fromGeometry(to))
                 },
-            ),
-        )
-        source.setGeoJson(
-            FeatureCollection.fromFeatures(
+            ).toJson()
+            val pinJson = FeatureCollection.fromFeatures(
                 located.map { place ->
                     val p = place.position!!
                     Feature.fromGeometry(Point.fromLngLat(p.lon, p.lat)).apply {
@@ -258,8 +262,13 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                         addStringProperty("pin", pin.id)
                     }
                 },
-            ),
-        )
+            ).toJson()
+            view.post {
+                if (build != builds) return@post
+                moved?.setGeoJson(movedJson)
+                source.setGeoJson(pinJson)
+            }
+        }
         if (!framed && located.isNotEmpty()) {
             framed = true
             val map = map ?: return
@@ -331,6 +340,9 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         const val MAX_PIN_NODES = 200
     }
 }
+
+/** Builds pin collections for every map, one at a time, off the main thread. */
+private val BUILDER = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "map-pins").apply { isDaemon = true } }
 
 private data class Shown(
     val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,

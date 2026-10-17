@@ -75,6 +75,12 @@ object Wording {
 
     fun nearest(noun: Noun, distance: String?): String = "Nearest ${noun.one}" + (distance?.let { " · $it" } ?: "")
     fun progress(done: Int, total: Int, noun: Noun): String = "The tally: ${number(done)} of ${noun.count(total)} checked"
+    /** In place of the tally while a campaign's pages still load (Iris, as iOS #57). */
+    fun loadingSoFar(noun: Noun, n: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "Loading ${noun.many}… ${number(n, locale)} so far"
+    /** What TalkBack reads for [loadingSoFar]. */
+    fun loadingSoFarSpoken(noun: Noun, n: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "Loading ${noun.many}, ${number(n, locale)} so far"
     /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
     fun choose(noun: Noun): String = "Choose ${noun.aOne}"
     fun noLocation(noun: Noun, permitted: Boolean): String =
