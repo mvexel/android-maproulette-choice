@@ -48,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -270,6 +271,10 @@ fun CampaignScreen(
     val queued = outbox?.entries?.collectAsState()?.value.orEmpty()
     val limitReached = outbox?.limitReached?.collectAsState()?.value == true
     DisposableEffect(limitReached) { onDispose { if (limitReached) outbox?.limitShown() } }
+    val notSent = outbox?.notSent?.collectAsState()?.value ?: 0
+    // Keyed once: a count that grows while shown is kept until the screen goes.
+    val notSentNow by rememberUpdatedState(notSent)
+    DisposableEffect(outbox) { onDispose { if (notSentNow > 0) outbox?.notSentShown() } }
     // A phone that answered in a dead spot before it could register is a guest too, as far as its
     // waiting answers go (Tess, #45): they register it when they send.
     val guest = state.guest || (!preview && queued.isNotEmpty() && session.canAnswerAsGuest)
@@ -379,6 +384,8 @@ fun CampaignScreen(
                     }
                     // A waiting answer refused for the phone's answer limit: said once, here (offline-copy.md).
                     if (limitReached && guest) Text(Wording.pendingLimit(noun), style = MaterialTheme.typography.bodyMedium)
+                    // Waiting answers whose places changed meanwhile: said once, never dropped silently (row 17).
+                    if (notSent > 0) Text(Wording.notSent(notSent), style = MaterialTheme.typography.bodyMedium)
                     if (accountNote) AccountNote(state)
                     // Tally and progress are hidden in preview: nothing changes them (§4.2).
                     if (tally.total > 0 && !preview) {

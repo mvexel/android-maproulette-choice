@@ -147,4 +147,9 @@ class WordingTest {
         assertEquals("Location is off. Choose a stop on the map or in the list.", Wording.noLocation(stop, permitted = false))
         assertEquals("Your location isn't available yet. Choose a stop on the map or in the list.", Wording.noLocation(stop, permitted = true))
     }
+
+    @Test fun notSentMatchesRow17() {
+        assertEquals("1 waiting answer wasn't needed. The place changed on the map before it was sent.", Wording.notSent(1))
+        assertEquals("3 waiting answers weren't needed. The places changed on the map before they were sent.", Wording.notSent(3))
+    }
 }

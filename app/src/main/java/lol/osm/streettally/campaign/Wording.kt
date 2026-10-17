@@ -191,6 +191,11 @@ object Wording {
     fun stillOnPhone(count: Int, noun: Noun): String =
         if (count == 1) "1 ${noun.one} is still on this phone. It sends by itself when you have signal, so keep Street Tally installed until then."
         else "$count ${noun.many} are still on this phone. They send by themselves when you have signal, so keep Street Tally installed until then."
+    /** Waiting answers refused when sent because their places changed, were checked or are gone
+     * (offline-copy.md row 17, iOS 37b0311): said once, under the tally. */
+    fun notSent(count: Int): String =
+        if (count == 1) "1 waiting answer wasn't needed. The place changed on the map before it was sent."
+        else "$count waiting answers weren't needed. The places changed on the map before they were sent."
     fun pendingLimit(noun: Noun): String =
         "That's as many ${noun.many} as one phone can answer without an account for now. Tap “I already use OpenStreetMap” to sign in and keep going."
     /** Signed out in a build where guests can answer. Without a campaign, its places are "places". */
