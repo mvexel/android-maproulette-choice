@@ -5,8 +5,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
@@ -778,6 +780,54 @@ class TaskWorkControllerTest {
         advanceUntilIdle()
         assertTrue((c.state.value as TaskScreen.Done).queued)
         assertEquals(listOf(ID.value), outbox.entries.value.map { it.taskId })
+    }
+
+    @Test
+    fun aHangingConnectionOpensThePhonesCopyAfterSixSeconds() = runTest {
+        val keptTask = task(cooperativeWork = GUEST_BENCH)
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.check = { delay(30_000); ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }
+        val c = controller(ops, writer = Writer.GUEST, outbox = GuestOutbox(MemoryStore()), kept = { keptTask to CHALLENGE })
+        assertTrue(c.state.value is TaskScreen.Answering)
+        assertEquals(SLOW_MS, testScheduler.currentTime)
+    }
+
+    @Test
+    fun aKnownHangOpensThePhonesCopyAtOnce() = runTest {
+        val keptTask = task(cooperativeWork = GUEST_BENCH)
+        val ops = FakeOps()
+        val c = TaskWorkController(ops, Writer.GUEST, this, StandardTestDispatcher(testScheduler),
+            outbox = GuestOutbox(MemoryStore()), kept = { keptTask to CHALLENGE })
+        c.load(ID, offline = true)
+        advanceUntilIdle()
+        assertTrue(c.state.value is TaskScreen.Answering)
+        assertTrue(ops.calls.isEmpty())
+    }
+
+    @Test
+    fun withoutThePhonesCopyASlowReadIsWaitedFor() = runTest {
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        ops.check = { delay(20_000); ChoiceEligibility(eligible = true, deleteAllowed = true, reason = null) }
+        val c = controller(ops, writer = Writer.GUEST, outbox = GuestOutbox(MemoryStore()))
+        assertTrue(c.state.value is TaskScreen.Answering)
+        assertEquals(20_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun aGuestSaveWithNoReplyAfterSixSecondsWaitsOnThePhone() = runTest {
+        val outbox = GuestOutbox(MemoryStore())
+        val ops = FakeOps().thenRead({ task(cooperativeWork = GUEST_BENCH) })
+        val c = controller(ops, writer = Writer.GUEST, outbox = outbox)
+        ops.pending = { delay(30_000); PendingChoice(ID, state = PendingState.PENDING, answeredAt = Instant.EPOCH) }
+        val start = testScheduler.currentTime
+        c.perform(ChoiceAction.Answers(mapOf("backrest" to "no")))
+        advanceTimeBy(SLOW_MS + 1)
+        assertTrue((c.state.value as TaskScreen.Done).queued)
+        assertEquals(listOf(ID.value), outbox.entries.value.map { it.taskId })
+        // The late reply changes nothing on screen; the resend replaces it on the server.
+        advanceUntilIdle()
+        assertTrue((c.state.value as TaskScreen.Done).queued)
+        assertTrue(testScheduler.currentTime - start >= 30_000)
     }
 
     @Test

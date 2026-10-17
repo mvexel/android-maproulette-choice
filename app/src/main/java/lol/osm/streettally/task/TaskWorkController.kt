@@ -6,11 +6,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import lol.osm.streettally.campaign.CampaignCache
 import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Wording
@@ -37,6 +39,9 @@ import org.maproulette.sdk.canSkip
 import org.maproulette.sdk.mobileSupport
 import org.maproulette.sdk.verifyResolution
 import org.maproulette.sdk.work
+
+/** How long any network step may keep a participant waiting before the app moves on without it. */
+const val SLOW_MS = 6_000L
 
 /** The SDK operations the task screen uses; a fake replaces it in unit tests. */
 interface TaskOps {
@@ -208,6 +213,9 @@ class TaskWorkController(
     /** The phone's copy of a place and its campaign (BACKLOG O2), opened when there is no connection.
      * A guest's answer from it waits in [outbox]; the server checks the place when it is sent. */
     private val kept: (TaskId) -> Pair<Task, Challenge>? = { null },
+    /** How long a guest waits on a hanging connection before the phone's copy opens or the answer
+     * waits on the phone (Ada: no network step blocks more than about 6 s; iOS 34e13ad). */
+    private val slowMs: Long = SLOW_MS,
 ) {
     private val ops: TaskOps = if (previewing) PreviewTaskOps(ops) else ops
     private val writer: Writer? = if (previewing) null else writer
@@ -225,14 +233,21 @@ class TaskWorkController(
     /** In preview, as if it could: the organizer sees every answer the campaign offers. */
     val canEditOsm: Boolean get() = previewing || writer?.canEditOsm == true
 
-    fun load(id: TaskId) {
+    /** [offline]: the connection is known to hang already, so a guest goes straight to the phone's copy. */
+    fun load(id: TaskId, offline: Boolean = false) {
         if (busy) return
         mutableState.value = TaskScreen.Loading
         job = scope.launch {
             mutableState.value = try {
-                val task = ops.getTask(id)
-                val challenge = ops.getChallenge(task)
-                opened(task, challenge)
+                if (offline) throw MapRouletteException(ErrorKind.NETWORK)
+                suspend fun read(): TaskScreen {
+                    val task = ops.getTask(id)
+                    val challenge = ops.getChallenge(task)
+                    return opened(task, challenge)
+                }
+                // With the phone's copy to fall back on, a hanging connection counts as none.
+                if (keepsAnswers && kept(id) != null) withTimeoutOrNull(slowMs) { read() } ?: throw MapRouletteException(ErrorKind.NETWORK)
+                else read()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -241,10 +256,13 @@ class TaskWorkController(
         }
     }
 
+    /** A guest whose answers can wait on the phone. */
+    private val keepsAnswers: Boolean get() = !previewing && outbox != null && writer?.guest == true
+
     /** No connection: a guest answers the phone's copy, with no eligibility check (there is none to
      * reach); the answer waits on the phone, and the server checks it when it's sent. Null otherwise. */
     private fun openedKept(id: TaskId, error: Exception): TaskScreen? {
-        if (previewing || outbox == null || writer?.guest != true || !CampaignCache.isOffline(error)) return null
+        if (!keepsAnswers || !CampaignCache.isOffline(error)) return null
         val (task, challenge) = kept(id) ?: return null
         val work = task.work()
         if (task.mobileSupport() != MobileSupport.IN_PLACE || work !is TaskWork.Choice) {
@@ -420,7 +438,7 @@ class TaskWorkController(
         changed = true
         mutableState.value = TaskScreen.Submitting(task, challenge, form, action)
         job = scope.launch {
-            val outcome = withContext(NonCancellable + io) {
+            val sending = scope.async(NonCancellable + io) {
                 try {
                     Result.success(ops.submitPendingChoice(task, submission))
                 } catch (e: CancellationException) {
@@ -429,6 +447,10 @@ class TaskWorkController(
                     Result.failure(e)
                 }
             }
+            // No reply in time: it waits on the phone like an unsent one. A late result is dropped;
+            // the resend is safe, as the server keeps one answer per task.
+            val outcome = (if (outbox != null) withTimeoutOrNull(slowMs) { sending.await() } else sending.await())
+                ?: Result.failure(MapRouletteException(ErrorKind.NETWORK))
             ensureActive()
             mutableState.value = outcome.fold(
                 onSuccess = {
