@@ -12,10 +12,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class ClusterImageTest {
     @Test fun idsRoundTrip() {
-        assertEquals("cluster-1240-3", ClusterImage.id(1240, 3))
-        assertEquals(1240 to 3, ClusterImage.parse("cluster-1240-3"))
-        // The tenths come from a rounded expression: clamped, never a broken ring.
-        assertEquals(7 to 10, ClusterImage.parse("cluster-7-12"))
+        assertEquals("cluster-1240-940", ClusterImage.id(1240, 940))
+        assertEquals(1240 to 940, ClusterImage.parse("cluster-1240-940"))
+        assertEquals(7 to 0, ClusterImage.parse("cluster-7-0"))
+        // Never more left than there are.
+        assertEquals(7 to 7, ClusterImage.parse("cluster-7-12"))
         assertNull(ClusterImage.parse("pin-todo"))
         assertNull(ClusterImage.parse("cluster-x-1"))
         assertNull(ClusterImage.parse("cluster-12"))
@@ -26,8 +27,13 @@ class ClusterImageTest {
         assertEquals(44f, ClusterImage.diameter(100), 0f)
         assertEquals(44f, ClusterImage.diameter(999), 0f)
         assertEquals(52f, ClusterImage.diameter(1_000), 0f)
-        val bitmap = ClusterImage.bitmap(5_200, 4, density = 2f, dark = false)
+        val bitmap = ClusterImage.bitmap(5_200, 4_100, density = 2f)
         assertEquals(104, bitmap.width)
         assertEquals(104, bitmap.height)
+        assertEquals(72, ClusterImage.bitmap(40, 0, density = 2f).width)
+        assertEquals(72, ClusterImage.bitmap(40, 0, density = 2f, dark = true).width)
+        assertEquals(13f, ClusterImage.textSize(99), 0f)
+        assertEquals(13f, ClusterImage.textSize(999), 0f)
+        assertEquals(14f, ClusterImage.textSize(1_000), 0f)
     }
 }

@@ -53,10 +53,12 @@ class WordingTest {
         assertEquals("Nearest stop", Wording.nearest(stop, null))
     }
 
-    @Test fun clusterReadsCountAndDone() {
-        val tree = Noun("tree", "trees")
-        assertEquals("1,240 trees here, 300 done", Wording.cluster(tree, 1240, 300, java.util.Locale.US))
-        assertEquals("1.240 trees here, 0 done", Wording.cluster(tree, 1240, 0, java.util.Locale.forLanguageTag("nl-NL")))
+    @Test fun clusterReadsWhatIsLeft() {
+        val bench = Noun("bench", "benches")
+        assertEquals("940 benches left to check here", Wording.cluster(bench, 1240, 940, java.util.Locale.US))
+        assertEquals("1 bench left to check here", Wording.cluster(bench, 30, 1, java.util.Locale.US))
+        assertEquals("120 benches here, all checked", Wording.cluster(bench, 120, 0, java.util.Locale.US))
+        assertEquals("1.240 benches left to check here", Wording.cluster(bench, 2000, 1240, java.util.Locale.forLanguageTag("nl-NL")))
     }
 
     @Test fun placeNamePrefersNameThenRef() {
