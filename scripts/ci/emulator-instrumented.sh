@@ -9,7 +9,8 @@ set -uo pipefail
 APK=${1:?usage: emulator-instrumented.sh <demoDebug apk> <androidTest apk> [output dir]}
 TEST_APK=${2:?usage: emulator-instrumented.sh <demoDebug apk> <androidTest apk> [output dir]}
 OUT=${3:-instrumented-out}
-PKG=lol.osm.maproulette.choice
+# The demo flavor's debug id (app/build.gradle.kts: ".demo" then ".debug").
+PKG=lol.osm.maproulette.choice.demo.debug
 mkdir -p "$OUT"
 log() { echo "[instrumented] $*"; }
 
@@ -39,16 +40,25 @@ dismiss_others() {
 
 # Each class from a fresh start: PinAccessTest expects the trees as a first launch leaves them.
 : >"$OUT/instrument.txt"
-for class in OpenTimeTest PinAccessTest ClusterAccessTest PinFocusTest DarkSwitchTest OfflineMapTest; do
+# $1: the class (or Class#method), then any further runner arguments.
+run() {
   adb shell pm clear $PKG >/dev/null
-  dismiss_others $class
+  dismiss_others "$1"
   adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
   adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
-  adb shell am instrument -w -e class lol.osm.streettally.$class $PKG.test/androidx.test.runner.AndroidJUnitRunner >>"$OUT/instrument.txt" 2>&1
-done
+  local class=$1; shift
+  adb shell am instrument -w -e class lol.osm.streettally.$class "$@" $PKG.test/androidx.test.runner.AndroidJUnitRunner >>"$OUT/instrument.txt" 2>&1
+}
+run OpenTimeTest -e notClass lol.osm.streettally.OpenTimeTest#coldOpen
+# Three cold opens, each after pm clear: the number participants see (Ada, L1).
+for _ in 1 2 3; do run OpenTimeTest#coldOpen; done
+for class in PinAccessTest ClusterAccessTest PinFocusTest DarkSwitchTest OfflineMapTest; do run $class; done
+RUNS=9
 adb logcat -d >"$OUT/logcat.txt" 2>/dev/null
 
 adb logcat -d -s OpenTime:I | grep " OpenTime" | sed 's/.*OpenTime: /[instrumented] open time: /'
+cold=$(adb logcat -d -s OpenTime:I | grep -oE "cold 5200 places: tally [0-9]+" | grep -oE "[0-9]+$" | sort -n | tr '\n' ' ')
+log "cold open, 5200 places, median of 3: tally $(echo $cold | awk '{ print $2 }') ms (sorted: ${cold:-none})"
 adb logcat -d -s DarkSwitch:I | grep " DarkSwitch" | sed 's/.*DarkSwitch: /[instrumented] /'
 # The map style not loading (StreetTallyMap): expected once in OfflineMapTest, a finding anywhere else.
 adb logcat -d -s StreetTallyMap:W | grep " StreetTallyMap" | sed 's/.*StreetTallyMap: /[instrumented] map: /'
@@ -64,7 +74,7 @@ if [ -n "$anrs" ]; then
   grep -A12 -E "ANR in $PKG" "$OUT/logcat.txt" | head -40 | sed 's/^/[instrumented]   /'
   exit 1
 fi
-if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq 6 ]; then
+if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq $RUNS ]; then
   log "PASS: $(grep '^OK (' "$OUT/instrument.txt" | tr '\n' ' ')"
 else
   log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -250

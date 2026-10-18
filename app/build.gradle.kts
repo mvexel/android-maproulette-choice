@@ -79,6 +79,9 @@ android {
     }
     buildTypes {
         getByName("debug") {
+            // Test builds install next to the store app on a real phone (Tess, AE13). Release keeps
+            // exactly lol.osm.maproulette.choice: the Play listing and assetlinks.json (A8) name it.
+            applicationIdSuffix = ".debug"
             buildConfigField("boolean", "ALLOW_LOOPBACK", allowLoopback.toString())
         }
         getByName("release") {
@@ -87,8 +90,8 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
     }
-    // One flavor per backend. All share the application id and the OAuth callback scheme,
-    // so install one at a time.
+    // One flavor per backend. Dev, stage and prod share the application id and the OAuth callback
+    // scheme, so install one of their debug builds at a time; demo has its own id.
     flavorDimensions += "backend"
     productFlavors {
         create("dev") {
@@ -106,6 +109,7 @@ android {
         create("demo") {
             dimension = "backend"
             versionNameSuffix = "-demo"
+            applicationIdSuffix = ".demo"
             buildConfigField("String", "MAPROULETTE_BASE_URL", quoted("https://demo.invalid"))
             buildConfigField("boolean", "MAPROULETTE_GUESTS", "true")
             buildConfigField("boolean", "DEMO", "true")

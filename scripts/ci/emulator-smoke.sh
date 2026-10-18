@@ -16,7 +16,8 @@ APK=${1:?usage: emulator-smoke.sh <demoDebug apk> [output dir] [androidTest apk]
 OUT=${2:-smoke-out}
 TEST_APK=${3:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
-PKG=lol.osm.maproulette.choice
+# The demo flavor's debug id (app/build.gradle.kts: ".demo" then ".debug").
+PKG=lol.osm.maproulette.choice.demo.debug
 ACT=$PKG/lol.osm.streettally.MainActivity
 WAIT=${SMOKE_WAIT:-30}   # seconds to wait for a screen; the CI emulator is slower than a phone
 mkdir -p "$OUT"

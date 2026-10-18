@@ -33,6 +33,13 @@ class OpenTimeTest {
 
     @Test fun fourThousandNineHundredNinetyNinePlaces() { open(4_999) }
 
+    /** The open a participant sees first: cleared data, so no kept copy, and the welcome. The emulator
+     * job runs only this, three times after `pm clear`, and prints the median (Ada); the class run skips it. */
+    @Test fun coldOpen() {
+        val opened = open(5_200)
+        Log.i(TAG, "cold 5200 places: tally ${opened.tallyMs} ms, peak PSS ${opened.pssKb / 1024} MB, RSS ${opened.rssKb / 1024} MB")
+    }
+
     /** One bar of signal (AE6b, AE7): every request hangs. The campaign shows the phone's copy, read
      * cold from its file, and Back shows the picker's kept entry, each about SLOW_MS after opening. */
     @Test fun aDeadSpotShowsTheKeptCopy() {
