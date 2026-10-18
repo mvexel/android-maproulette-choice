@@ -48,6 +48,8 @@ fi
 if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq 5 ]; then
   log "PASS: $(grep '^OK (' "$OUT/instrument.txt" | tr '\n' ' ')"
 else
-  log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -60
+  log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -250
+  # The map's own errors (style or tiles not loading leaves no pins or clusters to reach).
+  grep -E "Mbgl|MapLibre|ExploreService|AccessibilityManager" "$OUT/logcat.txt" | grep -E " [EW] " | head -40 | sed 's/^/[instrumented]   logcat: /'
   exit 1
 fi
