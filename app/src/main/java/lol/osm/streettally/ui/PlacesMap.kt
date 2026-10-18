@@ -22,7 +22,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
+import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -73,8 +75,8 @@ fun PlacesMap(
     origin: LatLon? = null,
     describe: (LocatedTask) -> String = { it.id.toString() },
     onActivate: (Long) -> Unit = onPlace,
-    /** TalkBack's words for a cluster of `count` places, `done` of them checked or saved. */
-    describeCluster: (count: Int, done: Int) -> String = { count, done -> "$count places, $done done" },
+    /** TalkBack's words for a cluster of `total` places, `left` of them still to check. */
+    describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) },
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier, {})
@@ -120,7 +122,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     var onBackground: () -> Unit = {}
     var onActivate: (Long) -> Unit = {}
     var describe: (LocatedTask) -> String = { it.id.toString() }
-    var describeCluster: (Int, Int) -> String = { count, done -> "$count places, $done done" }
+    var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) }
     /** Every place with a position, nearest first. */
     private var pins: List<LocatedTask> = emptyList()
     /** What TalkBack can reach, nearest first; the index is the node id. Unclustered, every pin; clustered,
@@ -153,8 +155,8 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
         ViewCompat.setAccessibilityDelegate(view, access)
         view.onCreate(null)
         view.addOnStyleImageMissingListener { id ->
-            val (count, tenths) = ClusterImage.parse(id) ?: return@addOnStyleImageMissingListener
-            map?.style?.addImage(id, ClusterImage.bitmap(count, tenths, view.resources.displayMetrics.density, dark))
+            val (total, left) = ClusterImage.parse(id) ?: return@addOnStyleImageMissingListener
+            map?.style?.addImage(id, ClusterImage.bitmap(total, left, view.resources.displayMetrics.density, dark))
         }
         view.getMapAsync { map ->
             this.map = map
@@ -186,7 +188,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                 val clusters = GeoJsonSource(
                     CLUSTER_SOURCE,
                     GeoJsonOptions().withCluster(true).withClusterMaxZoom(CLUSTER_MAX_ZOOM).withClusterRadius(CLUSTER_RADIUS)
-                        // How many in each cluster aren't to-check any more: its ring's green share.
+                        // How many in each cluster aren't to-check any more; the image shows the rest.
                         .withClusterProperty(
                             "done", Expression.literal("+"),
                             Expression.switchCase(
@@ -211,14 +213,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
                                 Expression.literal(ClusterImage.PREFIX),
                                 Expression.toString(Expression.get("point_count")),
                                 Expression.literal("-"),
-                                Expression.toString(
-                                    Expression.round(
-                                        Expression.product(
-                                            Expression.literal(10),
-                                            Expression.division(Expression.get("done"), Expression.get("point_count")),
-                                        ),
-                                    ),
-                                ),
+                                Expression.toString(Expression.subtract(Expression.get("point_count"), Expression.get("done"))),
                             ),
                         ),
                         PropertyFactory.iconAllowOverlap(true),
@@ -434,14 +429,14 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
             node.setBoundsInParent(spot(id) ?: Rect(0, 0, 1, 1))
             node.contentDescription = when (shown) {
                 is Node.Place -> describe(shown.place)
-                is Node.Cluster -> describeCluster(shown.count, shown.done)
+                is Node.Cluster -> describeCluster(shown.count, shown.count - shown.done)
                 null -> ""
             }
             // Clickable, or TalkBack's double-tap falls back to a tap on the map under the pin.
             node.isClickable = true
             // A stable id for PinAccessTest; TalkBack doesn't read it.
             node.viewIdResourceName = "${view.context.packageName}:id/${if (shown is Node.Cluster) "cluster" else "pin"}"
-            // A cluster's double tap zooms in: TalkBack says "Double-tap to zoom in".
+            // A cluster's double tap zooms in: TalkBack adds "Double-tap to zoom in" (Iris).
             node.addAction(
                 if (shown is Node.Cluster) AccessibilityNodeInfoCompat.AccessibilityActionCompat(AccessibilityNodeInfoCompat.ACTION_CLICK, "zoom in")
                 else AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK,

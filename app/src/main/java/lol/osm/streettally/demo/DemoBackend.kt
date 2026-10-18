@@ -45,7 +45,7 @@ class DemoBackend(
     private class Tree(val id: Long, val element: String, val lat: Double, val lon: Double, val properties: JsonObject)
 
     /** [count]: the file's features copied side by side up to that many tasks, each its own node. */
-    private class Campaign(survey: String, seeded: Boolean, count: Int? = null) {
+    private class Campaign(survey: String, seeded: Boolean, count: Int? = null, checked: Int = 0) {
         val file = Json.parseToJsonElement(survey).jsonObject
         val challenge = file["challenge"]!!.jsonObject
         val trees = file["features"]!!.jsonObject["features"]!!.jsonArray.mapIndexed { i, f ->
@@ -66,6 +66,8 @@ class DemoBackend(
             }
         }
         val status = trees.associate { it.id to 0 }.toMutableMap().apply {
+            // The first [checked] places come back fixed: whole copies of the survey, so some clusters are all checked.
+            trees.take(checked).forEach { put(it.id, 1) }
             if (seeded) {
                 put(1090, 1)
                 put(1094, 1)
@@ -80,12 +82,15 @@ class DemoBackend(
     private val campaign: Campaign
         get() = synchronized(this) {
             parsed?.takeIf { it.first == name }?.second
-                ?: Campaign(surveys.getValue(name), seeded = name == TREES, count = places.takeIf { name == LARGE })
+                ?: Campaign(surveys.getValue(name), seeded = name == TREES, count = places.takeIf { name == LARGE }, checked = checked.takeIf { name == LARGE } ?: 0)
                     .also { parsed = name to it }
         }
 
     /** How many tasks [LARGE] has (the `places` extra); a change takes effect on its next [use]. */
     @Volatile var places: Int = LARGE_PLACES
+
+    /** How many of [LARGE]'s places are already checked (the `checked` extra), as for [places]. */
+    @Volatile var checked: Int = 0
 
     /** How long every request waits before its answer, as on a slow connection (the `latency` extra). */
     @Volatile var latencyMs: Long = 0

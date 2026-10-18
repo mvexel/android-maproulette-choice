@@ -100,61 +100,80 @@ internal enum class Pin(val id: String) {
     }
 }
 
-/** A cluster of places on a big campaign's map (L1-CLUSTER): an amber disc with the count in navy,
- * inside a ring whose green share is the part already checked, in tenths. Sized in three steps by
- * count. Drawn on demand when MapLibre asks for an id from [id]. */
+/** A cluster of places on a big campaign's map (L1-CLUSTER, Iris and Juno): a to-do circle in a navy
+ * ring with the number still to check in white, or, once none is left, a PinDone circle with a tick.
+ * Sized in three steps by the cluster's total. Drawn on demand when MapLibre asks for an id from [id]. */
 internal object ClusterImage {
     const val PREFIX = "cluster-"
 
-    fun id(count: Int, tenths: Int) = "$PREFIX$count-$tenths"
+    fun id(total: Int, left: Int) = "$PREFIX$total-$left"
 
-    /** The count and tenths in an [id], or null for any other image id. */
+    /** The total and the number left in an [id], or null for any other image id. */
     fun parse(id: String): Pair<Int, Int>? {
         if (!id.startsWith(PREFIX)) return null
         val parts = id.removePrefix(PREFIX).split('-')
-        val count = parts.getOrNull(0)?.toIntOrNull() ?: return null
-        val tenths = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 10) ?: return null
-        return count to tenths
+        if (parts.size != 2) return null
+        val total = parts[0].toIntOrNull() ?: return null
+        val left = parts[1].toIntOrNull()?.coerceIn(0, total) ?: return null
+        return total to left
     }
 
-    /** The diameter in dp: under 100, under 1,000, and 1,000 or more (the same steps as iOS). */
-    fun diameter(count: Int): Float = when {
-        count < 100 -> 36f
-        count < 1_000 -> 44f
+    /** The diameter in dp, by the cluster's total: under 100, under 1,000, and 1,000 or more (as iOS). */
+    fun diameter(total: Int): Float = when {
+        total < 100 -> 36f
+        total < 1_000 -> 44f
         else -> 52f
     }
 
-    fun bitmap(count: Int, tenths: Int, density: Float, dark: Boolean, locale: java.util.Locale = java.util.Locale.getDefault()): Bitmap {
-        val d = diameter(count)
+    /** The count's bold text size in sp: 13, 13 and 14 for the three [diameter] steps. */
+    fun textSize(total: Int): Float = if (total < 1_000) 13f else 14f
+
+    /** [dark]: the to-do ring turns white, as on the single PinTodo (navy is 1.2:1 on the dark map), and the
+     * all-done circle becomes the dark map's PinDone (bright green, ink tick and edge). */
+    fun bitmap(total: Int, left: Int, density: Float, dark: Boolean = false, locale: java.util.Locale = java.util.Locale.getDefault()): Bitmap {
+        val d = diameter(total)
         val size = (d * density).toInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(density, density)
         val c = d / 2
-        val ring = 3.5f
-        canvas.drawCircle(c, c, c - ring, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AMBER })
-        val track = RectF(ring / 2, ring / 2, d - ring / 2, d - ring / 2)
-        canvas.drawOval(track, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = ring; color = if (dark) WHITE else NAVY
-        })
-        if (tenths > 0) {
-            canvas.drawArc(track, -90f, 36f * tenths, false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE; strokeWidth = ring; color = GREEN
+        if (left == 0) {
+            val edge = 2f
+            val ink = if (dark) INK else WHITE
+            canvas.drawCircle(c, c, c - edge / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (dark) GREEN_DARK else GREEN })
+            canvas.drawCircle(c, c, c - edge / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = edge; color = ink })
+            canvas.save()
+            val scale = d / 28f
+            canvas.scale(scale, scale)
+            canvas.drawPath(PathParser.createPathFromPathData(TICK), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = 2.6f; color = ink
+                strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
             })
+            canvas.restore()
+            return bitmap
         }
-        val text = lol.osm.streettally.campaign.number(count, locale)
+        val ring = 3f
+        canvas.drawCircle(c, c, c - ring / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TO_CHECK })
+        canvas.drawCircle(c, c, c - ring / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ring; color = if (dark) WHITE else NAVY })
+        val text = lol.osm.streettally.campaign.number(left, locale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = NAVY
+            color = WHITE
             textAlign = Paint.Align.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textSize = if (text.length > 4) 11f else 13f
+            textSize = textSize(total)
         }
         canvas.drawText(text, c, c - (paint.descent() + paint.ascent()) / 2, paint)
         return bitmap
     }
 
-    private val AMBER = Color.parseColor("#F5A524")
+    /** accentText: white text on it is 5.6:1 (Iris: at least 4.5:1; white on the pins' #F5A524 is 2.0:1). */
+    private val TO_CHECK = Color.parseColor("#A84F00")
+    /** PinTodo's ring on the light map. */
     private val NAVY = Color.parseColor("#14213D")
+    /** PinDone, light and dark map. */
     private val GREEN = Color.parseColor("#1F7A4D")
+    private val GREEN_DARK = Color.parseColor("#34D399")
     private val WHITE = Color.parseColor("#FFFFFF")
+    private val INK = Color.parseColor("#0B1220")
+    private const val TICK = "M8.6 14.3 L12.4 18 L19.6 10.4"
 }

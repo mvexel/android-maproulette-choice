@@ -574,7 +574,7 @@ fun CampaignScreen(
                                         look = place.id in tally.look, waiting = place.id in tally.waiting,
                                     )
                                 },
-                                describeCluster = { count, doneHere -> Wording.cluster(noun, count, doneHere) },
+                                describeCluster = { total, left -> Wording.cluster(noun, total, left) },
                                 onActivate = { id ->
                                     val place = shown.firstOrNull { it.id == id }
                                     if (place != null && place.isOpen && id !in done && id !in tally.waiting) {
