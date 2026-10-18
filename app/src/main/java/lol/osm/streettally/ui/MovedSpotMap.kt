@@ -6,9 +6,11 @@ import android.graphics.PointF
 import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -74,42 +76,45 @@ fun MovedSpotMap(
         placeholder(picked, modifier, onPick)
         return
     }
-    val context = LocalContext.current
-    val holder = remember { MovedSpotHolder(context, styleUrl, mapped, onTheMapLabel, interactive) }
-    holder.onPick = onPick
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> holder.view.onStart()
-                Lifecycle.Event.ON_RESUME -> holder.view.onResume()
-                Lifecycle.Event.ON_PAUSE -> holder.view.onPause()
-                Lifecycle.Event.ON_STOP -> holder.view.onStop()
-                else -> Unit
+    // A new map for the other appearance: the activity keeps running through it (configChanges="uiMode").
+    key(MapStyle.isDark(LocalConfiguration.current)) {
+        val context = LocalContext.current
+        val holder = remember { MovedSpotHolder(context, styleUrl, mapped, onTheMapLabel, interactive) }
+        holder.onPick = onPick
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(lifecycle) {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> holder.view.onStart()
+                    Lifecycle.Event.ON_RESUME -> holder.view.onResume()
+                    Lifecycle.Event.ON_PAUSE -> holder.view.onPause()
+                    Lifecycle.Event.ON_STOP -> holder.view.onStop()
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer) // Replays ON_START and ON_RESUME when already resumed.
+            onDispose {
+                lifecycle.removeObserver(observer)
+                holder.view.onPause()
+                holder.view.onStop()
+                holder.view.onDestroy()
             }
         }
-        lifecycle.addObserver(observer) // Replays ON_START and ON_RESUME when already resumed.
-        onDispose {
-            lifecycle.removeObserver(observer)
-            holder.view.onPause()
-            holder.view.onStop()
-            holder.view.onDestroy()
-        }
+        // TalkBack can't tap a spot on a map: once placed, the pin moves in 5 m steps (as iOS).
+        val accessible = if (interactive && picked != null) {
+            Modifier.semantics {
+                contentDescription = "New spot"
+                stateDescription = MovedSpot.describe(mapped, picked)
+                customActions = listOf(
+                    "Move north" to MovedSpot.nudge(picked, northM = MovedSpot.NUDGE_M),
+                    "Move south" to MovedSpot.nudge(picked, northM = -MovedSpot.NUDGE_M),
+                    "Move east" to MovedSpot.nudge(picked, eastM = MovedSpot.NUDGE_M),
+                    "Move west" to MovedSpot.nudge(picked, eastM = -MovedSpot.NUDGE_M),
+                ).map { (label, spot) -> CustomAccessibilityAction(label) { onPick(spot); true } }
+            }
+        } else Modifier
+        AndroidView(factory = { holder.view }, modifier = modifier.then(accessible), update = { holder.showPick(picked) })
     }
-    // TalkBack can't tap a spot on a map: once placed, the pin moves in 5 m steps (as iOS).
-    val accessible = if (interactive && picked != null) {
-        Modifier.semantics {
-            contentDescription = "New spot"
-            stateDescription = MovedSpot.describe(mapped, picked)
-            customActions = listOf(
-                "Move north" to MovedSpot.nudge(picked, northM = MovedSpot.NUDGE_M),
-                "Move south" to MovedSpot.nudge(picked, northM = -MovedSpot.NUDGE_M),
-                "Move east" to MovedSpot.nudge(picked, eastM = MovedSpot.NUDGE_M),
-                "Move west" to MovedSpot.nudge(picked, eastM = -MovedSpot.NUDGE_M),
-            ).map { (label, spot) -> CustomAccessibilityAction(label) { onPick(spot); true } }
-        }
-    } else Modifier
-    AndroidView(factory = { holder.view }, modifier = modifier.then(accessible), update = { holder.showPick(picked) })
 }
 
 @SuppressLint("ClickableViewAccessibility") // The pin drag; TalkBack moves it with custom actions.

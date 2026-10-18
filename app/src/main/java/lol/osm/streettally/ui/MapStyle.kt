@@ -9,15 +9,18 @@ import org.maplibre.android.style.layers.SymbolLayer
 
 /** Which map style to load for the system appearance (which-one-spec.md, "Dark map"; iOS #39/#40).
  * OpenFreeMap has one dark style; every OpenFreeMap light style maps to it in dark mode. Any other
- * style URL (a custom MAP_STYLE_URL) is left as configured. The activity is recreated when the
- * appearance changes, so each map reads it once, when it is made. */
+ * style URL (a custom MAP_STYLE_URL) is left as configured. The activity keeps running when the
+ * appearance changes (configChanges="uiMode"): the places map reloads its style in place, and the
+ * small maps are made again. */
 internal object MapStyle {
     const val DARK = "https://tiles.openfreemap.org/styles/dark"
 
     fun url(light: String, dark: Boolean): String = if (dark && host(light) == host(DARK)) DARK else light
 
-    fun isDark(context: Context): Boolean =
-        context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    fun isDark(context: Context): Boolean = isDark(context.resources.configuration)
+
+    fun isDark(configuration: Configuration): Boolean =
+        configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
     /** The dark style's street names are too dim to read outdoors ("Dark map" 4). Call once the dark
      * style has loaded, before adding the app's own labelled layers. */

@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -119,70 +121,73 @@ internal fun TaskMap(
         placeholder(null, modifier.clearAndSetSemantics { contentDescription = label }) {}
         return
     }
-    val context = LocalContext.current
-    var moved by remember { mutableStateOf(false) }
-    val holder = remember { TaskMapHolder(context, styleUrl, target, sensed, kind) }
-    holder.onMoved = { moved = it }
-    holder.onNeighboursInFrame = onNeighboursInFrame
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> holder.start()
-                Lifecycle.Event.ON_RESUME -> holder.view.onResume()
-                Lifecycle.Event.ON_PAUSE -> holder.view.onPause()
-                Lifecycle.Event.ON_STOP -> holder.stop()
-                else -> Unit
+    // A new map for the other appearance: the activity keeps running through it (configChanges="uiMode").
+    key(MapStyle.isDark(LocalConfiguration.current)) {
+        val context = LocalContext.current
+        var moved by remember { mutableStateOf(false) }
+        val holder = remember { TaskMapHolder(context, styleUrl, target, sensed, kind) }
+        holder.onMoved = { moved = it }
+        holder.onNeighboursInFrame = onNeighboursInFrame
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(lifecycle) {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> holder.start()
+                    Lifecycle.Event.ON_RESUME -> holder.view.onResume()
+                    Lifecycle.Event.ON_PAUSE -> holder.view.onPause()
+                    Lifecycle.Event.ON_STOP -> holder.stop()
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer) // Replays ON_START and ON_RESUME when already resumed.
+            onDispose {
+                lifecycle.removeObserver(observer)
+                holder.view.onPause()
+                holder.stop()
+                holder.view.onDestroy()
             }
         }
-        lifecycle.addObserver(observer) // Replays ON_START and ON_RESUME when already resumed.
-        onDispose {
-            lifecycle.removeObserver(observer)
-            holder.view.onPause()
-            holder.stop()
-            holder.view.onDestroy()
-        }
-    }
-    Box(modifier = modifier) {
-        // One element for TalkBack: the map's pins aren't usable one by one.
-        AndroidView(
-            factory = { holder.view },
-            modifier = Modifier.matchParentSize().clearAndSetSemantics { contentDescription = label },
-            update = {
-                holder.showNeighbours(neighbours)
-                holder.showAerial(aerial)
-            },
-        )
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 2.dp,
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                .onGloballyPositioned { holder.clearTop(it.boundsInParent().bottom.toInt()) },
-        ) {
-            TextButton(onClick = { onAerial(!aerial) }, modifier = Modifier.heightIn(min = 44.dp)) {
-                Text(if (aerial) SHOW_MAP else SHOW_AERIAL)
-            }
-        }
-        if (aerial) {
-            Text(
-                AERIAL_CREDIT,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+        Box(modifier = modifier) {
+            // One element for TalkBack: the map's pins aren't usable one by one.
+            AndroidView(
+                factory = { holder.view },
+                modifier = Modifier.matchParentSize().clearAndSetSemantics { contentDescription = label },
+                update = {
+                    holder.showNeighbours(neighbours)
+                    holder.showAerial(aerial)
+                },
             )
-        }
-        if (moved) {
             Surface(
-                shape = CircleShape,
+                shape = RoundedCornerShape(22.dp),
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 2.dp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(44.dp).clip(CircleShape),
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    .onGloballyPositioned { holder.clearTop(it.boundsInParent().bottom.toInt()) },
             ) {
-                IconButton(onClick = { holder.recenter() }) {
-                    Icon(Icons.Filled.LocationOn, contentDescription = RECENTER)
+                TextButton(onClick = { onAerial(!aerial) }, modifier = Modifier.heightIn(min = 44.dp)) {
+                    Text(if (aerial) SHOW_MAP else SHOW_AERIAL)
+                }
+            }
+            if (aerial) {
+                Text(
+                    AERIAL_CREDIT,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            }
+            if (moved) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(44.dp).clip(CircleShape),
+                ) {
+                    IconButton(onClick = { holder.recenter() }) {
+                        Icon(Icons.Filled.LocationOn, contentDescription = RECENTER)
+                    }
                 }
             }
         }
