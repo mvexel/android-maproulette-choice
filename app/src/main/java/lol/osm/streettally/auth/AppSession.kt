@@ -292,7 +292,7 @@ class AppSession(
             SignInFailure.Superseded -> null
             SignInFailure.Canceled -> TRY_AGAIN
             SignInFailure.Denied -> "Sign-in was canceled on OpenStreetMap."
-            SignInFailure.Storage -> "Couldn't keep you signed in on this phone. Please try again."
+            SignInFailure.Storage -> TRY_AGAIN
             SignInFailure.CallbackMismatch, SignInFailure.TokenExchange, SignInFailure.AccountLookup,
             is SignInFailure.ProviderError -> TRY_AGAIN
         }
