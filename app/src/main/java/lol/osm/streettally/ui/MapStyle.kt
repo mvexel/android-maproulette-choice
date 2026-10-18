@@ -38,7 +38,10 @@ internal object MapStyle {
      * cached). The app's pins and clusters are images, so it needs no fonts or sprites. */
     fun plain(dark: Boolean): String =
         """{"version":8,"sources":{},"layers":[{"id":"background","type":"background",""" +
-            """"paint":{"background-color":"${if (dark) "#1C1C1E" else "#F2EFE9"}"}}]}"""
+            """"paint":{"background-color":"${background(dark)}"}}]}"""
+
+    /** The plain style's background, also what the map shows before any style has loaded. */
+    fun background(dark: Boolean): String = if (dark) "#1C1C1E" else "#F2EFE9"
 
     const val LABEL = "#B8B8B8"
     /** Lines that are gray on the light map (moved-spot lines), light gray on the dark one. */

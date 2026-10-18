@@ -42,6 +42,7 @@ import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -186,7 +187,11 @@ private class PlacesMapHolder(
     init {
         MapLibre.getInstance(context)
         // MapLibre draws the pins as pixels: hover events go to [access], which gives TalkBack a node per pin.
-        view = object : MapView(context) {
+        // Before a style loads, the map's own placeholder: the plain background's colour, so dark mode
+        // isn't light while it waits (Tess, AE13: offline that's 6 s).
+        val options = MapLibreMapOptions.createFromAttributes(context)
+            .foregroundLoadColor(android.graphics.Color.parseColor(MapStyle.background(dark)))
+        view = object : MapView(context, options) {
             override fun dispatchHoverEvent(event: MotionEvent): Boolean =
                 access.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
         }

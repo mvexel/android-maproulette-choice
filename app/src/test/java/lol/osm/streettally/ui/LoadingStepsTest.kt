@@ -61,10 +61,10 @@ class LoadingStepsTest {
         }
     }
 
-    private fun show(wire: Transport, campaign: Long) {
+    private fun show(wire: Transport, campaign: Long, welcomeSeen: Boolean = true) {
         val session = AppSession(config, InMemoryCredentialStore(), wire)
         runBlocking { session.restore() }
-        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication()).apply { markWelcomeSeen(campaign) }
+        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication()).apply { if (welcomeSeen) markWelcomeSeen(campaign) }
         compose.setContent {
             CompositionLocalProvider(LocalMapPlaceholder provides { _, modifier, _ -> Box(modifier) }) {
                 StreetTallyTheme(dark = false) {
@@ -109,5 +109,16 @@ class LoadingStepsTest {
         wire.rest.complete(Unit)
         waitForText("The tally:")
         assertGone("are checked. Thank you!", "all checked shown with places left")
+    }
+
+    /** The welcome says how many places there are, so it waits for every page (Tess, AE13). */
+    @Test fun theWelcomeWaitsForEveryPage() {
+        val wire = SlowPages(DemoBackend(File("src/demo/assets/${DemoBackend.ASSET}").readText()))
+        show(wire, DemoBackend.CAMPAIGN, welcomeSeen = false)
+        waitForText("100 so far")
+        assertGone("Let's go", "welcome shown with only the first page")
+
+        wire.rest.complete(Unit)
+        waitForText("Let's go")
     }
 }

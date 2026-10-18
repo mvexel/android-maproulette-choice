@@ -45,7 +45,7 @@ fun WelcomeDialog(
     noun: Noun,
     signedIn: Boolean,
     onClose: () -> Unit,
-    /** In preview: "You're previewing as …", in place of the account line. */
+    /** In preview: "You're previewing as …", in place of the account line, and "nothing you answer is saved". */
     previewingAs: String? = null,
     /** Signed out in a build where guests answer first (deferred sign-up). */
     guest: Boolean = false,
@@ -68,7 +68,12 @@ fun WelcomeDialog(
                         }
                     }
                 }
-                Text(if (guest) Wording.GUEST_ANSWERS_ARE_PUBLIC else Wording.ANSWERS_ARE_PUBLIC, style = MaterialTheme.typography.bodySmall)
+                val saved = when {
+                    previewingAs != null -> Wording.PREVIEW_NOTHING_SAVED
+                    guest -> Wording.GUEST_ANSWERS_ARE_PUBLIC
+                    else -> Wording.ANSWERS_ARE_PUBLIC
+                }
+                Text(saved, style = MaterialTheme.typography.bodySmall)
                 Text(Wording.locationStaysOnPhone(noun), style = MaterialTheme.typography.bodySmall)
                 if (previewingAs != null) Text(Wording.previewingAs(previewingAs), style = MaterialTheme.typography.bodySmall)
                 else if (guest) Text(Wording.NO_ACCOUNT_NEEDED, style = MaterialTheme.typography.bodySmall)

@@ -275,7 +275,7 @@ fun CampaignScreen(
                     partial = true
                     trace("${step.places.tasks.size} places so far")
                     status = ""
-                    if (welcomeDue && !prefs.hasSeenWelcome(campaignId) && sheet == null) sheet = Sheet.WELCOME
+                    // No welcome yet: its count would be the first page's (Tess, AE13: "100 trees", then 5,000).
                 }
             }
             val loaded = checkNotNull(complete)
