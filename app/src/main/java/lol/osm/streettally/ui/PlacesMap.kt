@@ -349,11 +349,14 @@ private class PlacesMapHolder(
         waiting?.let { show(it) }
     }
 
-    /** Zooms in on [cluster] until it splits. */
+    /** Zooms in on [cluster], two levels at a time, past the last clustered zoom at most. Not
+     * getClusterExpansionZoom: a cluster drawn before the places last changed has an id the source no
+     * longer knows, and MapLibre then kills the app from its render thread ("No cluster with the
+     * specified id", ClusterAccessTest on main 2c9e48a). */
     private fun zoomInto(cluster: Feature) {
         val map = map ?: return
         val point = cluster.geometry() as? Point ?: return
-        val zoom = clusterSource?.getClusterExpansionZoom(cluster)?.toDouble() ?: (map.cameraPosition.zoom + 2)
+        val zoom = minOf(map.cameraPosition.zoom + 2, CLUSTER_MAX_ZOOM + 1.0)
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.latitude(), point.longitude()), zoom))
     }
 

@@ -20,11 +20,28 @@ adb shell settings put global anr_show_background 0 || true
 adb shell settings put global hide_error_dialogs 1 || true
 adb shell pm disable-user --user 0 com.google.android.googlesdksetup >/dev/null 2>&1 || true
 adb logcat -c
+HERE=$(cd "$(dirname "$0")" && pwd)
+# The launcher counts as in front just after boot, so hide_error_dialogs doesn't always stop its
+# "isn't responding" dialog, and one left up covered every class (run on 6ef9f08: all 12 tests saw
+# "Pixel Launcher isn't responding"). Tap Wait on another app's dialog before each class; ours fails below.
+dismiss_others() {
+  for _ in 1 2 3 4 5; do
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    adb pull /sdcard/ui.xml "$OUT/_d.xml" >/dev/null 2>&1
+    grep -q "isn't responding" "$OUT/_d.xml" 2>/dev/null || return 0
+    grep -q "Street Tally isn't responding" "$OUT/_d.xml" && return 0
+    log "another app's ANR dialog before $1; dismissed"
+    wait_at=$(python3 "$HERE/ui.py" "$OUT/_d.xml" find "Wait")
+    [ -n "$wait_at" ] && adb shell input tap $wait_at
+    sleep 2
+  done
+}
 
 # Each class from a fresh start: PinAccessTest expects the trees as a first launch leaves them.
 : >"$OUT/instrument.txt"
 for class in OpenTimeTest PinAccessTest ClusterAccessTest PinFocusTest DarkSwitchTest OfflineMapTest; do
   adb shell pm clear $PKG >/dev/null
+  dismiss_others $class
   adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
   adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
   adb shell am instrument -w -e class lol.osm.streettally.$class $PKG.test/androidx.test.runner.AndroidJUnitRunner >>"$OUT/instrument.txt" 2>&1
