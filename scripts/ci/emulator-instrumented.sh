@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The demo build's instrumented tests on an emulator (no backend; nothing leaves the emulator):
-# PinAccessTest (A11y1), DarkSwitchTest (AE8: dark mode zoomed out over 5,200 places, no ANR) and OpenTimeTest, which opens the demo's large campaign at 5,200 and 4,999
+# PinAccessTest (A11y1), DarkSwitchTest (AE8: dark mode and rotation zoomed out over 5,200 places, no ANR) and OpenTimeTest, which opens the demo's large campaign at 5,200 and 4,999
 # places (L1, Tess's AE6b) and logs how long it took. Prints the open times and the frames the main
 # thread skipped while loading, so the job log carries them without the artifact.
 # Usage: scripts/ci/emulator-instrumented.sh <demoDebug apk> <demoDebug androidTest apk> [output dir]
