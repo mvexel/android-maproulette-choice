@@ -8,6 +8,8 @@ import android.view.View
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import lol.osm.streettally.campaign.CampaignPrefs
+import lol.osm.streettally.demo.DemoBackend
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -42,11 +44,13 @@ class PinFocusTest {
             .putExtra("demo", campaign)
             .apply(extras)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        // The welcome opens once every page is in (#64), after the tally and the first pins: one
+        // opening mid-test takes the focus (main red on 5aff8d9). These tests are about the map, so
+        // it counts as seen.
+        val prefs = CampaignPrefs(instrumentation.targetContext)
+        DemoBackend.IDS.values.forEach(prefs::markWelcomeSeen)
         instrumentation.targetContext.startActivity(intent)
-        // The welcome opens once every page is in (#64), so wait for it or the tally, not the first pins:
-        // a welcome opening later takes the focus mid-test.
-        await("the campaign") { node { it.text?.toString() == "Let's go" || it.text?.startsWith("The tally:") == true } }
-        node { it.text?.toString() == "Let's go" }?.let(::click)
+        await("the campaign") { node { it.text?.startsWith("The tally:") == true } }
         await("the map") { mapNodes().firstOrNull() }
     }
 
@@ -112,12 +116,6 @@ class PinFocusTest {
             for (i in 0 until n.childCount) n.getChild(i)?.let(queue::add)
         }
         return out
-    }
-
-    private fun click(node: AccessibilityNodeInfo) {
-        var n: AccessibilityNodeInfo? = node
-        while (n != null && !n.isClickable) n = n.parent
-        assertTrue((n ?: node).performAction(AccessibilityNodeInfo.ACTION_CLICK))
     }
 
     private fun shell(command: String) {
