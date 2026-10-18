@@ -88,6 +88,8 @@ fun PlacesMap(
     describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) },
     /** A place TalkBack lands on once its pin is on the map (back from that place); [onFocused] once it has. */
     focusPlace: Long? = null,
+    /** Where [focusPlace] was: when its pin isn't on the map (gone, or in a cluster), the nearest node takes the focus. */
+    focusAt: LatLon? = null,
     onFocused: () -> Unit = {},
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
@@ -107,6 +109,7 @@ fun PlacesMap(
     holder.describe = describe
     holder.describeCluster = describeCluster
     holder.focusPlace = focusPlace
+    holder.focusAt = focusAt?.let { LatLng(it.lat, it.lon) }
     holder.onFocused = onFocused
     LaunchedEffect(locationPermitted) { holder.syncLocation() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -151,6 +154,7 @@ private class PlacesMapHolder(
     var describe: (LocatedTask) -> String = { it.id.toString() }
     var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) }
     var focusPlace: Long? = null
+    var focusAt: LatLng? = null
     var onFocused: () -> Unit = {}
     /** Where a cluster TalkBack zoomed into was: the focus goes to the nearest node once the camera stops. */
     private var focusNear: LatLng? = null
@@ -522,24 +526,31 @@ private class PlacesMapHolder(
 
     /** Puts TalkBack's focus where iOS VoiceOver puts it (iOS #63): on [focusPlace] once its pin is a node
      * (back from that place, instead of on Back), and after the camera [moved] for a cluster's double tap,
-     * on the node nearest where the cluster was. Without TalkBack the focus request does nothing. */
+     * on the node nearest where the cluster was. Once the map has stopped without [focusPlace]'s pin (gone,
+     * in a cluster, or cut off by the edge), the node nearest [focusAt] takes it, not the first (iOS AX-FOCUS).
+     * Only nodes wholly on screen take the focus. Without TalkBack the focus request does nothing. */
     private fun refocus(moved: Boolean) {
         val near = focusNear?.takeIf { moved }
         val place = focusPlace
-        val index = when {
-            near != null -> nodes.indices.filter { spot(it) != null }.minByOrNull { nodes[it].at.distanceTo(near) }
-            place != null -> nodes.indexOfFirst { it is Node.Place && it.place.id == place }.takeIf { it >= 0 && spot(it) != null }
-            else -> null
-        }
+        if (near == null && place == null) return
+        val index = focusTarget(
+            nodes.mapIndexed { i, n -> FocusNode((n as? Node.Place)?.place?.id, n.at, whole(i)) },
+            place, focusAt ?: map?.cameraPosition?.target, near, settled = moved,
+        )
         if (near != null) focusNear = null
         // Clustered, the place can be inside a cluster: once the map has stopped, it isn't coming.
         if (near == null && place != null && (index != null || moved && nodes.isNotEmpty())) {
             focusPlace = null
+            focusAt = null
             onFocused()
         }
         index ?: return
         view.post { access.getAccessibilityNodeProvider(view).performAction(index, AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS, null) }
     }
+
+    /** Whether node [index] is wholly inside the map, so TalkBack's focus box isn't cut off by the edge. */
+    private fun whole(index: Int): Boolean =
+        spot(index)?.let { it.left >= 0 && it.top >= 0 && it.right <= view.width && it.bottom <= view.height } == true
 
     /** Where node [index] is on screen, or null when it's off the map's visible area. */
     private fun spot(index: Int): Rect? {
@@ -644,3 +655,19 @@ private data class Shown(
     val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,
     val movedTo: Map<Long, LatLon>, val origin: LatLon?,
 )
+
+/** A node TalkBack could land on: the place it shows (null for a cluster), where, and whether it's wholly on screen. */
+internal data class FocusNode(val place: Long?, val at: LatLng, val whole: Boolean)
+
+/** Which of [nodes] takes TalkBack's focus, or null for none yet. After a cluster's zoom, the node nearest
+ * where the cluster was ([near]). Back from [place], its pin; once the map has [settled] without it (gone,
+ * in a cluster, cut off), the node nearest [placeAt] (iOS AX-FOCUS: not the first). Only whole nodes count. */
+internal fun focusTarget(nodes: List<FocusNode>, place: Long?, placeAt: LatLng?, near: LatLng?, settled: Boolean): Int? {
+    fun nearest(to: LatLng) = nodes.indices.filter { nodes[it].whole }.minByOrNull { nodes[it].at.distanceTo(to) }
+    return when {
+        near != null -> nearest(near)
+        place != null -> nodes.indexOfFirst { it.place == place }.takeIf { it >= 0 && nodes[it].whole }
+            ?: if (settled && nodes.isNotEmpty()) placeAt?.let(::nearest) else null
+        else -> null
+    }
+}

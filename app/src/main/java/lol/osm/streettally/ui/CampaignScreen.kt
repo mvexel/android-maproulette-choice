@@ -184,6 +184,12 @@ fun CampaignScreen(
     var selected by remember { mutableStateOf<Long?>(null) }
     // The place opened from the map: TalkBack lands back on its pin (iOS #63), not on Back.
     var backTo by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Where it was (latitude, longitude): if its pin is gone on return, the nearest one takes the focus.
+    var backToAt by rememberSaveable { mutableStateOf<DoubleArray?>(null) }
+    fun returnTo(place: LocatedTask) {
+        backTo = place.id
+        backToAt = place.position?.let { doubleArrayOf(it.lat, it.lon) }
+    }
     val signInHere = { accountNote = true; onSignIn() }
     LaunchedEffect(Unit) {
         if (preview) return@LaunchedEffect // Shown once the draft is open; nothing is stored.
@@ -579,12 +585,13 @@ fun CampaignScreen(
                                 },
                                 describeCluster = { total, left -> Wording.cluster(noun, total, left) },
                                 focusPlace = backTo,
-                                onFocused = { backTo = null },
+                                focusAt = backToAt?.let { LatLon(it[0], it[1]) },
+                                onFocused = { backTo = null; backToAt = null },
                                 onActivate = { id ->
                                     val place = shown.firstOrNull { it.id == id }
                                     if (place != null && place.isOpen && id !in done && id !in tally.waiting) {
                                         selected = null
-                                        backTo = id
+                                        returnTo(place)
                                         open(place)
                                     } else selected = id
                                 },
@@ -602,7 +609,7 @@ fun CampaignScreen(
                                     name = Wording.placeName(place.task, noun),
                                     subtitle = subtitle,
                                     distance = Places.rowText(origin, place.position),
-                                    onOpen = if (opens) ({ selected = null; backTo = place.id; open(place) }) else null,
+                                    onOpen = if (opens) ({ selected = null; returnTo(place); open(place) }) else null,
                                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
                                 )
                             }
