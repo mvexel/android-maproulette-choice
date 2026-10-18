@@ -72,6 +72,9 @@ class OpenTimeTest {
     private class Opened(val tallyMs: Long, val pssKb: Long, val rssKb: Long)
 
     private fun open(places: Int): Opened {
+        // From Home, so the last open's tally still on screen can't count as this one's (it read 33 ms on 1eb9f84).
+        automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
+        poll(5_000) { if (texts().none { it.startsWith("The tally:") }) true else null }
         shell("dumpsys gfxinfo $pkg reset")
         val intent = launch(places)
         val start = SystemClock.uptimeMillis()
