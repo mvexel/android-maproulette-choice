@@ -99,3 +99,62 @@ internal enum class Pin(val id: String) {
         }
     }
 }
+
+/** A cluster of places on a big campaign's map (L1-CLUSTER): an amber disc with the count in navy,
+ * inside a ring whose green share is the part already checked, in tenths. Sized in three steps by
+ * count. Drawn on demand when MapLibre asks for an id from [id]. */
+internal object ClusterImage {
+    const val PREFIX = "cluster-"
+
+    fun id(count: Int, tenths: Int) = "$PREFIX$count-$tenths"
+
+    /** The count and tenths in an [id], or null for any other image id. */
+    fun parse(id: String): Pair<Int, Int>? {
+        if (!id.startsWith(PREFIX)) return null
+        val parts = id.removePrefix(PREFIX).split('-')
+        val count = parts.getOrNull(0)?.toIntOrNull() ?: return null
+        val tenths = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 10) ?: return null
+        return count to tenths
+    }
+
+    /** The diameter in dp: under 100, under 1,000, and 1,000 or more (the same steps as iOS). */
+    fun diameter(count: Int): Float = when {
+        count < 100 -> 36f
+        count < 1_000 -> 44f
+        else -> 52f
+    }
+
+    fun bitmap(count: Int, tenths: Int, density: Float, dark: Boolean, locale: java.util.Locale = java.util.Locale.getDefault()): Bitmap {
+        val d = diameter(count)
+        val size = (d * density).toInt()
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.scale(density, density)
+        val c = d / 2
+        val ring = 3.5f
+        canvas.drawCircle(c, c, c - ring, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AMBER })
+        val track = RectF(ring / 2, ring / 2, d - ring / 2, d - ring / 2)
+        canvas.drawOval(track, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = ring; color = if (dark) WHITE else NAVY
+        })
+        if (tenths > 0) {
+            canvas.drawArc(track, -90f, 36f * tenths, false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = ring; color = GREEN
+            })
+        }
+        val text = lol.osm.streettally.campaign.number(count, locale)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = NAVY
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textSize = if (text.length > 4) 11f else 13f
+        }
+        canvas.drawText(text, c, c - (paint.descent() + paint.ascent()) / 2, paint)
+        return bitmap
+    }
+
+    private val AMBER = Color.parseColor("#F5A524")
+    private val NAVY = Color.parseColor("#14213D")
+    private val GREEN = Color.parseColor("#1F7A4D")
+    private val WHITE = Color.parseColor("#FFFFFF")
+}

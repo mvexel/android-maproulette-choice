@@ -89,7 +89,8 @@ class OpenTimeTest {
         val janky = Regex("Janky frames: (\\d+ \\([0-9.]+%\\))").find(frames)?.groupValues?.get(1)
         Log.i(TAG, "$places places: first on screen ${first ?: "-"} ms, loading line ${soFar ?: "never"}, welcome ${welcome ?: "-"} ms, " +
             "tally ${tally ?: "-"} ms; frames $total, janky $janky (latency $LATENCY_MS ms a request)")
-        assertTrue("no tally for $places places within ${BUDGET_MS / 1000} s", tally != null)
+        // When it never comes, say what was on screen instead (another app's dialog, a stuck welcome).
+        assertTrue("no tally for $places places within ${BUDGET_MS / 1000} s; on screen: ${screen()}", tally != null)
     }
 
     private fun shell(command: String): String =
@@ -98,6 +99,11 @@ class OpenTimeTest {
         }
 
     private fun texts(): List<String> = all().mapNotNull { it.text?.toString() }
+
+    private fun screen(): String {
+        val root = automation.rootInActiveWindow ?: return "no window"
+        return "${root.packageName}: " + texts().take(8).joinToString(" | ")
+    }
 
     private fun node(match: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? = all().firstOrNull(match)
 

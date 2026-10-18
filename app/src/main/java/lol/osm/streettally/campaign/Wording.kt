@@ -81,6 +81,10 @@ object Wording {
     /** What TalkBack reads for [loadingSoFar]. */
     fun loadingSoFarSpoken(noun: Noun, n: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
         "Loading ${noun.many}, ${number(n, locale)} so far"
+    /** What TalkBack reads for a cluster on a big campaign's map (L1-CLUSTER; Iris's wording pending).
+     * The double tap's "zoom in" is the node's action label. */
+    fun cluster(noun: Noun, count: Int, done: Int, locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        "${noun.count(count, locale)} here, ${number(done, locale)} done"
     /** Without a location, places aren't in distance order, so nothing is called "nearest" (Iris fix 4). */
     fun choose(noun: Noun): String = "Choose ${noun.aOne}"
     fun noLocation(noun: Noun, permitted: Boolean): String =
