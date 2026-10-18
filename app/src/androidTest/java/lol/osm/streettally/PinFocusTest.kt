@@ -1,5 +1,6 @@
 package lol.osm.streettally
 
+import android.accessibilityservice.AccessibilityService
 import android.app.UiAutomation
 import android.content.Intent
 import android.os.SystemClock
@@ -9,6 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -16,28 +18,34 @@ import org.junit.Test
 /**
  * Accessibility focus on the map pins (A11y1 follow-up, Tess on #46: "focus jumps to Back after
  * activation"). With touch exploration on, as under TalkBack (ExploreService), a pin keeps the
- * focus when a double tap shows its card. Run by scripts/ci/emulator-instrumented.sh on the demo trees.
+ * focus when a double tap shows its card, Back from a place lands on its pin, and a zoomed-in cluster
+ * hands the focus to a place or cluster on the map (iOS #63). Run by scripts/ci/emulator-instrumented.sh.
  */
 class PinFocusTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     // Without this flag the test's own connection switches ExploreService off.
     private val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
     private val pinId = "${instrumentation.targetContext.packageName}:id/pin"
+    private val clusterId = "${instrumentation.targetContext.packageName}:id/cluster"
     private val service = "${instrumentation.context.packageName}/${ExploreService::class.java.name}"
 
-    @Before fun exploreAndOpenTrees() {
+    @Before fun explore() {
         shell("settings put secure enabled_accessibility_services $service")
         shell("settings put secure accessibility_enabled 1")
         val manager = instrumentation.targetContext.getSystemService(AccessibilityManager::class.java)
         await("touch exploration") { manager.isTouchExplorationEnabled.takeIf { it } }
+    }
+
+    private fun openDemo(campaign: String, extras: Intent.() -> Unit = {}) {
         val intent = instrumentation.targetContext.packageManager
             .getLaunchIntentForPackage(instrumentation.targetContext.packageName)!!
-            .putExtra("demo", "trees")
+            .putExtra("demo", campaign)
+            .apply(extras)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         instrumentation.targetContext.startActivity(intent)
-        await("the campaign") { node { it.text?.toString() == "Let's go" } ?: pins().firstOrNull() }
+        await("the campaign") { node { it.text?.toString() == "Let's go" } ?: mapNodes().firstOrNull() }
         node { it.text?.toString() == "Let's go" }?.let(::click)
-        await("pins") { pins().firstOrNull() }
+        await("the map") { mapNodes().firstOrNull() }
     }
 
     @After fun stopExploring() {
@@ -46,6 +54,7 @@ class PinFocusTest {
     }
 
     @Test fun aPinKeepsTheFocusWhenItsCardShows() {
+        openDemo("trees")
         val pin = await("a checked pin") { pins().firstOrNull { it.contentDescription.toString().endsWith(ALREADY_CHECKED) } }
         val said = pin.contentDescription.toString()
         assertTrue("the pin didn't take the focus", pin.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
@@ -58,9 +67,35 @@ class PinFocusTest {
         assertEquals("the focus left the pin", said, focused()?.contentDescription?.toString())
     }
 
+    @Test fun backFromAPlaceLandsOnItsPin() {
+        openDemo("trees")
+        val pin = await("an open pin") { pins().firstOrNull { !it.contentDescription.toString().endsWith(ALREADY_CHECKED) } }
+        val said = pin.contentDescription.toString()
+        assertTrue("the pin didn't take the focus", pin.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+        assertTrue(pin.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        await("the place open") { Unit.takeIf { pins().isEmpty() } } // The map is gone while a place shows.
+        assertTrue(automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+        await("the focus back on the pin") { focused()?.takeIf { it.contentDescription?.toString() == said } }
+    }
+
+    @Test fun aZoomedInClusterHandsTheFocusToTheMap() {
+        openDemo("large") { putExtra("places", 5_200); putExtra("latency", 0); putExtra("hang", false) }
+        val cluster = await("a cluster") { mapNodes().firstOrNull { it.viewIdResourceName == clusterId } }
+        val said = cluster.contentDescription.toString()
+        assertTrue("the cluster didn't take the focus", cluster.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+        await("the focus on the cluster") { focused()?.takeIf { it.contentDescription?.toString() == said } }
+        assertTrue(cluster.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        val landed = await("the focus on the zoomed-in map") {
+            focused()?.takeIf { it.viewIdResourceName in setOf(pinId, clusterId) && it.contentDescription?.toString() != said }
+        }
+        assertNotEquals("the focus stayed on the zoomed cluster", said, landed.contentDescription?.toString())
+    }
+
     private fun focused(): AccessibilityNodeInfo? = automation.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
 
     private fun pins(): List<AccessibilityNodeInfo> = all().filter { it.viewIdResourceName == pinId }
+
+    private fun mapNodes(): List<AccessibilityNodeInfo> = all().filter { it.viewIdResourceName == pinId || it.viewIdResourceName == clusterId }
 
     private fun node(match: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? = all().firstOrNull(match)
 

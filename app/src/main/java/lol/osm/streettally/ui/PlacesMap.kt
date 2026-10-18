@@ -86,6 +86,9 @@ fun PlacesMap(
     onActivate: (Long) -> Unit = onPlace,
     /** TalkBack's words for a cluster of `total` places, `left` of them still to check. */
     describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) },
+    /** A place TalkBack lands on once its pin is on the map (back from that place); [onFocused] once it has. */
+    focusPlace: Long? = null,
+    onFocused: () -> Unit = {},
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier, {})
@@ -103,6 +106,8 @@ fun PlacesMap(
     holder.onActivate = onActivate
     holder.describe = describe
     holder.describeCluster = describeCluster
+    holder.focusPlace = focusPlace
+    holder.onFocused = onFocused
     LaunchedEffect(locationPermitted) { holder.syncLocation() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -145,6 +150,10 @@ private class PlacesMapHolder(
     var onCamera: (DoubleArray) -> Unit = {}
     var describe: (LocatedTask) -> String = { it.id.toString() }
     var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) }
+    var focusPlace: Long? = null
+    var onFocused: () -> Unit = {}
+    /** Where a cluster TalkBack zoomed into was: the focus goes to the nearest node once the camera stops. */
+    private var focusNear: LatLng? = null
     /** Every place with a position, nearest first. */
     private var pins: List<LocatedTask> = emptyList()
     /** What TalkBack can reach, nearest first; the index is the node id. Unclustered, every pin; clustered,
@@ -216,12 +225,14 @@ private class PlacesMapHolder(
                 map.cameraPosition.target?.let { onCamera(doubleArrayOf(it.latitude, it.longitude, map.cameraPosition.zoom)) }
                 if (clustered) nodes = rendered()
                 access.invalidateRoot()
+                refocus(moved = true)
             }
             // New places redraw the clusters without moving the camera.
             view.addOnDidBecomeIdleListener {
                 if (clustered) {
                     nodes = rendered()
                     access.invalidateRoot()
+                    refocus(moved = false)
                 }
             }
             map.addOnMapClickListener { latLng ->
@@ -447,6 +458,7 @@ private class PlacesMapHolder(
         val ids = pins.mapTo(HashSet()) { it.id }
         nodes = if (clustered) nodes.filter { it !is Node.Place || it.place.id in ids } else pins.map { Node.Place(it) }
         access.invalidateRoot()
+        refocus(moved = false)
         // Walking only reorders TalkBack's pins; the map itself is unchanged.
         if (last != null && last.copy(origin = origin) == shown) return
         // The 5,000-feature collection is built off the main thread; only handing its JSON to MapLibre
@@ -508,6 +520,27 @@ private class PlacesMapHolder(
         }
     }
 
+    /** Puts TalkBack's focus where iOS VoiceOver puts it (iOS #63): on [focusPlace] once its pin is a node
+     * (back from that place, instead of on Back), and after the camera [moved] for a cluster's double tap,
+     * on the node nearest where the cluster was. Without TalkBack the focus request does nothing. */
+    private fun refocus(moved: Boolean) {
+        val near = focusNear?.takeIf { moved }
+        val place = focusPlace
+        val index = when {
+            near != null -> nodes.indices.filter { spot(it) != null }.minByOrNull { nodes[it].at.distanceTo(near) }
+            place != null -> nodes.indexOfFirst { it is Node.Place && it.place.id == place }.takeIf { it >= 0 && spot(it) != null }
+            else -> null
+        }
+        if (near != null) focusNear = null
+        // Clustered, the place can be inside a cluster: once the map has stopped, it isn't coming.
+        if (near == null && place != null && (index != null || moved && nodes.isNotEmpty())) {
+            focusPlace = null
+            onFocused()
+        }
+        index ?: return
+        view.post { access.getAccessibilityNodeProvider(view).performAction(index, AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS, null) }
+    }
+
     /** Where node [index] is on screen, or null when it's off the map's visible area. */
     private fun spot(index: Int): Rect? {
         val map = map ?: return null
@@ -555,7 +588,10 @@ private class PlacesMapHolder(
             if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
             when (val shown = nodes.getOrNull(id) ?: return false) {
                 is Node.Place -> onActivate(shown.place.id)
-                is Node.Cluster -> zoomInto(shown.feature)
+                is Node.Cluster -> {
+                    focusNear = shown.at
+                    zoomInto(shown.feature)
+                }
             }
             return true
         }
