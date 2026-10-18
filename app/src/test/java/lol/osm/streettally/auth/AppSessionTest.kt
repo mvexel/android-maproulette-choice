@@ -141,5 +141,7 @@ class AppSessionTest {
         assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.TokenExchange))
         assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.ProviderError("server_error")))
         assertEquals("Sign-in was canceled on OpenStreetMap.", AppSession.failureMessage(SignInFailure.Denied))
+        // As iOS: a failed keychain write reads like any other unfinished sign-in (Woodbine parity row 15).
+        assertEquals(AppSession.TRY_AGAIN, AppSession.failureMessage(SignInFailure.Storage))
     }
 }
