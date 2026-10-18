@@ -128,7 +128,8 @@ internal object ClusterImage {
     /** The count's bold text size in sp: 13, 13 and 14 for the three [diameter] steps. */
     fun textSize(total: Int): Float = if (total < 1_000) 13f else 14f
 
-    /** [dark]: only the all-done circle changes, to the dark map's PinDone (bright green, ink tick and edge). */
+    /** [dark]: the to-do ring turns white, as on the single PinTodo (navy is 1.2:1 on the dark map), and the
+     * all-done circle becomes the dark map's PinDone (bright green, ink tick and edge). */
     fun bitmap(total: Int, left: Int, density: Float, dark: Boolean = false, locale: java.util.Locale = java.util.Locale.getDefault()): Bitmap {
         val d = diameter(total)
         val size = (d * density).toInt()
@@ -153,7 +154,7 @@ internal object ClusterImage {
         }
         val ring = 3f
         canvas.drawCircle(c, c, c - ring / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TO_CHECK })
-        canvas.drawCircle(c, c, c - ring / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ring; color = NAVY })
+        canvas.drawCircle(c, c, c - ring / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ring; color = if (dark) WHITE else NAVY })
         val text = lol.osm.streettally.campaign.number(left, locale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = WHITE
@@ -167,7 +168,7 @@ internal object ClusterImage {
 
     /** accentText: white text on it is 5.6:1 (Iris: at least 4.5:1; white on the pins' #F5A524 is 2.0:1). */
     private val TO_CHECK = Color.parseColor("#A84F00")
-    /** PinTodo's ring. */
+    /** PinTodo's ring on the light map. */
     private val NAVY = Color.parseColor("#14213D")
     /** PinDone, light and dark map. */
     private val GREEN = Color.parseColor("#1F7A4D")
