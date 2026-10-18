@@ -545,7 +545,7 @@ private class PlacesMapHolder(
             onFocused()
         }
         index ?: return
-        view.post { access.getAccessibilityNodeProvider(view).performAction(index, AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS, null) }
+        view.post { access.getAccessibilityNodeProvider(view)?.performAction(index, AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS, null) }
     }
 
     /** Whether node [index] is wholly inside the map, so TalkBack's focus box isn't cut off by the edge. */
