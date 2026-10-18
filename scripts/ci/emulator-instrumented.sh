@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The demo build's instrumented tests on an emulator (no backend; nothing leaves the emulator):
-# PinAccessTest (A11y1), DarkSwitchTest (AE8: dark mode and rotation zoomed out over 5,200 places, no ANR) and OpenTimeTest, which opens the demo's large campaign at 5,200 and 4,999
+# PinAccessTest, ClusterAccessTest and PinFocusTest (A11y1), DarkSwitchTest (AE8: dark mode and rotation zoomed out over 5,200 places, no ANR) and OpenTimeTest, which opens the demo's large campaign at 5,200 and 4,999
 # places (L1, Tess's AE6b) and logs how long it took. Prints the open times and the frames the main
 # thread skipped while loading, so the job log carries them without the artifact.
 # Usage: scripts/ci/emulator-instrumented.sh <demoDebug apk> <demoDebug androidTest apk> [output dir]
@@ -23,7 +23,7 @@ adb logcat -c
 
 # Each class from a fresh start: PinAccessTest expects the trees as a first launch leaves them.
 : >"$OUT/instrument.txt"
-for class in OpenTimeTest PinAccessTest DarkSwitchTest; do
+for class in OpenTimeTest PinAccessTest ClusterAccessTest PinFocusTest DarkSwitchTest; do
   adb shell pm clear $PKG >/dev/null
   adb shell pm grant $PKG android.permission.ACCESS_FINE_LOCATION
   adb shell pm grant $PKG android.permission.ACCESS_COARSE_LOCATION
@@ -45,9 +45,11 @@ if [ -n "$anrs" ]; then
   grep -A12 -E "ANR in $PKG" "$OUT/logcat.txt" | head -40 | sed 's/^/[instrumented]   /'
   exit 1
 fi
-if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq 3 ]; then
+if [ "$(grep -c '^OK (' "$OUT/instrument.txt")" -eq 5 ]; then
   log "PASS: $(grep '^OK (' "$OUT/instrument.txt" | tr '\n' ' ')"
 else
-  log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -60
+  log "FAIL"; sed 's/^/[instrumented]   /' "$OUT/instrument.txt" | head -250
+  # The map's own errors (style or tiles not loading leaves no pins or clusters to reach).
+  grep -E "Mbgl|MapLibre|ExploreService|AccessibilityManager" "$OUT/logcat.txt" | grep -E " [EW] " | head -40 | sed 's/^/[instrumented]   logcat: /'
   exit 1
 fi
