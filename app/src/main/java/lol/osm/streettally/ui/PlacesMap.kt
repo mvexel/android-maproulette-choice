@@ -22,7 +22,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import lol.osm.streettally.campaign.LatLon
 import lol.osm.streettally.campaign.LocatedTask
+import lol.osm.streettally.campaign.Noun
 import lol.osm.streettally.campaign.Places
+import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -74,7 +76,7 @@ fun PlacesMap(
     describe: (LocatedTask) -> String = { it.id.toString() },
     onActivate: (Long) -> Unit = onPlace,
     /** TalkBack's words for a cluster of `total` places, `left` of them still to check. */
-    describeCluster: (total: Int, left: Int) -> String = { total, left -> "$left of $total places left to check here" },
+    describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(PLACE, total, left) },
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier, {})
@@ -120,7 +122,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     var onBackground: () -> Unit = {}
     var onActivate: (Long) -> Unit = {}
     var describe: (LocatedTask) -> String = { it.id.toString() }
-    var describeCluster: (Int, Int) -> String = { total, left -> "$left of $total places left to check here" }
+    var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(PLACE, total, left) }
     /** Every place with a position, nearest first. */
     private var pins: List<LocatedTask> = emptyList()
     /** What TalkBack can reach, nearest first; the index is the node id. Unclustered, every pin; clustered,
@@ -492,3 +494,6 @@ private data class Shown(
     val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,
     val movedTo: Map<Long, LatLon>, val origin: LatLon?,
 )
+
+/** The noun for [PlacesMap]'s default cluster wording, when no campaign noun is passed. */
+private val PLACE = Noun("place", "places")
