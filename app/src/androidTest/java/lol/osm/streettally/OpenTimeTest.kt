@@ -46,7 +46,7 @@ class OpenTimeTest {
         open(5_200)
         SystemClock.sleep(5_000) // The copy is saved after the tally shows.
         val start = SystemClock.uptimeMillis()
-        instrumentation.targetContext.startActivity(launch(5_200).putExtra("hang", true).putExtra("cold", true))
+        launch(5_200, hang = true, cold = true)
         val campaign = poll(BUDGET_MS) { texts().firstOrNull { it.startsWith(KEPT_COPY) } }?.let { SystemClock.uptimeMillis() - start }
         node { it.text?.toString() == LETS_GO }?.let(::click)
         val back = SystemClock.uptimeMillis()
@@ -54,18 +54,19 @@ class OpenTimeTest {
         val picker = poll(BUDGET_MS) { texts().firstOrNull { it == Wording.PICKER_KEPT } }?.let { SystemClock.uptimeMillis() - back }
         Log.i(TAG, "dead spot, 5200 places: kept copy on the campaign ${campaign ?: "never"} ms (cold), " +
             "kept entry on the picker ${picker ?: "never"} ms after Back")
-        instrumentation.targetContext.startActivity(launch(5_200).putExtra("hang", false))
+        launch(5_200)
         assertTrue("no kept copy on the campaign", campaign != null)
         assertTrue("no kept entry on the picker", picker != null)
     }
 
-    private fun launch(places: Int): Intent =
-        instrumentation.targetContext.packageManager.getLaunchIntentForPackage(pkg)!!
-            .putExtra("places", places)
-            .putExtra("latency", LATENCY_MS)
-            .putExtra("hang", false)
-            .putExtra("demo", "large")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    /** Starts the app from the shell, which Android lets through right after Home; the test's own
+     * `startActivity` can be held back there while the launcher stays in front (main, caa5f2f). */
+    private fun launch(places: Int, hang: Boolean = false, cold: Boolean = false) {
+        val component = instrumentation.targetContext.packageManager.getLaunchIntentForPackage(pkg)!!.component!!
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        shell("am start -W -f $flags -n ${component.flattenToShortString()} --ei places $places --ei latency $LATENCY_MS " +
+            "--ez hang $hang --ez cold $cold --es demo large")
+    }
 
     private fun <T : Any> poll(timeoutMs: Long, find: () -> T?): T? {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
@@ -83,9 +84,8 @@ class OpenTimeTest {
         automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
         poll(5_000) { if (texts().none { it.startsWith("The tally:") }) true else null }
         shell("dumpsys gfxinfo $pkg reset")
-        val intent = launch(places)
         val start = SystemClock.uptimeMillis()
-        instrumentation.targetContext.startActivity(intent)
+        launch(places)
         var first: Long? = null
         var soFar: Long? = null
         var welcome: Long? = null
