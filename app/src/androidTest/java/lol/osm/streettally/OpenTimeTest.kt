@@ -47,8 +47,11 @@ class OpenTimeTest {
         SystemClock.sleep(5_000) // The copy is saved after the tally shows.
         val start = SystemClock.uptimeMillis()
         launch(5_200, hang = true, cold = true)
-        val campaign = poll(BUDGET_MS) { texts().firstOrNull { it.startsWith(KEPT_COPY) } }?.let { SystemClock.uptimeMillis() - start }
-        node { it.text?.toString() == LETS_GO }?.let(::click)
+        // The welcome now opens with the whole campaign, so it can still be due here, over the kept copy.
+        val campaign = poll(BUDGET_MS) {
+            node { it.text?.toString() == LETS_GO }?.let(::click)
+            texts().firstOrNull { it.startsWith(KEPT_COPY) }
+        }?.let { SystemClock.uptimeMillis() - start }
         val back = SystemClock.uptimeMillis()
         automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
         val picker = poll(BUDGET_MS) { texts().firstOrNull { it == Wording.PICKER_KEPT } }?.let { SystemClock.uptimeMillis() - back }
