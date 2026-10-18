@@ -22,6 +22,14 @@ class ClusterImageTest {
         assertNull(ClusterImage.parse("cluster-12"))
     }
 
+    @Test fun darkClustersHaveTheirOwnIds() {
+        assertEquals("cluster-dark-1240-940", ClusterImage.id(1240, 940, dark = true))
+        assertEquals(1240 to 940, ClusterImage.parse("cluster-dark-1240-940"))
+        assertEquals(true, ClusterImage.isDark("cluster-dark-7-0"))
+        assertEquals(false, ClusterImage.isDark("cluster-7-0"))
+        assertNull(ClusterImage.parse("cluster-dark-12"))
+    }
+
     @Test fun sizedInThreeSteps() {
         assertEquals(36f, ClusterImage.diameter(99), 0f)
         assertEquals(44f, ClusterImage.diameter(100), 0f)

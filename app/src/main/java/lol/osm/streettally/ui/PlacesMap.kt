@@ -159,7 +159,7 @@ private class PlacesMapHolder(private val context: Context, private val styleUrl
         view.onCreate(null)
         view.addOnStyleImageMissingListener { id ->
             val (total, left) = ClusterImage.parse(id) ?: return@addOnStyleImageMissingListener
-            map?.style?.addImage(id, ClusterImage.bitmap(total, left, view.resources.displayMetrics.density, dark))
+            map?.style?.addImage(id, ClusterImage.bitmap(total, left, view.resources.displayMetrics.density, ClusterImage.isDark(id)))
         }
         view.getMapAsync { map ->
             this.map = map
@@ -252,7 +252,7 @@ private class PlacesMapHolder(private val context: Context, private val styleUrl
                     // Drawn on demand ([ClusterImage]), so the count needs no map font.
                     PropertyFactory.iconImage(
                         Expression.concat(
-                            Expression.literal(ClusterImage.PREFIX),
+                            Expression.literal(ClusterImage.prefix(dark)),
                             Expression.toString(Expression.get("point_count")),
                             Expression.literal("-"),
                             Expression.toString(Expression.subtract(Expression.get("point_count"), Expression.get("done"))),

@@ -105,13 +105,21 @@ internal enum class Pin(val id: String) {
  * Sized in three steps by the cluster's total. Drawn on demand when MapLibre asks for an id from [id]. */
 internal object ClusterImage {
     const val PREFIX = "cluster-"
+    /** The dark map's clusters have ids of their own: MapLibre keeps an image across a restyle, so a
+     * shared id would keep the light bitmap on the dark map (Tess, AE9). */
+    const val DARK_PREFIX = "cluster-dark-"
 
-    fun id(total: Int, left: Int) = "$PREFIX$total-$left"
+    fun prefix(dark: Boolean) = if (dark) DARK_PREFIX else PREFIX
+
+    fun id(total: Int, left: Int, dark: Boolean = false) = "${prefix(dark)}$total-$left"
+
+    /** Whether an [id] is a dark map's cluster. */
+    fun isDark(id: String) = id.startsWith(DARK_PREFIX)
 
     /** The total and the number left in an [id], or null for any other image id. */
     fun parse(id: String): Pair<Int, Int>? {
         if (!id.startsWith(PREFIX)) return null
-        val parts = id.removePrefix(PREFIX).split('-')
+        val parts = id.removePrefix(if (isDark(id)) DARK_PREFIX else PREFIX).split('-')
         if (parts.size != 2) return null
         val total = parts[0].toIntOrNull() ?: return null
         val left = parts[1].toIntOrNull()?.coerceIn(0, total) ?: return null
