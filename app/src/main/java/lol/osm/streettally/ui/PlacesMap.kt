@@ -4,7 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.RectF
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -116,7 +120,7 @@ fun PlacesMap(
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            holder.view.onDestroy()
+            holder.onDestroy()
         }
     }
     AndroidView(factory = { holder.view }, modifier = modifier, update = {
@@ -157,6 +161,25 @@ private class PlacesMapHolder(
     /** Pin builds started on the main thread; only the latest one is drawn. */
     private var builds = 0
     private var framed = false
+    /** On the plain background since the style didn't load ([loadPlainStyle]). */
+    private var plain = false
+
+    private val styleTimeout = Runnable { map?.let { loadPlainStyle(it, "no style in time, online ${isOnline()}") } }
+
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+
+    /** Back online on the plain background: the real style gets another go. */
+    private val online = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            view.post { if (plain) map?.let(::reloadStyle) }
+        }
+    }
+
+    private fun isOnline(): Boolean {
+        val manager = connectivity ?: return false
+        return manager.getNetworkCapabilities(manager.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
+
     /** The origin of the last [show], for ordering what TalkBack reaches. */
     private var drawnOrigin: LatLng? = null
 
@@ -181,6 +204,7 @@ private class PlacesMapHolder(
                 map.cameraPosition = CameraPosition.Builder().target(LatLng(restore[0], restore[1])).zoom(restore[2]).build()
                 framed = true
             }
+            view.addOnDidFailLoadingMapListener { message -> view.post { loadPlainStyle(map, message) } }
             loadStyle(map)
             // Nodes follow the pins once the map stops moving; panning itself announces nothing.
             map.addOnCameraIdleListener {
@@ -221,79 +245,108 @@ private class PlacesMapHolder(
     /** Loads the light or dark style ([dark]) with the app's sources and layers, then draws what is waiting. */
     private fun loadStyle(map: MapLibreMap) {
         val dark = dark
-        map.setStyle(Style.Builder().fromUri(MapStyle.url(styleUrl, dark))) { style ->
-            if (dark) MapStyle.brightenLabels(style)
-            // Under the pins: the dashed line from a moved place to its reported spot, then the dot.
-            val moved = GeoJsonSource(MOVED_SOURCE)
-            style.addSource(moved)
-            style.addLayer(
-                LineLayer(MOVED_LINES, MOVED_SOURCE).withProperties(
-                    PropertyFactory.lineColor(if (dark) MapStyle.LIGHT_GRAY else MOVED_GRAY),
-                    PropertyFactory.lineWidth(1.5f),
-                    PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
-                ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("LineString"))) },
-            )
-            style.addLayer(
-                CircleLayer(MOVED_DOTS, MOVED_SOURCE).withProperties(
-                    PropertyFactory.circleColor(MOVED_GRAY),
-                    PropertyFactory.circleRadius(4f),
-                    PropertyFactory.circleStrokeColor("#FFFFFF"),
-                    PropertyFactory.circleStrokeWidth(1f),
-                ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("Point"))) },
-            )
-            movedSource = moved
-            val density = view.resources.displayMetrics.density
-            Pin.entries.forEach { style.addImage(it.id, it.bitmap(density, dark)) }
-            // Big campaigns: clusters and their unclustered pins, under the pins of [SOURCE].
-            val clusters = GeoJsonSource(
-                CLUSTER_SOURCE,
-                GeoJsonOptions().withCluster(true).withClusterMaxZoom(CLUSTER_MAX_ZOOM).withClusterRadius(CLUSTER_RADIUS)
-                    // How many in each cluster aren't to-check any more; the image shows the rest.
-                    .withClusterProperty(
-                        "done", Expression.literal("+"),
-                        Expression.switchCase(
-                            Expression.eq(Expression.get("pin"), Expression.literal(Pin.TODO.id)),
-                            Expression.literal(0), Expression.literal(1),
-                        ),
+        if (plain) runCatching { connectivity?.unregisterNetworkCallback(online) }
+        plain = false
+        map.setStyle(Style.Builder().fromUri(MapStyle.url(styleUrl, dark))) { style -> addOwn(style, dark) }
+        // Offline, MapLibre holds the style request until the network is back and reports no failure.
+        view.removeCallbacks(styleTimeout)
+        view.postDelayed(styleTimeout, if (isOnline()) SLOW_STYLE_MS else STYLE_TIMEOUT_MS)
+    }
+
+    fun onDestroy() {
+        view.removeCallbacks(styleTimeout)
+        runCatching { connectivity?.unregisterNetworkCallback(online) }
+        view.onDestroy()
+    }
+
+    /** The style didn't load, or not in time (no network and nothing cached, as in a dead spot or a CI
+     * run that lost the tile server): without a style there are no pins and nothing for TalkBack, so the
+     * places go on a plain background instead. Reconnecting, a dark switch or a new map tries the real one again. */
+    private fun loadPlainStyle(map: MapLibreMap, message: String?) {
+        // A tile or sprite failed after the style loaded (the pins are there), or the plain style is already on.
+        if (source != null || plain) return
+        plain = true
+        // Only a dead spot gets the real style back on reconnecting; a slow style online would just stall again.
+        if (!isOnline()) runCatching { connectivity?.registerDefaultNetworkCallback(online) }
+        Log.w(MAP_TAG, "map style didn't load ($message): places on a plain background")
+        val dark = dark
+        map.setStyle(Style.Builder().fromJson(MapStyle.plain(dark))) { style -> addOwn(style, dark) }
+    }
+
+    /** The app's sources and layers on [style], then what is waiting. */
+    private fun addOwn(style: Style, dark: Boolean) {
+        view.removeCallbacks(styleTimeout)
+        if (dark) MapStyle.brightenLabels(style)
+        // Under the pins: the dashed line from a moved place to its reported spot, then the dot.
+        val moved = GeoJsonSource(MOVED_SOURCE)
+        style.addSource(moved)
+        style.addLayer(
+            LineLayer(MOVED_LINES, MOVED_SOURCE).withProperties(
+                PropertyFactory.lineColor(if (dark) MapStyle.LIGHT_GRAY else MOVED_GRAY),
+                PropertyFactory.lineWidth(1.5f),
+                PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+            ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("LineString"))) },
+        )
+        style.addLayer(
+            CircleLayer(MOVED_DOTS, MOVED_SOURCE).withProperties(
+                PropertyFactory.circleColor(MOVED_GRAY),
+                PropertyFactory.circleRadius(4f),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(1f),
+            ).apply { setFilter(Expression.eq(Expression.geometryType(), Expression.literal("Point"))) },
+        )
+        movedSource = moved
+        val density = view.resources.displayMetrics.density
+        Pin.entries.forEach { style.addImage(it.id, it.bitmap(density, dark)) }
+        // Big campaigns: clusters and their unclustered pins, under the pins of [SOURCE].
+        val clusters = GeoJsonSource(
+            CLUSTER_SOURCE,
+            GeoJsonOptions().withCluster(true).withClusterMaxZoom(CLUSTER_MAX_ZOOM).withClusterRadius(CLUSTER_RADIUS)
+                // How many in each cluster aren't to-check any more; the image shows the rest.
+                .withClusterProperty(
+                    "done", Expression.literal("+"),
+                    Expression.switchCase(
+                        Expression.eq(Expression.get("pin"), Expression.literal(Pin.TODO.id)),
+                        Expression.literal(0), Expression.literal(1),
                     ),
-            )
-            style.addSource(clusters)
-            style.addLayer(
-                SymbolLayer(CLUSTER_PINS, CLUSTER_SOURCE).withProperties(
-                    PropertyFactory.iconImage(Expression.get("pin")),
-                    PropertyFactory.iconAllowOverlap(true),
-                    PropertyFactory.iconIgnorePlacement(true),
-                ).apply { setFilter(Expression.not(Expression.has("point_count"))) },
-            )
-            style.addLayer(
-                SymbolLayer(CLUSTER_LAYER, CLUSTER_SOURCE).withProperties(
-                    // Drawn on demand ([ClusterImage]), so the count needs no map font.
-                    PropertyFactory.iconImage(
-                        Expression.concat(
-                            Expression.literal(ClusterImage.prefix(dark)),
-                            Expression.toString(Expression.get("point_count")),
-                            Expression.literal("-"),
-                            Expression.toString(Expression.subtract(Expression.get("point_count"), Expression.get("done"))),
-                        ),
-                    ),
-                    PropertyFactory.iconAllowOverlap(true),
-                    PropertyFactory.iconIgnorePlacement(true),
-                ).apply { setFilter(Expression.has("point_count")) },
-            )
-            clusterSource = clusters
-            val source = GeoJsonSource(SOURCE)
-            style.addSource(source)
-            style.addLayer(
-                SymbolLayer(LAYER, SOURCE).withProperties(
-                    PropertyFactory.iconImage(Expression.get("pin")),
-                    PropertyFactory.iconAllowOverlap(true),
-                    PropertyFactory.iconIgnorePlacement(true),
                 ),
-            )
-            this.source = source
-            syncLocation()
-            waiting?.let { show(it) }
-        }
+        )
+        style.addSource(clusters)
+        style.addLayer(
+            SymbolLayer(CLUSTER_PINS, CLUSTER_SOURCE).withProperties(
+                PropertyFactory.iconImage(Expression.get("pin")),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            ).apply { setFilter(Expression.not(Expression.has("point_count"))) },
+        )
+        style.addLayer(
+            SymbolLayer(CLUSTER_LAYER, CLUSTER_SOURCE).withProperties(
+                // Drawn on demand ([ClusterImage]), so the count needs no map font.
+                PropertyFactory.iconImage(
+                    Expression.concat(
+                        Expression.literal(ClusterImage.prefix(dark)),
+                        Expression.toString(Expression.get("point_count")),
+                        Expression.literal("-"),
+                        Expression.toString(Expression.subtract(Expression.get("point_count"), Expression.get("done"))),
+                    ),
+                ),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            ).apply { setFilter(Expression.has("point_count")) },
+        )
+        clusterSource = clusters
+        val source = GeoJsonSource(SOURCE)
+        style.addSource(source)
+        style.addLayer(
+            SymbolLayer(LAYER, SOURCE).withProperties(
+                PropertyFactory.iconImage(Expression.get("pin")),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            ),
+        )
+        this.source = source
+        syncLocation()
+        waiting?.let { show(it) }
     }
 
     /** Zooms in on [cluster] until it splits. */
@@ -331,7 +384,11 @@ private class PlacesMapHolder(
     fun setDark(dark: Boolean) {
         if (dark == this.dark) return
         this.dark = dark
-        val map = map ?: return
+        reloadStyle(map ?: return)
+    }
+
+    /** A new style for a map that has one: what was drawn waits for the new style's sources. */
+    private fun reloadStyle(map: MapLibreMap) {
         source = null
         clusterSource = null
         movedSource = null
@@ -508,6 +565,12 @@ private class PlacesMapHolder(
     }
 
     private companion object {
+        /** Logcat tag for the map's own trouble; scripts/ci/emulator-instrumented.sh prints it. */
+        const val MAP_TAG = "StreetTallyMap"
+        /** Offline, how long before the places go on a plain background: the app's 6 s for a network step (O3). */
+        const val STYLE_TIMEOUT_MS = 6_000L
+        /** Online, a slow style still beats no map for longer, so it gets more time. */
+        const val SLOW_STYLE_MS = 20_000L
         const val SOURCE = "places"
         const val LAYER = "places-pins"
         const val CLUSTER_SOURCE = "places-clustered"
