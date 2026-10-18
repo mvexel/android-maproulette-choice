@@ -43,7 +43,9 @@ class PinFocusTest {
             .apply(extras)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         instrumentation.targetContext.startActivity(intent)
-        await("the campaign") { node { it.text?.toString() == "Let's go" } ?: mapNodes().firstOrNull() }
+        // The welcome opens once every page is in (#64), so wait for it or the tally, not the first pins:
+        // a welcome opening later takes the focus mid-test.
+        await("the campaign") { node { it.text?.toString() == "Let's go" || it.text?.startsWith("The tally:") == true } }
         node { it.text?.toString() == "Let's go" }?.let(::click)
         await("the map") { mapNodes().firstOrNull() }
     }
