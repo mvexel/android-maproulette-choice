@@ -28,7 +28,12 @@
                 <data android:scheme="${appAuthRedirectScheme}" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+        <!-- Dark mode doesn't recreate the activity: the maps restyle instead (AE8). -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="uiMode"
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

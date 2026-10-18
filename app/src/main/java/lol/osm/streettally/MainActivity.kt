@@ -1,6 +1,7 @@
 package lol.osm.streettally
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -161,6 +162,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         campaignFrom(intent)?.let { linked = it }
         demoFrom(intent)
+    }
+
+    /** Dark mode arrives here instead of recreating the activity (configChanges="uiMode"); Compose and
+     * the maps follow on their own, the system bars and the window behind them need telling. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
+        val theme = resources.newTheme().apply { applyStyle(R.style.Theme_StreetTally, true) }
+        val attrs = theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowBackground))
+        window.setBackgroundDrawable(attrs.getDrawable(0))
+        attrs.recycle()
     }
 
     override fun onPause() {
