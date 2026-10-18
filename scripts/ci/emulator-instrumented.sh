@@ -9,7 +9,8 @@ set -uo pipefail
 APK=${1:?usage: emulator-instrumented.sh <demoDebug apk> <androidTest apk> [output dir]}
 TEST_APK=${2:?usage: emulator-instrumented.sh <demoDebug apk> <androidTest apk> [output dir]}
 OUT=${3:-instrumented-out}
-PKG=lol.osm.maproulette.choice
+# The demo flavor's debug id (app/build.gradle.kts: ".demo" then ".debug").
+PKG=lol.osm.maproulette.choice.demo.debug
 mkdir -p "$OUT"
 log() { echo "[instrumented] $*"; }
 
