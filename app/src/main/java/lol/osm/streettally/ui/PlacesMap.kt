@@ -76,7 +76,7 @@ fun PlacesMap(
     describe: (LocatedTask) -> String = { it.id.toString() },
     onActivate: (Long) -> Unit = onPlace,
     /** TalkBack's words for a cluster of `total` places, `left` of them still to check. */
-    describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(PLACE, total, left) },
+    describeCluster: (total: Int, left: Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) },
 ) {
     LocalMapPlaceholder.current?.let { placeholder ->
         placeholder(null, modifier, {})
@@ -122,7 +122,7 @@ private class PlacesMapHolder(private val context: Context, styleUrl: String) {
     var onBackground: () -> Unit = {}
     var onActivate: (Long) -> Unit = {}
     var describe: (LocatedTask) -> String = { it.id.toString() }
-    var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(PLACE, total, left) }
+    var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) }
     /** Every place with a position, nearest first. */
     private var pins: List<LocatedTask> = emptyList()
     /** What TalkBack can reach, nearest first; the index is the node id. Unclustered, every pin; clustered,
@@ -494,6 +494,3 @@ private data class Shown(
     val places: List<LocatedTask>, val done: Set<Long>, val pending: Set<Long>, val look: Set<Long>, val unsent: Set<Long>,
     val movedTo: Map<Long, LatLon>, val origin: LatLon?,
 )
-
-/** The noun for [PlacesMap]'s default cluster wording, when no campaign noun is passed. */
-private val PLACE = Noun("place", "places")

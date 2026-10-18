@@ -180,7 +180,7 @@ class MainActivity : ComponentActivity() {
      * that many of the guest's answers on the map. `--ez offline true` is a dead spot: every request
      * fails as if there were no connection, until `--ez offline false`, which also sends what's waiting
      * and refreshes a campaign shown from the phone's copy. `--es demo large --ei places 5200` serves
-     * the trees survey copied to that many places, and `--ei latency 300` holds every answer back that
+     * the trees survey copied to that many places (`--ei checked 2000` has the first 2,000 checked), and `--ei latency 300` holds every answer back that
      * many milliseconds (open-time checks; L1). `--ez hang true` leaves every request unanswered until
      * `--ez hang false`, and `--ez cold true` has the phone's copy read from its file again, as after
      * a restart. */
@@ -194,6 +194,7 @@ class MainActivity : ComponentActivity() {
             if (!offline) app.networkBack()
         }
         if (intent.hasExtra(DEMO_PLACES)) (application as StreetTallyApp).demo?.places = intent.getIntExtra(DEMO_PLACES, DemoBackend.LARGE_PLACES).coerceAtLeast(1)
+        if (intent.hasExtra(DEMO_CHECKED)) (application as StreetTallyApp).demo?.checked = intent.getIntExtra(DEMO_CHECKED, 0).coerceAtLeast(0)
         if (intent.hasExtra(DEMO_HANG)) (application as StreetTallyApp).demo?.hang = intent.getBooleanExtra(DEMO_HANG, false)
         if (intent.getBooleanExtra(DEMO_COLD, false)) (application as StreetTallyApp).cache.forget()
         if (intent.hasExtra(DEMO_LATENCY)) (application as StreetTallyApp).demo?.latencyMs = intent.getIntExtra(DEMO_LATENCY, 0).coerceAtLeast(0).toLong()
@@ -217,6 +218,7 @@ private const val DEMO_CAMPAIGN = "demo"
 private const val DEMO_ON_MAP = "onmap"
 private const val DEMO_OFFLINE = "offline"
 private const val DEMO_PLACES = "places"
+private const val DEMO_CHECKED = "checked"
 private const val DEMO_LATENCY = "latency"
 private const val DEMO_HANG = "hang"
 private const val DEMO_COLD = "cold"
