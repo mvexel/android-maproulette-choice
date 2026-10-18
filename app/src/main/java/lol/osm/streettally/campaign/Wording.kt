@@ -371,6 +371,8 @@ object Wording {
     const val CLOSE = "Close"
     const val PREVIEW_ALREADY_PUBLISHED = "This campaign is published, so answers are saved for real."
     fun previewingAs(account: String): String = "You're previewing as $account."
+    /** In place of [ANSWERS_ARE_PUBLIC] on the welcome in preview (preview-mode.md §4, §8; Tess's AW1). */
+    const val PREVIEW_NOTHING_SAVED = "In preview, nothing you answer is saved."
     /** The signed-in account as preview names it: the OpenStreetMap username (no "@"), else
      * "MapRoulette user 7" when the server didn't send one. */
     fun account(userId: Long?, displayName: String?): String? =
