@@ -526,7 +526,8 @@ fun CampaignScreen(
                         Button(onClick = { open(nearest) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text(Wording.nearest(noun, Places.distanceText(origin, nearest.position)))
                         }
-                    } else if (tally.total > 0) {
+                    } else if (tally.total > 0 && !partial) {
+                        // Not while pages still load: the first ones can all be checked (Tess, AE9).
                         Text(Wording.allChecked(noun), style = MaterialTheme.typography.titleMedium)
                     }
                 }

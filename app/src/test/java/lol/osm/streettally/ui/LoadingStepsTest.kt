@@ -35,12 +35,12 @@ import org.robolectric.annotation.Config
 class LoadingStepsTest {
     @get:Rule val compose = createComposeRule()
 
-    /** The demo's trees (139 places, two pages), with every page after the first held until [rest]. */
-    private class SlowPages(private val demo: Transport) : Transport {
+    /** A demo campaign (the trees: 139 places, two pages), with every page after the first held until [rest]. */
+    private class SlowPages(private val demo: Transport, private val campaign: Long = DemoBackend.CAMPAIGN) : Transport {
         val rest = CompletableDeferred<Unit>()
         override suspend fun execute(request: HttpRequest): HttpResponse {
             val uri = URI(request.url)
-            if (uri.path.endsWith("/challenge/${DemoBackend.CAMPAIGN}/tasks") && uri.rawQuery.orEmpty().split('&').none { it == "page=0" }) {
+            if (uri.path.endsWith("/challenge/$campaign/tasks") && uri.rawQuery.orEmpty().split('&').none { it == "page=0" }) {
                 rest.await()
             }
             return demo.execute(request)
@@ -61,26 +61,52 @@ class LoadingStepsTest {
         }
     }
 
-    @Test fun theFirstPageShowsWhileTheRestLoads() {
-        val wire = SlowPages(DemoBackend(File("src/demo/assets/${DemoBackend.ASSET}").readText()))
+    private fun show(wire: Transport, campaign: Long) {
         val session = AppSession(config, InMemoryCredentialStore(), wire)
         runBlocking { session.restore() }
-        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication()).apply { markWelcomeSeen(DemoBackend.CAMPAIGN) }
+        val prefs = CampaignPrefs(RuntimeEnvironment.getApplication()).apply { markWelcomeSeen(campaign) }
         compose.setContent {
             CompositionLocalProvider(LocalMapPlaceholder provides { _, modifier, _ -> Box(modifier) }) {
                 StreetTallyTheme(dark = false) {
                     CampaignScreen(
                         session = session, prefs = prefs, checkedLog = CheckedLog(),
-                        campaignId = DemoBackend.CAMPAIGN, onBack = {}, onPlace = { _, _, _ -> },
+                        campaignId = campaign, onBack = {}, onPlace = { _, _, _ -> },
                     )
                 }
             }
         }
+    }
+
+    private fun assertGone(text: String, why: String) =
+        compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().let { assertTrue(why, it.isEmpty()) }
+
+    @Test fun theFirstPageShowsWhileTheRestLoads() {
+        val wire = SlowPages(DemoBackend(File("src/demo/assets/${DemoBackend.ASSET}").readText()))
+        show(wire, DemoBackend.CAMPAIGN)
         waitForText("100 so far")
-        compose.onAllNodesWithText("The tally:", substring = true).fetchSemanticsNodes().let { assertTrue("tally shown while loading", it.isEmpty()) }
+        assertGone("The tally:", "tally shown while loading")
 
         wire.rest.complete(Unit)
         waitForText("The tally:")
-        compose.onAllNodesWithText("so far", substring = true).fetchSemanticsNodes().let { assertTrue("loading line still shown", it.isEmpty()) }
+        assertGone("so far", "loading line still shown")
+    }
+
+    /** A first page with every place checked isn't the whole campaign: no "All trees are checked" until
+     * every page is in (Tess, AE9). */
+    @Test fun aCheckedFirstPageDoesNotSayAllAreChecked() {
+        val demo = DemoBackend(File("src/demo/assets/${DemoBackend.ASSET}").readText()).apply {
+            places = 300
+            checked = 150
+            use(DemoBackend.LARGE)
+        }
+        val campaign = DemoBackend.IDS.getValue(DemoBackend.LARGE)
+        val wire = SlowPages(demo, campaign)
+        show(wire, campaign)
+        waitForText("100 so far")
+        assertGone("are checked. Thank you!", "all checked shown while loading")
+
+        wire.rest.complete(Unit)
+        waitForText("The tally:")
+        assertGone("are checked. Thank you!", "all checked shown with places left")
     }
 }
