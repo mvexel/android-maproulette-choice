@@ -94,10 +94,11 @@ class LoadingStepsTest {
     /** A first page with every place checked isn't the whole campaign: no "All trees are checked" until
      * every page is in (Tess, AE9). */
     @Test fun aCheckedFirstPageDoesNotSayAllAreChecked() {
-        val demo = DemoBackend(File("src/demo/assets/${DemoBackend.ASSET}").readText()).apply {
+        val trees = File("src/demo/assets/${DemoBackend.ASSET}").readText()
+        val demo = DemoBackend(mapOf(DemoBackend.TREES to trees, DemoBackend.LARGE to trees)).apply {
             places = 300
             checked = 150
-            use(DemoBackend.LARGE)
+            check(use(DemoBackend.LARGE))
         }
         val campaign = DemoBackend.IDS.getValue(DemoBackend.LARGE)
         val wire = SlowPages(demo, campaign)
