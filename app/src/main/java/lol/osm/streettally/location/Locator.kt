@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.OperationCanceledException
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -35,9 +36,9 @@ object Locator {
 
     /** A current fix within [timeoutMs]; call after the permission prompt. Fused first where the
      * phone has it (it uses Wi-Fi indoors), otherwise GPS; the network gets the last third of the
-     * time, because GPS alone rarely gets a fix indoors. */
-    /** Off the main thread: every LocationManager call is a binder call, and on resume
-     * getLastKnownLocation held the main thread (Tess, AE10). */
+     * time, because GPS alone rarely gets a fix indoors. Runs off the main thread: every
+     * LocationManager call is a binder call, and on resume getLastKnownLocation held the main
+     * thread (Tess, AE10). */
     @SuppressLint("MissingPermission") // Checked by permitted().
     suspend fun locate(context: Context, timeoutMs: Long = 15_000): LocateResult = withContext(Dispatchers.IO) {
         locateHere(context, timeoutMs)
@@ -88,8 +89,14 @@ object Locator {
             suspendCancellableCoroutine { continuation ->
                 val signal = CancellationSignal()
                 continuation.invokeOnCancellation { signal.cancel() }
-                LocationManagerCompat.getCurrentLocation(manager, provider, signal, executor) { location ->
-                    continuation.resumeWith(Result.success(location)) // Null when the provider has no fix.
+                // A cancel that lands first (the screen rotated) makes this throw on the IO thread,
+                // which crashed the app (#57 CI); the coroutine is already cancelled, so drop it.
+                try {
+                    LocationManagerCompat.getCurrentLocation(manager, provider, signal, executor) { location ->
+                        continuation.resumeWith(Result.success(location)) // Null when the provider has no fix.
+                    }
+                } catch (cancelled: OperationCanceledException) {
+                    // Nothing to resume.
                 }
             }
         }

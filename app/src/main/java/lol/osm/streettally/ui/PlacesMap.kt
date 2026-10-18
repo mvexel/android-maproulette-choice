@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -29,6 +30,7 @@ import lol.osm.streettally.campaign.Places
 import lol.osm.streettally.campaign.Wording
 import lol.osm.streettally.location.Locator
 import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -86,7 +88,10 @@ fun PlacesMap(
     }
     val context = LocalContext.current
     val dark = MapStyle.isDark(LocalConfiguration.current)
-    val holder = remember { PlacesMapHolder(context, styleUrl, dark) }
+    // Where the camera was, kept across a recreation (rotation): latitude, longitude, zoom.
+    val camera = rememberSaveable { arrayOf(DoubleArray(0)) }
+    val holder = remember { PlacesMapHolder(context, styleUrl, dark, camera[0].takeIf { it.size == 3 }) }
+    holder.onCamera = { camera[0] = it }
     SideEffect { holder.setDark(dark) }
     holder.onPlace = onPlace
     holder.onBackground = onBackground
@@ -120,11 +125,19 @@ fun PlacesMap(
     })
 }
 
-private class PlacesMapHolder(private val context: Context, private val styleUrl: String, private var dark: Boolean) {
+/** [restore]: the camera before a recreation (latitude, longitude, zoom); the map then keeps it instead of
+ * framing the first places to arrive, which may be only the first page of a big campaign (Tess, AE9). */
+private class PlacesMapHolder(
+    private val context: Context,
+    private val styleUrl: String,
+    private var dark: Boolean,
+    restore: DoubleArray? = null,
+) {
     val view: MapView
     var onPlace: (Long) -> Unit = {}
     var onBackground: () -> Unit = {}
     var onActivate: (Long) -> Unit = {}
+    var onCamera: (DoubleArray) -> Unit = {}
     var describe: (LocatedTask) -> String = { it.id.toString() }
     var describeCluster: (Int, Int) -> String = { total, left -> Wording.cluster(Noun.PLACE, total, left) }
     /** Every place with a position, nearest first. */
@@ -164,9 +177,14 @@ private class PlacesMapHolder(private val context: Context, private val styleUrl
         view.getMapAsync { map ->
             this.map = map
             map.uiSettings.isRotateGesturesEnabled = false
+            if (restore != null) {
+                map.cameraPosition = CameraPosition.Builder().target(LatLng(restore[0], restore[1])).zoom(restore[2]).build()
+                framed = true
+            }
             loadStyle(map)
             // Nodes follow the pins once the map stops moving; panning itself announces nothing.
             map.addOnCameraIdleListener {
+                map.cameraPosition.target?.let { onCamera(doubleArrayOf(it.latitude, it.longitude, map.cameraPosition.zoom)) }
                 if (clustered) nodes = rendered()
                 access.invalidateRoot()
             }
