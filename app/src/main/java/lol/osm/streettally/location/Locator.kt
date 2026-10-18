@@ -11,7 +11,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.os.CancellationSignal
 import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import lol.osm.streettally.campaign.LatLon
 
@@ -34,8 +36,15 @@ object Locator {
     /** A current fix within [timeoutMs]; call after the permission prompt. Fused first where the
      * phone has it (it uses Wi-Fi indoors), otherwise GPS; the network gets the last third of the
      * time, because GPS alone rarely gets a fix indoors. */
+    /** Off the main thread: every LocationManager call is a binder call, and on resume
+     * getLastKnownLocation held the main thread (Tess, AE10). */
     @SuppressLint("MissingPermission") // Checked by permitted().
-    suspend fun locate(context: Context, timeoutMs: Long = 15_000): LocateResult {
+    suspend fun locate(context: Context, timeoutMs: Long = 15_000): LocateResult = withContext(Dispatchers.IO) {
+        locateHere(context, timeoutMs)
+    }
+
+    @SuppressLint("MissingPermission") // Checked by permitted().
+    private suspend fun locateHere(context: Context, timeoutMs: Long): LocateResult {
         if (!permitted(context)) return LocateResult.Denied
         val manager = context.getSystemService(LocationManager::class.java) ?: return LocateResult.Unavailable
         if (!LocationManagerCompat.isLocationEnabled(manager)) return LocateResult.Unavailable
