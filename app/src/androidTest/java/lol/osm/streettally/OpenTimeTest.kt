@@ -31,7 +31,7 @@ class OpenTimeTest {
             "peak PSS ${opens.maxOf { it.pssKb } / 1024} MB, RSS ${opens.maxOf { it.rssKb } / 1024} MB")
     }
 
-    @Test fun fourThousandNineHundredNinetyNinePlaces() = open(4_999)
+    @Test fun fourThousandNineHundredNinetyNinePlaces() { open(4_999) }
 
     /** One bar of signal (AE6b, AE7): every request hangs. The campaign shows the phone's copy, read
      * cold from its file, and Back shows the picker's kept entry, each about SLOW_MS after opening. */
